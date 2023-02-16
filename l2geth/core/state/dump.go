@@ -24,6 +24,8 @@ import (
 	"github.com/ethereum-optimism/optimism/l2geth/common/hexutil"
 	"github.com/ethereum-optimism/optimism/l2geth/log"
 	"github.com/ethereum-optimism/optimism/l2geth/rlp"
+	"github.com/ethereum-optimism/optimism/l2geth/rollup/dump"
+	"github.com/ethereum-optimism/optimism/l2geth/rollup/rcfg"
 	"github.com/ethereum-optimism/optimism/l2geth/trie"
 )
 
@@ -100,8 +102,16 @@ func (s *StateDB) dump(c collector, excludeCode, excludeStorage, excludeMissingP
 		}
 		addr := common.BytesToAddress(s.trie.GetKey(it.Key))
 		obj := newObject(nil, addr, data)
+
+		balance := data.Balance
+
+		if rcfg.UsingOVM {
+			balancekey := GetOVMBalanceKey(addr)
+			balance = s.GetState(dump.OvmEthAddress, balancekey).Big()
+		}
+
 		account := DumpAccount{
-			Balance:  data.Balance.String(),
+			Balance:  balance.String(),
 			Nonce:    data.Nonce,
 			Root:     common.Bytes2Hex(data.Root[:]),
 			CodeHash: common.Bytes2Hex(data.CodeHash),
