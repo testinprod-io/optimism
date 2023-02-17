@@ -18,11 +18,13 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	mrand "math/rand"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -620,6 +622,49 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 		}
 		if time.Since(reported) >= statsReportLimit {
 			log.Info("Exporting blocks", "exported", block.NumberU64()-first, "elapsed", common.PrettyDuration(time.Since(start)))
+			reported = time.Now()
+		}
+	}
+	return nil
+}
+
+// Export writes the active chain to the given writer.
+func (bc *BlockChain) ExportReceipts(w io.Writer) error {
+	return bc.ExportReceiptsN(w, uint64(0), bc.CurrentBlock().NumberU64())
+}
+
+// ExportN writes a subset of the active chain to the given writer.
+func (bc *BlockChain) ExportReceiptsN(w io.Writer, first uint64, last uint64) error {
+	bc.chainmu.RLock()
+	defer bc.chainmu.RUnlock()
+
+	if first > last {
+		return fmt.Errorf("export failed: first (%d) is greater than last (%d)", first, last)
+	}
+	log.Info("Exporting batch of receipts", "count", last-first+1)
+
+	start, reported := time.Now(), time.Now()
+	for nr := first; nr <= last; nr++ {
+		block := bc.GetBlockByNumber(nr)
+		if block == nil {
+			return fmt.Errorf("export failed on #%d: not found", nr)
+		}
+		receipts := bc.GetReceiptsByHash(block.Hash())
+		log.Info("export", "blocknum", nr)
+
+		// debug purpose
+		if receipts.Len() > 0 {
+			if err := json.NewEncoder(os.Stdout).Encode(receipts[0]); err != nil {
+				log.Info("receipt print failed")
+			}
+		}
+
+		if err := rlp.Encode(w, receipts); err != nil {
+			return err
+		}
+		log.Info("export done", "blocknum", nr)
+		if time.Since(reported) >= statsReportLimit {
+			log.Info("Exporting receipts", "exported", block.NumberU64()-first, "elapsed", common.PrettyDuration(time.Since(start)))
 			reported = time.Now()
 		}
 	}

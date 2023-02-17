@@ -51,6 +51,8 @@ const (
 // Receipt represents the results of a transaction.
 type Receipt struct {
 	// Consensus fields: These fields are defined by the Yellow Paper
+	// added type field for erigon compatibility
+	Type              uint8  `json:"type,omitempty"`
 	PostState         []byte `json:"root"`
 	Status            uint64 `json:"status"`
 	CumulativeGasUsed uint64 `json:"cumulativeGasUsed" gencodec:"required"`
@@ -142,9 +144,12 @@ func NewReceipt(root []byte, failed bool, cumulativeGasUsed uint64) *Receipt {
 
 // EncodeRLP implements rlp.Encoder, and flattens the consensus fields of a receipt
 // into an RLP stream. If no post state is present, byzantium fork is assumed.
-func (r *Receipt) EncodeRLP(w io.Writer) error {
-	return rlp.Encode(w, &receiptRLP{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs})
-}
+
+// no custom flattening. we need every field of receipts
+// DecodeRLP will not work by this hack
+// func (r *Receipt) EncodeRLP(w io.Writer) error {
+// 	return rlp.Encode(w, &receiptRLP{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs})
+// }
 
 // DecodeRLP implements rlp.Decoder, and loads the consensus fields of a receipt
 // from an RLP stream.
@@ -344,6 +349,10 @@ func (r Receipts) DeriveFields(config *params.ChainConfig, hash common.Hash, num
 	for i := 0; i < len(r); i++ {
 		// The transaction hash can be retrieved from the transaction itself
 		r[i].TxHash = txs[i].Hash()
+
+		// l2geth does not support EIP-2718.
+		// every tx is LegacyTx which Type == 0
+		r[i].Type = 0
 
 		// block location fields
 		r[i].BlockHash = hash
