@@ -1,3 +1,10 @@
+"""
+Usage: python3.10 parse.py [slack token] [start_number] [end_number]
+example: python3.10 parse.py [REDACTED] 4044608 4044863
+
+The script will trace blocks between [start_number] and [end_number] inclusively
+"""
+
 import pickle
 import random
 import sys
@@ -146,7 +153,7 @@ CLAMP = 0x40
 for s in range(start, end, REPORT_INTERVAL):
     e = min(end, s + REPORT_INTERVAL)
     filename = get_filename(s, e)
-    #send_message(f"{filename} START")
+    # send_message(f"{filename} START")
     for ss in range(s, e + 1, CLAMP):
         ee = min(end, ss + CLAMP - 1)
         print(ss, ee)
