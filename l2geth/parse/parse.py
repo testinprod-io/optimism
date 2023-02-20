@@ -103,13 +103,12 @@ def traverse(result):
 def trace(start: int, end: int) -> bool:
     print("start:", hex(start), "end:", hex(end))
     failure_count = 0
+    timeout = DEFAULT_TIMEOUT
     while True:
-        timeout = DEFAULT_TIMEOUT
         try:
             r = requests.get(URL, json=get_body(start, end), timeout=timeout)
             assert r.status_code == 200
             print(r.elapsed.total_seconds())
-            break
         except requests.exceptions.HTTPError as err:
             print("HTTP Error:", err)
             failure_count += 1
@@ -121,12 +120,18 @@ def trace(start: int, end: int) -> bool:
             failure_count += 1
             timeout += 10
         except requests.exceptions.RequestException as err:
-            print("Unkwown Error:", err)
-            return False
-        if failure_count == 3:
+            print("Unknown Error:", err)
             return False
 
-    results = r.json()["result"]
+        try:
+            results = r.json()["result"]
+            break
+        except Exception as err:
+            print("Json decode error", err)
+            failure_count += 1
+
+        if failure_count == 3:
+            return False
 
     for i, result in enumerate(results):
         # {'error': 'execution timeout'}
@@ -134,6 +139,9 @@ def trace(start: int, end: int) -> bool:
             error_block_number.append(i + start)
         if "result" in result:
             traverse(result["result"])
+        if "error" not in result and "result" not in result:
+            print("Error: error key and result key not present at response")
+            return False
 
     print(len(address_set))
     return True
