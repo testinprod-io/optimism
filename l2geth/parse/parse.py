@@ -151,17 +151,17 @@ CLAMP = 0x40
 for s in range(start, end, REPORT_INTERVAL):
     e = min(end, s + REPORT_INTERVAL)
     filename = get_filename(s, e)
-    # send_message(f"{filename} START")
+    send_message(f"{filename} START")
     for ss in range(s, e + 1, CLAMP):
         ee = min(end, ss + CLAMP - 1)
         print(ss, ee)
-    #     if not trace(ss, ee):
-    #         send_message(f"{hex(ss)}, {hex(ee)} failed")
-    #         missed.append((ss, ee))
-    # save_file(filename)
-    # save_artifact(filename)
-    # send_message(f"{filename} END")
-    # send_message(f"{filename} has {len(address_set)} preimages")
+        if not trace(ss, ee):
+            send_message(f"{hex(ss)}, {hex(ee)} failed")
+            missed.append((ss, ee))
+    save_file(filename)
+    save_artifact(filename)
+    send_message(f"{filename} END")
+    send_message(f"{filename} has {len(address_set)} preimages")
     address_set = set()
     error_block_number = []
     missed = []
