@@ -19,6 +19,7 @@ package utils
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -186,7 +187,59 @@ func missingBlocks(chain *core.BlockChain, blocks []*types.Block) []*types.Block
 	return nil
 }
 
-// ExportReceipts exports receipts into the specified file, truncating any data
+// ExportAddress exports addresses into the specified file, truncating any data
+// already present in the file.
+func ExportAddress(blockchain *core.BlockChain, fn string) error {
+	log.Info("Exporting addresses", "file", fn)
+
+	// Open the file handle and potentially wrap with a gzip stream
+	fh, err := os.OpenFile(fn, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	var writer io.Writer = fh
+	if strings.HasSuffix(fn, ".gz") {
+		writer = gzip.NewWriter(writer)
+		defer writer.(*gzip.Writer).Close()
+	}
+	// Iterate over the blocks and export them
+	if err := blockchain.ExportAddresses(writer); err != nil {
+		return err
+	}
+	log.Info("Exported addresses", "file", fn)
+
+	return nil
+}
+
+// ExportAppendAddress exports addresses into the specified file, appending to
+// the file if data already exists in it.
+func ExportAppendAddress(blockchain *core.BlockChain, fn string, first uint64, last uint64) error {
+	log.Info("Exporting addresses", "file", fn)
+
+	// Open the file handle and potentially wrap with a gzip stream
+	fh, err := os.OpenFile(fn, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	var writer io.Writer = fh
+	if strings.HasSuffix(fn, ".gz") {
+		writer = gzip.NewWriter(writer)
+		defer writer.(*gzip.Writer).Close()
+	}
+	// Iterate over the blocks and export them
+	if err := blockchain.ExportAddressesN(writer, first, last); err != nil {
+		return err
+	}
+	log.Info("Exported addresses to", "file", fn)
+
+	return nil
+}
+
+// ExportReceipt exports receipts into the specified file, truncating any data
 // already present in the file.
 func ExportReceipt(blockchain *core.BlockChain, fn string) error {
 	log.Info("Exporting receipts", "file", fn)
@@ -212,7 +265,7 @@ func ExportReceipt(blockchain *core.BlockChain, fn string) error {
 	return nil
 }
 
-// ExportAppendChain exports receipts into the specified file, appending to
+// ExportAppendReceipt exports receipts into the specified file, appending to
 // the file if data already exists in it.
 func ExportAppendReceipt(blockchain *core.BlockChain, fn string, first uint64, last uint64) error {
 	log.Info("Exporting receipts", "file", fn)
@@ -347,17 +400,33 @@ func ExportPreimages(db ethdb.Database, fn string) error {
 	}
 	defer fh.Close()
 
+	fhj, err := os.OpenFile(fn+"_json", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	defer fhj.Close()
+
 	var writer io.Writer = fh
 	if strings.HasSuffix(fn, ".gz") {
 		writer = gzip.NewWriter(writer)
 		defer writer.(*gzip.Writer).Close()
 	}
+
+	var writer2 io.Writer = fhj
+	encoder := json.NewEncoder(writer2)
+
 	// Iterate over the preimages and export them
 	it := db.NewIteratorWithPrefix([]byte("secure-key-"))
 	defer it.Release()
 
 	for it.Next() {
-		if err := rlp.Encode(writer, it.Value()); err != nil {
+		value := it.Value()
+		if err := rlp.Encode(writer, value); err != nil {
+			return err
+		}
+		if err := encoder.Encode(struct {
+			Blob []byte `json:"preimage"`
+		}{value}); err != nil {
 			return err
 		}
 	}

@@ -138,6 +138,24 @@ last block to write. In this mode, the file will be appended
 if already existing. If the file ends with .gz, the output will
 be gzipped.`,
 	}
+	exportAddressesCommand = cli.Command{
+		Action:    utils.MigrateFlags(exportAddresses),
+		Name:      "export-addresses",
+		Usage:     "Export the addresses into file",
+		ArgsUsage: "<filename> [<blockNumFirst> <blockNumLast>]",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+			utils.CacheFlag,
+			utils.SyncModeFlag,
+		},
+		Category: "BLOCKCHAIN COMMANDS",
+		Description: `
+Requires a first argument of the file to write to.
+Optional second and third arguments control the first and
+last block to write. In this mode, the file will be appended
+if already existing. If the file ends with .gz, the output will
+be gzipped.`,
+	}
 	importPreimagesCommand = cli.Command{
 		Action:    utils.MigrateFlags(importPreimages),
 		Name:      "import-preimages",
@@ -415,6 +433,40 @@ func importChain(ctx *cli.Context) error {
 		utils.Fatalf("Failed to read database iostats: %v", err)
 	}
 	fmt.Println(ioStats)
+	return nil
+}
+
+func exportAddresses(ctx *cli.Context) error {
+	if len(ctx.Args()) < 1 {
+		utils.Fatalf("This command requires an argument.")
+	}
+	stack := makeFullNode(ctx)
+	defer stack.Close()
+
+	chain, _ := utils.MakeChain(ctx, stack)
+	start := time.Now()
+
+	var err error
+	fp := ctx.Args().First()
+	if len(ctx.Args()) < 3 {
+		err = utils.ExportAddress(chain, fp)
+	} else {
+		// This can be improved to allow for numbers larger than 9223372036854775807
+		first, ferr := strconv.ParseInt(ctx.Args().Get(1), 10, 64)
+		last, lerr := strconv.ParseInt(ctx.Args().Get(2), 10, 64)
+		if ferr != nil || lerr != nil {
+			utils.Fatalf("Export error in parsing parameters: block number not an integer\n")
+		}
+		if first < 0 || last < 0 {
+			utils.Fatalf("Export error: block number must be greater than 0\n")
+		}
+		err = utils.ExportAppendAddress(chain, fp, uint64(first), uint64(last))
+	}
+
+	if err != nil {
+		utils.Fatalf("Export error: %v\n", err)
+	}
+	fmt.Printf("Export done in %v\n", time.Since(start))
 	return nil
 }
 

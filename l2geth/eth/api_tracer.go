@@ -76,6 +76,11 @@ type txTraceResult struct {
 	Error  string      `json:"error,omitempty"`  // Trace failure produced by the tracer
 }
 
+type txAddressResult struct {
+	Addresses interface{} `json:"addresses,omitempty"` // Trace results produced by the tracer
+	Error     string      `json:"error,omitempty"`     // Trace failure produced by the tracer
+}
+
 // blockTraceTask represents a single block trace task when an entire chain is
 // being traced.
 type blockTraceTask struct {
@@ -98,6 +103,12 @@ type blockTraceResult struct {
 type txTraceTask struct {
 	statedb *state.StateDB // Intermediate state prepped for tracing
 	index   int            // Transaction offset in the block
+}
+
+type txHackTraceTask struct {
+	statedb *state.StateDB // Intermediate state prepped for tracing
+	// index   int            // Transaction offset in the block is always zero
+	blockNum uint64
 }
 
 // TraceChain returns the structured logs created during the execution of EVM
@@ -716,6 +727,109 @@ func (api *PrivateDebugAPI) computeStateDB(block *types.Block, reexec uint64) (*
 	nodes, imgs := database.TrieDB().Size()
 	log.Info("Historical state regenerated", "block", block.NumberU64(), "elapsed", time.Since(start), "nodes", nodes, "preimages", imgs)
 	return statedb, nil
+}
+
+func (api *PrivateDebugAPI) TraceAddresses(ctx context.Context, start, end rpc.BlockNumber, config *TraceConfig) (interface{}, error) {
+	if start == 0 {
+		return nil, fmt.Errorf("Cannot trace genesis block")
+	}
+	if start > end {
+		return nil, fmt.Errorf("start #%d larger than end #%d", start, end)
+	}
+	return api.traceAddresses(ctx, start, end, config)
+}
+
+func (api *PrivateDebugAPI) traceAddresses(ctx context.Context, start, end rpc.BlockNumber, config *TraceConfig) (interface{}, error) {
+	// this only work because prebedrock block always contain single tx
+
+	// addressSet := make(map[common.Address]struct{})
+
+	startBlock := api.eth.blockchain.GetBlockByNumber(uint64(start))
+	parent := api.eth.blockchain.GetBlockByNumber(uint64(start - 1))
+
+	reexec := defaultTraceReexec
+	if config != nil && config.Reexec != nil {
+		reexec = *config.Reexec
+	}
+	statedb, err := api.computeStateDB(parent, reexec)
+	if err != nil {
+		return nil, err
+	}
+
+	// Execute all the transaction contained within the block concurrently
+	var signer = types.MakeSigner(api.eth.blockchain.Config(), startBlock.Number())
+	var blocks = []*types.Block{startBlock}
+	var txs = startBlock.Transactions()
+	for i := start + 1; i <= end; i++ {
+		block := api.eth.blockchain.GetBlockByNumber(uint64(i))
+		blocks = append(blocks, block)
+		txs = append(txs, block.Transactions()...)
+	}
+
+	var (
+		results = make([]*txTraceResult, len(txs))
+
+		pend = new(sync.WaitGroup)
+		jobs = make(chan *txHackTraceTask, len(txs))
+	)
+	threads := runtime.NumCPU()
+	if threads > len(txs) {
+		threads = len(txs)
+	}
+
+	for th := 0; th < threads; th++ {
+		pend.Add(1)
+		go func() {
+			defer pend.Done()
+
+			// Fetch and execute the next transaction trace tasks
+			for task := range jobs {
+				i := uint64(task.blockNum) - uint64(start)
+				msg, _ := txs[i].AsMessage(signer)
+				vmctx := core.NewEVMContext(msg, blocks[i].Header(), api.eth.blockchain, nil)
+
+				res, err := api.traceTx(ctx, msg, vmctx, task.statedb, config)
+				if err != nil {
+					results[i] = &txTraceResult{Error: err.Error()}
+					continue
+				}
+
+				// parse using recursive approach
+
+				results[i] = &txTraceResult{Result: res}
+			}
+		}()
+	}
+
+	// Feed the transactions into the tracers and return
+	var failed error
+	for i, tx := range txs {
+		// Send the trace task over for execution
+		blockNum := uint64(i) + uint64(start)
+		jobs <- &txHackTraceTask{statedb: statedb.Copy(), blockNum: blockNum}
+
+		// Generate the next state snapshot fast without tracing
+		msg, _ := tx.AsMessage(signer)
+		vmctx := core.NewEVMContext(msg, blocks[i].Header(), api.eth.blockchain, nil)
+
+		vmenv := vm.NewEVM(vmctx, statedb, api.eth.blockchain.Config(), vm.Config{})
+		if _, _, _, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas())); err != nil {
+			failed = err
+			break
+		}
+		// Finalize the state so any modifications are written to the trie
+		// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+		statedb.Finalise(vmenv.ChainConfig().IsEIP158(blocks[i].Number()))
+	}
+	close(jobs)
+	pend.Wait()
+
+	// If execution failed in between, abort
+	if failed != nil {
+		return nil, failed
+	}
+
+	return results, nil
 }
 
 // TraceTransaction returns the structured logs created during the execution of EVM

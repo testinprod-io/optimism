@@ -18,6 +18,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -629,6 +631,86 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 }
 
 // Export writes the active chain to the given writer.
+func (bc *BlockChain) ExportAddresses(w io.Writer) error {
+	return bc.ExportAddressesN(w, uint64(0), bc.CurrentBlock().NumberU64())
+}
+
+// ExportN writes a subset of the active chain to the given writer.
+func (bc *BlockChain) ExportAddressesN(w io.Writer, first uint64, last uint64) error {
+	bc.chainmu.RLock()
+	defer bc.chainmu.RUnlock()
+
+	if first > last {
+		return fmt.Errorf("export failed: first (%d) is greater than last (%d)", first, last)
+	}
+	log.Info("Exporting batch of addresses", "count", last-first+1)
+
+	addressSet := make(map[common.Address]struct{})
+	var frontierSigner types.Signer = types.FrontierSigner{}
+	var eip155Signer types.Signer = types.NewEIP155Signer(bc.chainConfig.ChainID)
+	emptyAddressBytes, _ := hex.DecodeString("0000000000000000000000000000000000000000")
+
+	encoder := json.NewEncoder(w)
+
+	start, reported := time.Now(), time.Now()
+
+	var from common.Address
+	var err error
+	for nr := first; nr <= last; nr++ {
+		block := bc.GetBlockByNumber(nr)
+		if block == nil {
+			return fmt.Errorf("export failed on #%d: not found", nr)
+		}
+
+		for _, tx := range block.Transactions() {
+			if tx.To() != nil {
+				addressSet[*tx.To()] = struct{}{}
+				// log.Info("to", "address", (*tx.To()).Hex())
+			}
+
+			if tx.Protected() {
+				from, err = types.Sender(eip155Signer, tx)
+			} else {
+				from, err = types.Sender(frontierSigner, tx)
+			}
+			if err != nil && !bytes.Equal(from.Bytes(), emptyAddressBytes) {
+				return fmt.Errorf("from not nil but error occurred")
+			}
+			addressSet[from] = struct{}{}
+			// log.Info("from", "address", from.Hex())
+		}
+
+		receipts := bc.GetReceiptsByHash(block.Hash())
+		for _, receipt := range receipts {
+			contractAddress := receipt.ContractAddress
+			if bytes.Equal(contractAddress.Bytes(), emptyAddressBytes) {
+				continue
+			}
+			addressSet[contractAddress] = struct{}{}
+			// log.Info("contract", "address", contractAddress.Hex())
+		}
+
+		if time.Since(reported) >= statsReportLimit {
+			log.Info("Exporting addresses", "exported", block.NumberU64()-first, "elapsed", common.PrettyDuration(time.Since(start)))
+			log.Info("addressSet length", "length", len(addressSet))
+			reported = time.Now()
+		}
+	}
+
+	log.Info("final addressSet length", "length", len(addressSet))
+
+	for address := range addressSet {
+		if err := encoder.Encode(struct {
+			Address common.Address `json:"address"`
+		}{address}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Export writes the active chain to the given writer.
 func (bc *BlockChain) ExportReceipts(w io.Writer) error {
 	return bc.ExportReceiptsN(w, uint64(0), bc.CurrentBlock().NumberU64())
 }
@@ -662,7 +744,7 @@ func (bc *BlockChain) ExportReceiptsN(w io.Writer, first uint64, last uint64) er
 		if err := rlp.Encode(w, receipts); err != nil {
 			return err
 		}
-		log.Info("export done", "blocknum", nr)
+
 		if time.Since(reported) >= statsReportLimit {
 			log.Info("Exporting receipts", "exported", block.NumberU64()-first, "elapsed", common.PrettyDuration(time.Since(start)))
 			reported = time.Now()
