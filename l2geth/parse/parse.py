@@ -6,10 +6,8 @@ The script will trace blocks between [start_number] and [end_number] inclusively
 """
 
 import pickle
-import random
 import sys
 import time
-from distutils.log import error
 from typing import Dict
 
 import boto3
