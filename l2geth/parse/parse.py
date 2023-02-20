@@ -1,9 +1,10 @@
-from distutils.log import error
 import pickle
 import random
 import sys
-from typing import Dict
 import time
+from distutils.log import error
+from typing import Dict
+
 import boto3
 import requests
 import slack_sdk
@@ -23,10 +24,11 @@ MAX_BLOCK_NUM = 4061223
 
 address_set = set()
 error_block_number = []
+missed = []
 
 
 def get_filename(start: int, end: int) -> str:
-    return f"preimage_{hex(start)}_{hex(end)}"
+    return f"preimage_{hex(start)}_{hex(end)}_{start}_{end}"
 
 
 def send_message(text: str):
@@ -59,8 +61,14 @@ def save_file(filename: str):
     print(f"saving {filename}")
     with open(filename, "wb") as f:
         pickle.dump(
-            {"address_set": address_set, "error_block_number": error_block_number}, f
+            {
+                "address_set": address_set,
+                "error_block_number": error_block_number,
+                "missed": missed,
+            },
+            f,
         )
+    # read with pickle.load(f)
 
 
 def get_body(start: int, end: int) -> Dict:
@@ -126,21 +134,29 @@ def trace(start: int, end: int) -> bool:
     return True
 
 
-start = int(sys.argv[2]) # 4040000
-end =   int(sys.argv[3]) # 4061223
+start = int(sys.argv[2])  # 4040000
+end = int(sys.argv[3])  # 4061223
 
-for s in range(start, end, 0x1000):
-    e = min(end, s + 0x1000)
+# reports every 0x1000
+# each request handles 0x20
+REPORT_INTERVAL = 0x1000
+CLAMP = 0x40
+# higher CLAMP, more likely to timeout
+
+for s in range(start, end, REPORT_INTERVAL):
+    e = min(end, s + REPORT_INTERVAL)
     filename = get_filename(s, e)
-    send_message(f"{filename} START")
-    for ss in range(s, e, 0x100):
-        ee = min(end, ss + 0x100)
-        if not trace(ss, ee):
-            send_message(f"{hex(ss)}, {hex(ee)} failed")
-    save_file(filename)
-    save_artifact(filename)
-    send_message(f"{filename} END")
-    send_message(f"{filename} has {len(address_set)} preimages")
+    #send_message(f"{filename} START")
+    for ss in range(s, e + 1, CLAMP):
+        ee = min(end, ss + CLAMP - 1)
+        print(ss, ee)
+    #     if not trace(ss, ee):
+    #         send_message(f"{hex(ss)}, {hex(ee)} failed")
+    #         missed.append((ss, ee))
+    # save_file(filename)
+    # save_artifact(filename)
+    # send_message(f"{filename} END")
+    # send_message(f"{filename} has {len(address_set)} preimages")
     address_set = set()
     error_block_number = []
-
+    missed = []
