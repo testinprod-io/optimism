@@ -107,6 +107,7 @@ def trace(start: int, end: int) -> bool:
     failure_count = 0
     timeout = DEFAULT_TIMEOUT
     while True:
+        r = None
         try:
             r = requests.get(URL, json=get_body(start, end), timeout=timeout)
             assert r.status_code == 200
@@ -126,8 +127,9 @@ def trace(start: int, end: int) -> bool:
             return False
 
         try:
-            results = r.json()["result"]
-            break
+            if r is not None:
+                results = r.json()["result"]
+                break
         except Exception as err:
             print("Json decode error", err)
             failure_count += 1
