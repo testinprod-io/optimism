@@ -53,7 +53,7 @@ def save_artifact(filename: str):
     time.sleep(0.1)
     try:
         response = s3_client.upload_file(
-            filename, "preimage-recovery", "output/" + filename
+            filename, "preimage-recovery", "output2/" + filename
         )
         send_message(f"{filename} saved")
     except ClientError as err:
@@ -90,14 +90,16 @@ def get_body(start: int, end: int) -> Dict:
     return body
 
 
-def traverse(result):
+def traverse(result, block_tag):
     if "from" in result:
         address_set.add(result["from"])
     if "to" in result:
         address_set.add(result["to"])
     if "calls" in result:
         for subcall in result["calls"]:
-            traverse(subcall)
+            traverse(subcall, block_tag)
+    if "type" in result and result['type'] == 'SELFDESTRUCT':
+        send_message(f"Found SELFDESTRUCT {block_tag}")
 
 
 def trace(start: int, end: int) -> bool:
@@ -138,7 +140,7 @@ def trace(start: int, end: int) -> bool:
         if "error" in result:
             error_block_number.append(i + start)
         if "result" in result:
-            traverse(result["result"])
+            traverse(result["result"], f'{start}_{end}')
         if "error" not in result and "result" not in result:
             print("Error: error key and result key not present at response")
             return False
