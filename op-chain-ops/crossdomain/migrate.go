@@ -18,6 +18,26 @@ var (
 	errLegacyStorageSlotNotFound = errors.New("cannot find storage slot")
 )
 
+// MigrateHackWithdrawals will print slot to stdout
+func MigrateHackWithdrawals(withdrawals []*LegacyWithdrawal, l1CrossDomainMessenger *common.Address) error {
+	for i, legacy := range withdrawals {
+		withdrawal, err := MigrateWithdrawal(legacy, l1CrossDomainMessenger)
+		if err != nil {
+			return err
+		}
+
+		slot, err := withdrawal.StorageSlot()
+		if err != nil {
+			return fmt.Errorf("cannot compute withdrawal storage slot: %w", err)
+		}
+
+		// db.SetState(predeploys.L2ToL1MessagePasserAddr, slot, abiTrue)
+		// log.Info("Migrated withdrawal", "number", i, "slot", slot)
+		fmt.Println(i, slot.Hex(), abiTrue.Hex())
+	}
+	return nil
+}
+
 // MigrateWithdrawals will migrate a list of pending withdrawals given a StateDB.
 func MigrateWithdrawals(withdrawals []*LegacyWithdrawal, db vm.StateDB, l1CrossDomainMessenger *common.Address, noCheck bool) error {
 	for i, legacy := range withdrawals {
