@@ -26,7 +26,6 @@ import (
 	"io"
 	"math/big"
 	mrand "math/rand"
-	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -732,14 +731,14 @@ func (bc *BlockChain) ExportReceiptsN(w io.Writer, first uint64, last uint64) er
 			return fmt.Errorf("export failed on #%d: not found", nr)
 		}
 		receipts := bc.GetReceiptsByHash(block.Hash())
-		log.Info("export", "blocknum", nr)
+		// log.Info("export", "blocknum", nr)
 
 		// debug purpose
-		if receipts.Len() > 0 {
-			if err := json.NewEncoder(os.Stdout).Encode(receipts[0]); err != nil {
-				log.Info("receipt print failed")
-			}
-		}
+		// if receipts.Len() > 0 {
+		// 	if err := json.NewEncoder(os.Stdout).Encode(receipts[0]); err != nil {
+		// 		log.Info("receipt print failed")
+		// 	}
+		// }
 
 		if err := rlp.Encode(w, receipts); err != nil {
 			return err

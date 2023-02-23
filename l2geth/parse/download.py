@@ -1,5 +1,6 @@
-import boto3
 import os
+
+import boto3
 
 path = "output"
 if not os.path.exists(path):
@@ -16,4 +17,4 @@ for name in bucket.objects.all():
     if not name.key.startswith(PREFIX) or name.key == PREFIX:
         continue
     print(f"Download: {name.key}")
-    s3_client.download_file(BUCKET_NAME, name.key, str(name.key)[len(PREFIX):])
+    s3_client.download_file(BUCKET_NAME, name.key, str(name.key)[len(PREFIX) :])

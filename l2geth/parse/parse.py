@@ -98,7 +98,7 @@ def traverse(result, block_tag):
     if "calls" in result:
         for subcall in result["calls"]:
             traverse(subcall, block_tag)
-    if "type" in result and result['type'] == 'SELFDESTRUCT':
+    if "type" in result and result["type"] == "SELFDESTRUCT":
         send_message(f"Found SELFDESTRUCT {block_tag}")
 
 
@@ -142,7 +142,7 @@ def trace(start: int, end: int) -> bool:
         if "error" in result:
             error_block_number.append(i + start)
         if "result" in result:
-            traverse(result["result"], f'{start}_{end}')
+            traverse(result["result"], f"{start}_{end}")
         if "error" not in result and "result" not in result:
             print("Error: error key and result key not present at response")
             return False
