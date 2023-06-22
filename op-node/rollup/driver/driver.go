@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/sync"
 )
 
 type Metrics interface {
@@ -103,13 +104,13 @@ type AltSync interface {
 }
 
 // NewDriver composes an events handler that tracks L1 state, triggers L2 derivation, and optionally sequences new L2 blocks.
-func NewDriver(driverCfg *Config, cfg *rollup.Config, l2 L2Chain, l1 L1Chain, altSync AltSync, network Network, log log.Logger, snapshotLog log.Logger, metrics Metrics) *Driver {
+func NewDriver(driverCfg *Config, cfg *rollup.Config, l2 L2Chain, l1 L1Chain, altSync AltSync, network Network, log log.Logger, snapshotLog log.Logger, metrics Metrics, syncCfg *sync.Config) *Driver {
 	l1 = NewMeteredL1Fetcher(l1, metrics)
 	l1State := NewL1State(log, metrics)
 	sequencerConfDepth := NewConfDepth(driverCfg.SequencerConfDepth, l1State.L1Head, l1)
 	findL1Origin := NewL1OriginSelector(log, cfg, sequencerConfDepth)
 	verifConfDepth := NewConfDepth(driverCfg.VerifierConfDepth, l1State.L1Head, l1)
-	derivationPipeline := derive.NewDerivationPipeline(log, cfg, verifConfDepth, l2, metrics)
+	derivationPipeline := derive.NewDerivationPipeline(log, cfg, verifConfDepth, l2, metrics, syncCfg)
 	attrBuilder := derive.NewFetchingAttributesBuilder(cfg, l1, l2)
 	engine := derivationPipeline
 	meteredEngine := NewMeteredEngine(cfg, engine, metrics, log)

@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/driver"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/sync"
 	"github.com/ethereum-optimism/optimism/op-node/sources"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 )
@@ -57,7 +58,7 @@ type L2API interface {
 
 func NewL2Verifier(t Testing, log log.Logger, l1 derive.L1Fetcher, eng L2API, cfg *rollup.Config) *L2Verifier {
 	metrics := &testutils.TestDerivationMetrics{}
-	pipeline := derive.NewDerivationPipeline(log, cfg, l1, eng, metrics)
+	pipeline := derive.NewDerivationPipeline(log, cfg, l1, eng, metrics, &sync.Config{})
 	pipeline.Reset()
 
 	rollupNode := &L2Verifier{

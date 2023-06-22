@@ -138,13 +138,13 @@ type EngineQueue struct {
 	metrics   Metrics
 	l1Fetcher L1Fetcher
 
-	engineP2PEnabled bool
+	syncCfg *sync.Config
 }
 
 var _ EngineControl = (*EngineQueue)(nil)
 
 // NewEngineQueue creates a new EngineQueue, which should be Reset(origin) before use.
-func NewEngineQueue(log log.Logger, cfg *rollup.Config, engine Engine, metrics Metrics, prev NextAttributesProvider, l1Fetcher L1Fetcher) *EngineQueue {
+func NewEngineQueue(log log.Logger, cfg *rollup.Config, engine Engine, metrics Metrics, prev NextAttributesProvider, l1Fetcher L1Fetcher, syncCfg *sync.Config) *EngineQueue {
 	return &EngineQueue{
 		log:            log,
 		cfg:            cfg,
@@ -154,6 +154,7 @@ func NewEngineQueue(log log.Logger, cfg *rollup.Config, engine Engine, metrics M
 		unsafePayloads: NewPayloadsQueue(maxUnsafePayloadsMemory, payloadMemSize),
 		prev:           prev,
 		l1Fetcher:      l1Fetcher,
+		syncCfg:        syncCfg,
 	}
 }
 
@@ -436,7 +437,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 	}
 
 	// Ensure that the unsafe payload builds upon the current unsafe head
-	if !eq.engineP2PEnabled && first.ParentHash != eq.unsafeHead.Hash {
+	if !eq.syncCfg.EngineP2PEnabled && first.ParentHash != eq.unsafeHead.Hash {
 		if uint64(first.BlockNumber) == eq.unsafeHead.Number+1 {
 			eq.log.Info("skipping unsafe payload, since it does not build onto the existing unsafe chain", "safe", eq.safeHead.ID(), "unsafe", first.ID(), "payload", first.ID())
 			eq.unsafePayloads.Pop()
@@ -456,7 +457,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 		return NewTemporaryError(fmt.Errorf("failed to update insert payload: %w", err))
 	}
 	// Allow SYNCING if engine P2P sync is enabled
-	if status.Status != eth.ExecutionValid && (!eq.engineP2PEnabled || status.Status != eth.ExecutionSyncing) {
+	if status.Status != eth.ExecutionValid && (!eq.syncCfg.EngineP2PEnabled || status.Status != eth.ExecutionSyncing) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot process unsafe payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.NewPayloadErr(first, status)))
@@ -483,7 +484,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 		}
 	}
 	// Allow SYNCING if engine P2P sync is enabled
-	if fcRes.PayloadStatus.Status != eth.ExecutionValid && (!eq.engineP2PEnabled || fcRes.PayloadStatus.Status != eth.ExecutionSyncing) {
+	if fcRes.PayloadStatus.Status != eth.ExecutionValid && (!eq.syncCfg.EngineP2PEnabled || fcRes.PayloadStatus.Status != eth.ExecutionSyncing) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot prepare unsafe chain for new payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)))
