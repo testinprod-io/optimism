@@ -244,7 +244,7 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	if eq.unsafePayloads.Len() > 0 {
 		return eq.tryNextUnsafePayload(ctx)
 	}
-	if eq.safeAttributes != nil {
+	if eq.safeAttributes != nil && eq.isUnsafeSynced() {
 		return eq.tryNextSafeAttributes(ctx)
 	}
 	outOfData := false
