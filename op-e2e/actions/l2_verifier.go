@@ -56,9 +56,9 @@ type L2API interface {
 	GetProof(ctx context.Context, address common.Address, storage []common.Hash, blockTag string) (*eth.AccountResult, error)
 }
 
-func NewL2Verifier(t Testing, log log.Logger, l1 derive.L1Fetcher, eng L2API, cfg *rollup.Config) *L2Verifier {
+func NewL2Verifier(t Testing, log log.Logger, l1 derive.L1Fetcher, eng L2API, cfg *rollup.Config, syncCfg *sync.Config) *L2Verifier {
 	metrics := &testutils.TestDerivationMetrics{}
-	pipeline := derive.NewDerivationPipeline(log, cfg, l1, eng, metrics, &sync.Config{})
+	pipeline := derive.NewDerivationPipeline(log, cfg, l1, eng, metrics, syncCfg)
 	pipeline.Reset()
 
 	rollupNode := &L2Verifier{
@@ -134,6 +134,10 @@ func (s *L2Verifier) L2Unsafe() eth.L2BlockRef {
 	return s.derivation.UnsafeL2Head()
 }
 
+func (s *L2Verifier) EngineSyncTarget() eth.L2BlockRef {
+	return s.derivation.EngineSyncTarget()
+}
+
 func (s *L2Verifier) SyncStatus() *eth.SyncStatus {
 	return &eth.SyncStatus{
 		CurrentL1:          s.derivation.Origin(),
@@ -145,6 +149,7 @@ func (s *L2Verifier) SyncStatus() *eth.SyncStatus {
 		SafeL2:             s.L2Safe(),
 		FinalizedL2:        s.L2Finalized(),
 		UnsafeL2SyncTarget: s.derivation.UnsafeL2SyncTarget(),
+		EngineSyncTarget:   s.EngineSyncTarget(),
 	}
 }
 
