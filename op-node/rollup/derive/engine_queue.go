@@ -456,8 +456,9 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 	if err != nil {
 		return NewTemporaryError(fmt.Errorf("failed to update insert payload: %w", err))
 	}
-	// Allow SYNCING if engine P2P sync is enabled
-	if status.Status != eth.ExecutionValid && (!eq.syncCfg.EngineP2PEnabled || status.Status != eth.ExecutionSyncing) {
+	// Allow ACCEPTED and SYNCING if engine P2P sync is enabled
+	if status.Status != eth.ExecutionValid &&
+		(!eq.syncCfg.EngineP2PEnabled || (status.Status != eth.ExecutionSyncing && status.Status != eth.ExecutionAccepted)) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot process unsafe payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.NewPayloadErr(first, status)))
