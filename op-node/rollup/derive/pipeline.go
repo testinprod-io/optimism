@@ -47,6 +47,7 @@ type EngineQueueStage interface {
 	Finalized() eth.L2BlockRef
 	UnsafeL2Head() eth.L2BlockRef
 	SafeL2Head() eth.L2BlockRef
+	EngineSyncTarget() eth.L2BlockRef
 	Origin() eth.L1BlockRef
 	SystemConfig() eth.SystemConfig
 	SetUnsafeHead(head eth.L2BlockRef)
@@ -146,6 +147,10 @@ func (dp *DerivationPipeline) SafeL2Head() eth.L2BlockRef {
 // UnsafeL2Head returns the head of the L2 chain that we are deriving for, this may be past what we derived from L1
 func (dp *DerivationPipeline) UnsafeL2Head() eth.L2BlockRef {
 	return dp.eng.UnsafeL2Head()
+}
+
+func (dp *DerivationPipeline) EngineSyncTarget() eth.L2BlockRef {
+	return dp.eng.EngineSyncTarget()
 }
 
 func (dp *DerivationPipeline) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {

@@ -423,6 +423,7 @@ func (s *Driver) syncStatus() *eth.SyncStatus {
 		SafeL2:             s.derivation.SafeL2Head(),
 		FinalizedL2:        s.derivation.Finalized(),
 		UnsafeL2SyncTarget: s.derivation.UnsafeL2SyncTarget(),
+		EngineSyncTarget:   s.derivation.EngineSyncTarget(),
 	}
 }
 

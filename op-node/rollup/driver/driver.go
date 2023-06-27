@@ -59,6 +59,7 @@ type DerivationPipeline interface {
 	UnsafeL2Head() eth.L2BlockRef
 	Origin() eth.L1BlockRef
 	EngineReady() bool
+	EngineSyncTarget() eth.L2BlockRef
 }
 
 type L1StateIface interface {
