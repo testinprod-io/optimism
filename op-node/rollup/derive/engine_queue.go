@@ -104,7 +104,7 @@ type EngineQueue struct {
 
 	// Target L2 block the engine is currently syncing to.
 	// If the engine p2p sync is enabled, it can be different with unsafeHead. Otherwise, it must be same with unsafeHead.
-	unsafeSyncTarget eth.L2BlockRef
+	engineSyncTarget eth.L2BlockRef
 
 	buildingOnto eth.L2BlockRef
 	buildingID   eth.PayloadID
@@ -169,7 +169,7 @@ func (eq *EngineQueue) SystemConfig() eth.SystemConfig {
 
 func (eq *EngineQueue) SetUnsafeHead(head eth.L2BlockRef) {
 	eq.unsafeHead = head
-	eq.unsafeSyncTarget = head
+	eq.engineSyncTarget = head
 	eq.metrics.RecordL2Ref("l2_unsafe", head)
 }
 
@@ -229,10 +229,14 @@ func (eq *EngineQueue) SafeL2Head() eth.L2BlockRef {
 	return eq.safeHead
 }
 
+func (eq *EngineQueue) EngineSyncTarget() eth.L2BlockRef {
+	return eq.engineSyncTarget
+}
+
 // Determine if the engine is synced to the notified unsafe block.
 // If it returns false, the engine status is SYNCING.
 func (eq *EngineQueue) isUnsafeSynced() bool {
-	return eq.unsafeHead.Hash == eq.unsafeSyncTarget.Hash
+	return eq.unsafeHead.Hash == eq.engineSyncTarget.Hash
 }
 
 func (eq *EngineQueue) Step(ctx context.Context) error {
@@ -491,7 +495,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 			first.ID(), first.ParentID(), eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)))
 	}
 
-	eq.unsafeSyncTarget = ref
+	eq.engineSyncTarget = ref
 	// unsafeHead should be updated only if the payload status is VALID
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		eq.unsafeHead = ref
@@ -531,7 +535,7 @@ func (eq *EngineQueue) tryNextSafeAttributes(ctx context.Context) error {
 		// For some reason the unsafe head is behind the safe head. Log it, and correct it.
 		eq.log.Error("invalid sync state, unsafe head is behind safe head", "unsafe", eq.unsafeHead, "safe", eq.safeHead)
 		eq.unsafeHead = eq.safeHead
-		eq.unsafeSyncTarget = eq.safeHead
+		eq.engineSyncTarget = eq.safeHead
 		eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
 		return nil
 	}
@@ -669,7 +673,7 @@ func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPa
 	}
 
 	eq.unsafeHead = ref
-	eq.unsafeSyncTarget = ref
+	eq.engineSyncTarget = ref
 	eq.metrics.RecordL2Ref("l2_unsafe", ref)
 
 	if eq.buildingSafe {
@@ -751,7 +755,7 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	}
 	eq.log.Debug("Reset engine queue", "safeHead", safe, "unsafe", unsafe, "safe_timestamp", safe.Time, "unsafe_timestamp", unsafe.Time, "l1Origin", l1Origin)
 	eq.unsafeHead = unsafe
-	eq.unsafeSyncTarget = unsafe
+	eq.engineSyncTarget = unsafe
 	eq.safeHead = safe
 	eq.safeAttributes = nil
 	eq.finalized = finalized
