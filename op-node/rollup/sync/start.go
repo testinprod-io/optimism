@@ -102,7 +102,7 @@ func currentHeads(ctx context.Context, cfg *rollup.Config, l2 L2Chain) (*FindHea
 // Plausible: meaning that the blockhash of the L2 block's L1 origin
 // (as reported in the L1 Attributes deposit within the L2 block) is not canonical at another height in the L1 chain,
 // and the same holds for all its ancestors.
-func FindL2Heads(ctx context.Context, cfg *rollup.Config, l1 L1Chain, l2 L2Chain, lgr log.Logger) (result *FindHeadsResult, err error) {
+func FindL2Heads(ctx context.Context, cfg *rollup.Config, l1 L1Chain, l2 L2Chain, lgr log.Logger, syncCfg *Config) (result *FindHeadsResult, err error) {
 	// Fetch current L2 forkchoice state
 	result, err = currentHeads(ctx, cfg, l2)
 	if err != nil {
@@ -212,6 +212,11 @@ func FindL2Heads(ctx context.Context, cfg *rollup.Config, l1 L1Chain, l2 L2Chain
 			return result, nil
 		}
 
+		if syncCfg.SkipSanityCheck && highestL2WithCanonicalL1Origin.Hash == n.Hash {
+			lgr.Info("Found highest L2 block with canonical L1 origin. Skip further sanity check and jump to the safe head")
+			n = result.Safe
+			continue
+		}
 		// Pull L2 parent for next iteration
 		parent, err := l2.L2BlockRefByHash(ctx, n.ParentHash)
 		if err != nil {
