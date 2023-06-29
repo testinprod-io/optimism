@@ -431,6 +431,26 @@ func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
 	return nil
 }
 
+// checkNewPayloadStatus checks returned status of engine_newPayloadV1 request for next unsafe payload.
+// It returns true if the status is acceptable.
+func (eq *EngineQueue) checkNewPayloadStatus(status eth.ExecutePayloadStatus) bool {
+	if eq.syncCfg.EngineP2PEnabled {
+		// Allow ACCEPTED and SYNCING if engine P2P sync is enabled
+		return status == eth.ExecutionValid || status == eth.ExecutionSyncing || status == eth.ExecutionAccepted
+	}
+	return status == eth.ExecutionValid
+}
+
+// checkNewPayloadStatus checks returned status of engine_forkchoiceUpdatedV1 request for next unsafe payload.
+// It returns true if the status is acceptable.
+func (eq *EngineQueue) checkForkchoiceUpdatedStatus(status eth.ExecutePayloadStatus) bool {
+	if eq.syncCfg.EngineP2PEnabled {
+		// Allow SYNCING if engine P2P sync is enabled
+		return status == eth.ExecutionValid || status == eth.ExecutionSyncing
+	}
+	return status == eth.ExecutionValid
+}
+
 func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 	first := eq.unsafePayloads.Peek()
 
@@ -460,9 +480,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 	if err != nil {
 		return NewTemporaryError(fmt.Errorf("failed to update insert payload: %w", err))
 	}
-	// Allow ACCEPTED and SYNCING if engine P2P sync is enabled
-	if status.Status != eth.ExecutionValid &&
-		(!eq.syncCfg.EngineP2PEnabled || (status.Status != eth.ExecutionSyncing && status.Status != eth.ExecutionAccepted)) {
+	if !eq.checkNewPayloadStatus(status.Status) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot process unsafe payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.NewPayloadErr(first, status)))
@@ -488,8 +506,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 			return NewTemporaryError(fmt.Errorf("failed to update forkchoice to prepare for new unsafe payload: %w", err))
 		}
 	}
-	// Allow SYNCING if engine P2P sync is enabled
-	if fcRes.PayloadStatus.Status != eth.ExecutionValid && (!eq.syncCfg.EngineP2PEnabled || fcRes.PayloadStatus.Status != eth.ExecutionSyncing) {
+	if eq.checkForkchoiceUpdatedStatus(fcRes.PayloadStatus.Status) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot prepare unsafe chain for new payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)))
