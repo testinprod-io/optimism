@@ -506,7 +506,7 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 			return NewTemporaryError(fmt.Errorf("failed to update forkchoice to prepare for new unsafe payload: %w", err))
 		}
 	}
-	if eq.checkForkchoiceUpdatedStatus(fcRes.PayloadStatus.Status) {
+	if !eq.checkForkchoiceUpdatedStatus(fcRes.PayloadStatus.Status) {
 		eq.unsafePayloads.Pop()
 		return NewTemporaryError(fmt.Errorf("cannot prepare unsafe chain for new payload: new - %v; parent: %v; err: %w",
 			first.ID(), first.ParentID(), eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)))
