@@ -175,7 +175,7 @@ func FindL2Heads(ctx context.Context, cfg *rollup.Config, l1 L1Chain, l2 L2Chain
 		if result.Unsafe == (eth.L2BlockRef{}) {
 			result.Unsafe = n
 			// Check we are not reorging L2 incredibly deep
-			if result.Unsafe.Number+(MaxReorgSeqWindows*cfg.SeqWindowSize) < prevUnsafe.L1Origin.Number {
+			if n.L1Origin.Number+(MaxReorgSeqWindows*cfg.SeqWindowSize) < prevUnsafe.L1Origin.Number {
 				// If the reorg depth is too large, something is fishy.
 				// This can legitimately happen if L1 goes down for a while. But in that case,
 				// restarting the L2 node with a bigger configured MaxReorgDepth is an acceptable
