@@ -149,7 +149,7 @@ func TestEngineP2PSync(gt *testing.T) {
 	sequencer.ActL2StartBlock(t)
 	sequencer.ActL2EndBlock(t)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 10; i++ {
 		// Build a L2 block
 		sequencer.ActL2StartBlock(t)
 		sequencer.ActL2EndBlock(t)
