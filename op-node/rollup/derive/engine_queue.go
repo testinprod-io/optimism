@@ -248,6 +248,10 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	if eq.unsafePayloads.Len() > 0 {
 		return eq.tryNextUnsafePayload(ctx)
 	}
+	if !eq.isUnsafeSynced() {
+		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
+		return nil
+	}
 	if eq.safeAttributes != nil && eq.isUnsafeSynced() {
 		return eq.tryNextSafeAttributes(ctx)
 	}
@@ -435,13 +439,13 @@ func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
 // It returns true if the status is acceptable.
 func (eq *EngineQueue) checkNewPayloadStatus(status eth.ExecutePayloadStatus) bool {
 	if eq.syncCfg.EngineP2PEnabled {
-		// Allow ACCEPTED and SYNCING if engine P2P sync is enabled
+		// Allow SYNCING and ACCEPTED if engine P2P sync is enabled
 		return status == eth.ExecutionValid || status == eth.ExecutionSyncing || status == eth.ExecutionAccepted
 	}
 	return status == eth.ExecutionValid
 }
 
-// checkNewPayloadStatus checks returned status of engine_forkchoiceUpdatedV1 request for next unsafe payload.
+// checkForkchoiceUpdatedStatus checks returned status of engine_forkchoiceUpdatedV1 request for next unsafe payload.
 // It returns true if the status is acceptable.
 func (eq *EngineQueue) checkForkchoiceUpdatedStatus(status eth.ExecutePayloadStatus) bool {
 	if eq.syncCfg.EngineP2PEnabled {

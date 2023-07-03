@@ -209,7 +209,7 @@ var (
 		Required: false,
 	}
 	L2EngineP2PEnabled = &cli.BoolFlag{
-		Name:     "l2.engine-p2p-enabled",
+		Name:     "l2.engine-p2p.enabled",
 		Usage:    "Enables or disables execution engine P2P sync",
 		EnvVars:  prefixEnvVars("L2_ENGINE_P2P_ENABLED"),
 		Required: false,

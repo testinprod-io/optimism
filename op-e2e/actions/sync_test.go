@@ -121,6 +121,8 @@ func TestUnsafeSync(gt *testing.T) {
 		verifier.ActL2PipelineFull(t)
 		// Verifier must advance its unsafe head and engine sync target.
 		require.Equal(t, sequencer.L2Unsafe().Hash, verifier.L2Unsafe().Hash)
+		// Check engine sync target updated.
+		require.Equal(t, sequencer.L2Unsafe().Hash, sequencer.EngineSyncTarget().Hash)
 		require.Equal(t, verifier.L2Unsafe().Hash, verifier.EngineSyncTarget().Hash)
 	}
 }
