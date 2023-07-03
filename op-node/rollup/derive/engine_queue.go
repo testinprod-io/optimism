@@ -169,8 +169,12 @@ func (eq *EngineQueue) SystemConfig() eth.SystemConfig {
 
 func (eq *EngineQueue) SetUnsafeHead(head eth.L2BlockRef) {
 	eq.unsafeHead = head
-	eq.engineSyncTarget = head
 	eq.metrics.RecordL2Ref("l2_unsafe", head)
+}
+
+func (eq *EngineQueue) SetEngineSyncTarget(head eth.L2BlockRef) {
+	eq.engineSyncTarget = head
+	eq.metrics.RecordL2Ref("l2_engineSyncTarget", head)
 }
 
 func (eq *EngineQueue) AddUnsafePayload(payload *eth.ExecutionPayload) {
@@ -517,12 +521,13 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 	}
 
 	eq.engineSyncTarget = ref
+	eq.metrics.RecordL2Ref("l2_engineSyncTarget", ref)
 	// unsafeHead should be updated only if the payload status is VALID
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		eq.unsafeHead = ref
+		eq.metrics.RecordL2Ref("l2_unsafe", ref)
 	}
 	eq.unsafePayloads.Pop()
-	eq.metrics.RecordL2Ref("l2_unsafe", ref)
 	eq.log.Trace("Executed unsafe payload", "hash", ref.Hash, "number", ref.Number, "timestamp", ref.Time, "l1Origin", ref.L1Origin)
 	eq.logSyncProgress("unsafe payload from sequencer")
 
@@ -558,6 +563,7 @@ func (eq *EngineQueue) tryNextSafeAttributes(ctx context.Context) error {
 		eq.unsafeHead = eq.safeHead
 		eq.engineSyncTarget = eq.safeHead
 		eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
+		eq.metrics.RecordL2Ref("l2_engineSyncTarget", eq.unsafeHead)
 		return nil
 	}
 }
@@ -696,6 +702,7 @@ func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPa
 	eq.unsafeHead = ref
 	eq.engineSyncTarget = ref
 	eq.metrics.RecordL2Ref("l2_unsafe", ref)
+	eq.metrics.RecordL2Ref("l2_engineSyncTarget", ref)
 
 	if eq.buildingSafe {
 		eq.safeHead = ref
@@ -790,6 +797,7 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	eq.metrics.RecordL2Ref("l2_finalized", finalized)
 	eq.metrics.RecordL2Ref("l2_safe", safe)
 	eq.metrics.RecordL2Ref("l2_unsafe", unsafe)
+	eq.metrics.RecordL2Ref("l2_engineSyncTarget", unsafe)
 	eq.logSyncProgress("reset derivation work")
 	return io.EOF
 }
