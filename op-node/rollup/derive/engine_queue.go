@@ -237,10 +237,9 @@ func (eq *EngineQueue) EngineSyncTarget() eth.L2BlockRef {
 	return eq.engineSyncTarget
 }
 
-// Determine if the engine is synced to the notified unsafe block.
-// If it returns false, the engine status is SYNCING.
-func (eq *EngineQueue) isUnsafeSynced() bool {
-	return eq.unsafeHead.Hash == eq.engineSyncTarget.Hash
+// Determine if the engine is syncing to the target block
+func (eq *EngineQueue) isEngineSyncing() bool {
+	return eq.unsafeHead.Hash != eq.engineSyncTarget.Hash
 }
 
 func (eq *EngineQueue) Step(ctx context.Context) error {
@@ -252,11 +251,11 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	if eq.unsafePayloads.Len() > 0 {
 		return eq.tryNextUnsafePayload(ctx)
 	}
-	if !eq.isUnsafeSynced() {
+	if eq.isEngineSyncing() {
 		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
 		return nil
 	}
-	if eq.safeAttributes != nil && eq.isUnsafeSynced() {
+	if eq.safeAttributes != nil {
 		return eq.tryNextSafeAttributes(ctx)
 	}
 	outOfData := false
@@ -656,7 +655,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 }
 
 func (eq *EngineQueue) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {
-	if !eq.isUnsafeSynced() {
+	if eq.isEngineSyncing() {
 		return BlockInsertTemporaryErr, fmt.Errorf("engine is in progess of unsafe sync")
 	}
 	if eq.buildingID != (eth.PayloadID{}) {
