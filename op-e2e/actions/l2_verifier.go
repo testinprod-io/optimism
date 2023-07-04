@@ -206,7 +206,7 @@ func (s *L2Verifier) ActL2PipelineStep(t Testing) {
 
 	s.l2PipelineIdle = false
 	err := s.derivation.Step(t.Ctx())
-	if err == io.EOF {
+	if err == io.EOF || (err != nil && errors.Is(err, derive.EngineSyncing)) {
 		s.l2PipelineIdle = true
 		return
 	} else if err != nil && errors.Is(err, derive.NotEnoughData) {

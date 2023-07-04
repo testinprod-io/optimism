@@ -257,7 +257,7 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	}
 	if eq.isEngineSyncing() {
 		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
-		return nil
+		return EngineSyncing
 	}
 	if eq.safeAttributes != nil {
 		return eq.tryNextSafeAttributes(ctx)
@@ -411,6 +411,7 @@ func (eq *EngineQueue) logSyncProgress(reason string) {
 		"l2_finalized", eq.finalized,
 		"l2_safe", eq.safeHead,
 		"l2_unsafe", eq.unsafeHead,
+		"l2_engineSyncTarget", eq.engineSyncTarget,
 		"l2_time", eq.unsafeHead.Time,
 		"l1_derived", eq.origin,
 	)
