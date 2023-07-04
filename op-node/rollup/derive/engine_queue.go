@@ -249,7 +249,11 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	// Trying unsafe payload should be done before safe attributes
 	// It allows the unsafe head can move forward while the long-range consolidation is in progress.
 	if eq.unsafePayloads.Len() > 0 {
-		return eq.tryNextUnsafePayload(ctx)
+		err := eq.tryNextUnsafePayload(ctx)
+		// EOF error means we can't process the next unsafe payload. Then we should process next safe attributes.
+		if err != io.EOF {
+			return err
+		}
 	}
 	if eq.isEngineSyncing() {
 		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
