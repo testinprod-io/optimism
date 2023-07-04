@@ -257,7 +257,7 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	}
 	if eq.isEngineSyncing() {
 		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
-		return EngineSyncing
+		return EngineP2PSyncing
 	}
 	if eq.safeAttributes != nil {
 		return eq.tryNextSafeAttributes(ctx)
@@ -661,7 +661,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 
 func (eq *EngineQueue) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {
 	if eq.isEngineSyncing() {
-		return BlockInsertTemporaryErr, fmt.Errorf("engine is in progess of unsafe sync")
+		return BlockInsertTemporaryErr, fmt.Errorf("engine is in progess of p2p sync")
 	}
 	if eq.buildingID != (eth.PayloadID{}) {
 		eq.log.Warn("did not finish previous block building, starting new building now", "prev_onto", eq.buildingOnto, "prev_payload_id", eq.buildingID, "new_onto", parent)

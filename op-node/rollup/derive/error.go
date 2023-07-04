@@ -97,5 +97,5 @@ var ErrCritical = NewCriticalError(nil)
 // but if it is retried enough times, it will eventually return a real value or io.EOF
 var NotEnoughData = errors.New("not enough data")
 
-// EngineSyncing implies that the execution engine is currently in progress of P2P sync.
-var EngineSyncing = errors.New("engine is syncing")
+// EngineP2PSyncing implies that the execution engine is currently in progress of P2P sync.
+var EngineP2PSyncing = errors.New("engine is P2P syncing")
