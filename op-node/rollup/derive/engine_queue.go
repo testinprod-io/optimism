@@ -249,11 +249,10 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 	// Trying unsafe payload should be done before safe attributes
 	// It allows the unsafe head can move forward while the long-range consolidation is in progress.
 	if eq.unsafePayloads.Len() > 0 {
-		err := eq.tryNextUnsafePayload(ctx)
-		// EOF error means we can't process the next unsafe payload. Then we should process next safe attributes.
-		if err != io.EOF {
+		if err := eq.tryNextUnsafePayload(ctx); err != io.EOF {
 			return err
 		}
+		// EOF error means we can't process the next unsafe payload. Then we should process next safe attributes.
 	}
 	if eq.isEngineSyncing() {
 		// Make pipeline first focus to sync unsafe blocks to engineSyncTarget
@@ -421,7 +420,7 @@ func (eq *EngineQueue) logSyncProgress(reason string) {
 // this is a no-op if the nodes already agree on the forkchoice state.
 func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
 	fc := eth.ForkchoiceState{
-		HeadBlockHash:      eq.unsafeHead.Hash,
+		HeadBlockHash:      eq.engineSyncTarget.Hash,
 		SafeBlockHash:      eq.safeHead.Hash,
 		FinalizedBlockHash: eq.finalized.Hash,
 	}
