@@ -419,6 +419,9 @@ func (eq *EngineQueue) logSyncProgress(reason string) {
 // tryUpdateEngine attempts to update the engine with the current forkchoice state of the rollup node,
 // this is a no-op if the nodes already agree on the forkchoice state.
 func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
+	if eq.unsafeHead.Hash != eq.engineSyncTarget.Hash {
+		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing")
+	}
 	fc := eth.ForkchoiceState{
 		HeadBlockHash:      eq.engineSyncTarget.Hash,
 		SafeBlockHash:      eq.safeHead.Hash,
