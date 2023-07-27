@@ -178,12 +178,12 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 		sigBuffer := make([]byte, 32)
 		_, err = io.ReadFull(r, sigBuffer)
 		if err != nil {
-			return fmt.Errorf("failed to tx sig r: %w", err)
+			return fmt.Errorf("failed to read tx sig r: %w", err)
 		}
 		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer))
 		_, err = io.ReadFull(r, sigBuffer)
 		if err != nil {
-			return fmt.Errorf("failed to tx sig s: %w", err)
+			return fmt.Errorf("failed to read tx sig s: %w", err)
 		}
 		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer))
 		txSigs = append(txSigs, txSig)
