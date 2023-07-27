@@ -2,9 +2,11 @@ package derive
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"sync"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
@@ -12,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 )
 
 // Batch format
@@ -23,6 +26,12 @@ import (
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
+// BatchV2Type := 1
+// batchV2 := BatchV2Type ++ prefix ++ payload
+// prefix := rel_timestamp ++ parent_check ++ l1_origin_check
+// payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data_headers ++ tx_data ++ tx_sigs
+//
+// len(prefix) = 8 bytes(rel_timestamp) + 20 bytes(parent_check) + 20 bytes(l1_origin_check)
 
 // encodeBufferPool holds temporary encoder buffers for batch encoding
 var encodeBufferPool = sync.Pool{
@@ -31,6 +40,7 @@ var encodeBufferPool = sync.Pool{
 
 const (
 	BatchV1Type = iota
+	BatchV2Type
 )
 
 type BatchV1 struct {
@@ -42,13 +52,183 @@ type BatchV1 struct {
 	Transactions []hexutil.Bytes
 }
 
+const BatchV2PrefixLen = 8 + 20 + 20
+
+type BatchV2Prefix struct {
+	Timestamp     uint64
+	ParentCheck   []byte
+	L1OriginCheck []byte
+}
+
+type BatchV2Signature struct {
+	V uint64
+	R *uint256.Int
+	S *uint256.Int
+}
+
+type BatchV2Payload struct {
+	BlockCount    uint64
+	OriginBits    *big.Int
+	BlockTxCounts []uint64
+	TxDataHeaders []uint64
+	TxDatas       []hexutil.Bytes
+	TxSigs        []BatchV2Signature
+}
+
+type BatchV2 struct {
+	BatchV2Prefix
+	BatchV2Payload
+}
+
 type BatchData struct {
+	BatchType int
 	BatchV1
+	BatchV2
 	// batches may contain additional data with new upgrades
+}
+
+func InitBatchDataV2(batchV2 BatchV2) *BatchData {
+	return &BatchData{
+		BatchType: BatchV2Type,
+		BatchV2:   batchV2,
+	}
+}
+
+// DecodePrefix parses data into b.BatchV2Prefix from data
+func (b *BatchV2) DecodePrefix(data []byte) error {
+	if len(data) != BatchV2PrefixLen {
+		return fmt.Errorf("invalid prefix length: %d", len(data))
+	}
+	offset := uint32(0)
+	b.Timestamp = binary.BigEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	copy(b.ParentCheck, data[offset:offset+20])
+	offset += 20
+	copy(b.L1OriginCheck, data[offset:offset+20])
+	return nil
+}
+
+func (b *BatchV2) SetOriginBits(originBitBuffer []byte, blockCount uint64) {
+	originBits := new(big.Int)
+	numSet := uint64(0)
+	for j, bits := range originBitBuffer {
+		for i := 0; i < 8; i++ {
+			bit := uint(bits & 1)
+			originBits = originBits.SetBit(originBits, i+8*j, bit)
+			numSet++
+			if numSet == blockCount {
+				return
+			}
+			bit >>= 1
+		}
+	}
+}
+
+// DecodePayload parses data into b.BatchV2Payload from data
+func (b *BatchV2) DecodePayload(data []byte) error {
+	r := bytes.NewReader(data)
+	blockCount, err := binary.ReadUvarint(r)
+	if err != nil {
+		return fmt.Errorf("failed to read block count var int: %w", err)
+	}
+	originBitBufferLen := blockCount / 8
+	if blockCount%8 != 0 {
+		originBitBufferLen++
+	}
+	originBitBuffer := make([]byte, originBitBufferLen)
+	_, err = io.ReadFull(r, originBitBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to read origin bits: %w", err)
+	}
+	blockTxCounts := make([]uint64, blockCount)
+	totalBlockTxCount := uint64(0)
+	for i := 0; i < int(blockCount); i++ {
+		blockTxCount, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read block tx count: %w", err)
+		}
+		blockTxCounts[i] = blockTxCount
+		totalBlockTxCount += blockTxCount
+	}
+	txDataHeaders := make([]uint64, totalBlockTxCount)
+	for i := 0; i < int(totalBlockTxCount); i++ {
+		txDataHeader, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read tx data header: %w", err)
+		}
+		txDataHeaders[i] = txDataHeader
+	}
+	var txDatas []hexutil.Bytes
+	for _, txDataHeader := range txDataHeaders {
+		txData := make([]byte, txDataHeader)
+		_, err = io.ReadFull(r, txData)
+		if err != nil {
+			return fmt.Errorf("failed to tx data: %w", err)
+		}
+		txDatas = append(txDatas, txData)
+	}
+	var txSigs []BatchV2Signature
+	for i := 0; i < int(totalBlockTxCount); i++ {
+		var txSig BatchV2Signature
+		v, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig v: %w", err)
+		}
+		txSig.V = v
+		sigBuffer := make([]byte, 32)
+		_, err = io.ReadFull(r, sigBuffer)
+		if err != nil {
+			return fmt.Errorf("failed to tx sig r: %w", err)
+		}
+		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer))
+		_, err = io.ReadFull(r, sigBuffer)
+		if err != nil {
+			return fmt.Errorf("failed to tx sig s: %w", err)
+		}
+		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer))
+		txSigs = append(txSigs, txSig)
+	}
+	b.BlockCount = blockCount
+	b.SetOriginBits(originBitBuffer, blockCount)
+	b.BlockTxCounts = blockTxCounts
+	b.TxDataHeaders = txDataHeaders
+	b.TxDatas = txDatas
+	b.TxSigs = txSigs
+	return nil
+}
+
+// DecodeBytes parses data into b from data
+func (b *BatchV2) DecodeBytes(data []byte) error {
+	if err := b.DecodePrefix(data[:8+20+20]); err != nil {
+		return err
+	}
+	if err := b.DecodePayload(data[8+20+20:]); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Encode writes the byte encoding of b to w
+func (b *BatchV2) Encode(w io.Writer) error {
+	// TODO
+	return nil
+}
+
+// EncodeBytes returns the byte encoding of b
+func (b *BatchV2) EncodeBytes() ([]byte, error) {
+	// TODO
+	return []byte{}, nil
 }
 
 func (b *BatchV1) Epoch() eth.BlockID {
 	return eth.BlockID{Hash: b.EpochHash, Number: uint64(b.EpochNum)}
+}
+
+func InitBatchDataV1(batchV1 BatchV1) *BatchData {
+	return &BatchData{
+		BatchType: BatchV1Type,
+		BatchV1:   batchV1,
+	}
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -70,8 +250,15 @@ func (b *BatchData) MarshalBinary() ([]byte, error) {
 }
 
 func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
-	buf.WriteByte(BatchV1Type)
-	return rlp.Encode(buf, &b.BatchV1)
+	switch b.BatchType {
+	case BatchV1Type:
+		buf.WriteByte(BatchV1Type)
+		return rlp.Encode(buf, &b.BatchV1)
+	case BatchV2Type:
+		return b.BatchV2.Encode(buf)
+	default:
+		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
+	}
 }
 
 // DecodeRLP implements rlp.Decoder
@@ -101,6 +288,8 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	switch data[0] {
 	case BatchV1Type:
 		return rlp.DecodeBytes(data[1:], &b.BatchV1)
+	case BatchV2Type:
+		return b.BatchV2.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
 	}
