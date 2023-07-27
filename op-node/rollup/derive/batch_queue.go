@@ -243,15 +243,13 @@ batchLoop:
 	// batch to ensure that we at least have one batch per epoch.
 	if nextTimestamp < nextEpoch.Time || firstOfEpoch {
 		bq.log.Info("Generating next batch", "epoch", epoch, "timestamp", nextTimestamp)
-		return &BatchData{
-			BatchV1{
-				ParentHash:   l2SafeHead.Hash,
-				EpochNum:     rollup.Epoch(epoch.Number),
-				EpochHash:    epoch.Hash,
-				Timestamp:    nextTimestamp,
-				Transactions: nil,
-			},
-		}, nil
+		return InitBatchDataV1(BatchV1{
+			ParentHash:   l2SafeHead.Hash,
+			EpochNum:     rollup.Epoch(epoch.Number),
+			EpochHash:    epoch.Hash,
+			Timestamp:    nextTimestamp,
+			Transactions: nil,
+		}), nil
 	}
 
 	// At this point we have auto generated every batch for the current epoch
