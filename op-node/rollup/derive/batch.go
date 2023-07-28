@@ -316,6 +316,7 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 		buf.WriteByte(BatchV1Type)
 		return rlp.Encode(buf, &b.BatchV1)
 	case BatchV2Type:
+		buf.WriteByte(BatchV2Type)
 		return b.BatchV2.Encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
