@@ -102,26 +102,28 @@ func (b *BatchV2) DecodePrefix(data []byte) error {
 	offset := uint32(0)
 	b.Timestamp = binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
+	b.ParentCheck = make([]byte, 20)
 	copy(b.ParentCheck, data[offset:offset+20])
 	offset += 20
+	b.L1OriginCheck = make([]byte, 20)
 	copy(b.L1OriginCheck, data[offset:offset+20])
 	return nil
 }
 
-func (b *BatchV2) SetOriginBits(originBitBuffer []byte, blockCount uint64) {
+func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uint64) {
 	originBits := new(big.Int)
-	numSet := uint64(0)
-	for j, bits := range originBitBuffer {
-		for i := 0; i < 8; i++ {
-			bit := uint(bits & 1)
-			originBits = originBits.SetBit(originBits, i+8*j, bit)
-			numSet++
-			if numSet == blockCount {
-				return
-			}
-			bit >>= 1
+	for i := 0; i < int(blockCount); i += 8 {
+		end := i + 8
+		if end < int(blockCount) {
+			end = int(blockCount)
+		}
+		bits := originBitBuffer[i/8]
+		for j := i; j < end; j++ {
+			bit := uint((bits >> (j - i)) & 1)
+			originBits = originBits.SetBit(originBits, j, bit)
 		}
 	}
+	b.OriginBits = originBits
 }
 
 // DecodePayload parses data into b.BatchV2Payload from data
@@ -158,16 +160,16 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 		}
 		txDataHeaders[i] = txDataHeader
 	}
-	var txDatas []hexutil.Bytes
-	for _, txDataHeader := range txDataHeaders {
+	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
+	for i, txDataHeader := range txDataHeaders {
 		txData := make([]byte, txDataHeader)
 		_, err = io.ReadFull(r, txData)
 		if err != nil {
 			return fmt.Errorf("failed to tx data: %w", err)
 		}
-		txDatas = append(txDatas, txData)
+		txDatas[i] = txData
 	}
-	var txSigs []BatchV2Signature
+	txSigs := make([]BatchV2Signature, totalBlockTxCount)
 	var sigBuffer [32]byte
 	for i := 0; i < int(totalBlockTxCount); i++ {
 		var txSig BatchV2Signature
@@ -186,10 +188,10 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 			return fmt.Errorf("failed to read tx sig s: %w", err)
 		}
 		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		txSigs = append(txSigs, txSig)
+		txSigs[i] = txSig
 	}
 	b.BlockCount = blockCount
-	b.SetOriginBits(originBitBuffer, blockCount)
+	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
 	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
@@ -223,20 +225,45 @@ func (b *BatchV2) EncodePrefix(w io.Writer) error {
 	return nil
 }
 
+func (b *BatchV2Payload) EncodeOriginBits() []byte {
+	originBitBufferLen := b.BlockCount / 8
+	if b.BlockCount%8 != 0 {
+		originBitBufferLen++
+	}
+	originBitBuffer := make([]byte, originBitBufferLen)
+	for i := 0; i < int(b.BlockCount); i += 8 {
+		end := i + 8
+		if end < int(b.BlockCount) {
+			end = int(b.BlockCount)
+		}
+		var bits uint = 0
+		for j := i; j < end; j++ {
+			bits |= b.OriginBits.Bit(j) << (j - i)
+		}
+		originBitBuffer[i/8] = byte(bits)
+	}
+	return originBitBuffer
+}
+
 func (b *BatchV2) EncodePayload(w io.Writer) error {
-	if err := binary.Write(w, binary.BigEndian, b.BlockCount); err != nil {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], b.BlockCount)
+	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write block count: %w", err)
 	}
-	if _, err := w.Write(b.OriginBits.Bytes()); err != nil {
+	originBitBuffer := b.EncodeOriginBits()
+	if _, err := w.Write(originBitBuffer); err != nil {
 		return fmt.Errorf("cannot write origin bits: %w", err)
 	}
 	for _, blockTxCount := range b.BlockTxCounts {
-		if err := binary.Write(w, binary.BigEndian, blockTxCount); err != nil {
+		n = binary.PutUvarint(buf[:], blockTxCount)
+		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx count: %w", err)
 		}
 	}
 	for _, txDataHeader := range b.TxDataHeaders {
-		if err := binary.Write(w, binary.BigEndian, txDataHeader); err != nil {
+		n = binary.PutUvarint(buf[:], txDataHeader)
+		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx data header: %w", err)
 		}
 	}
@@ -246,13 +273,16 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		}
 	}
 	for _, txSig := range b.TxSigs {
-		if err := binary.Write(w, binary.BigEndian, txSig.V); err != nil {
+		n = binary.PutUvarint(buf[:], txSig.V)
+		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write tx sig v: %w", err)
 		}
-		if _, err := w.Write(txSig.R.Bytes()); err != nil {
+		rBuf := txSig.R.Bytes32()
+		if _, err := w.Write(rBuf[:]); err != nil {
 			return fmt.Errorf("cannot write tx sig r: %w", err)
 		}
-		if _, err := w.Write(txSig.S.Bytes()); err != nil {
+		sBuf := txSig.S.Bytes32()
+		if _, err := w.Write(sBuf[:]); err != nil {
 			return fmt.Errorf("cannot write tx sig s: %w", err)
 		}
 	}
@@ -349,8 +379,10 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	}
 	switch data[0] {
 	case BatchV1Type:
+		b.BatchType = BatchV1Type
 		return rlp.DecodeBytes(data[1:], &b.BatchV1)
 	case BatchV2Type:
+		b.BatchType = BatchV2Type
 		return b.BatchV2.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
