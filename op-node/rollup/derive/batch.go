@@ -208,16 +208,78 @@ func (b *BatchV2) DecodeBytes(data []byte) error {
 	return nil
 }
 
+func (b *BatchV2) EncodePrefix(w io.Writer) error {
+	if err := binary.Write(w, binary.BigEndian, b.Timestamp); err != nil {
+		return fmt.Errorf("cannot write timestamp: %w", err)
+	}
+	if _, err := w.Write(b.ParentCheck); err != nil {
+		return fmt.Errorf("cannot write parent check: %w", err)
+	}
+	if _, err := w.Write(b.L1OriginCheck); err != nil {
+		return fmt.Errorf("cannot write l1 origin check: %w", err)
+	}
+	return nil
+}
+
+func (b *BatchV2) EncodePayload(w io.Writer) error {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, b.BlockCount)
+	if _, err := w.Write(buf[:n]); err != nil {
+		return fmt.Errorf("cannot write block count: %w", err)
+	}
+	if _, err := w.Write(b.OriginBits.Bytes()); err != nil {
+		return fmt.Errorf("cannot write origin bits: %w", err)
+	}
+	for _, blockTxCount := range b.BlockTxCounts {
+		n = binary.PutUvarint(buf, blockTxCount)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write block tx count: %w", err)
+		}
+	}
+	for _, txDataHeader := range b.TxDataHeaders {
+		n = binary.PutUvarint(buf, txDataHeader)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write block tx data header: %w", err)
+		}
+	}
+	for _, txData := range b.TxDatas {
+		if _, err := w.Write(txData); err != nil {
+			return fmt.Errorf("cannot write block tx data: %w", err)
+		}
+	}
+	for _, txSig := range b.TxSigs {
+		n = binary.PutUvarint(buf, txSig.V)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx sig v: %w", err)
+		}
+		if _, err := w.Write(txSig.R.Bytes()); err != nil {
+			return fmt.Errorf("cannot write tx sig r: %w", err)
+		}
+		if _, err := w.Write(txSig.S.Bytes()); err != nil {
+			return fmt.Errorf("cannot write tx sig s: %w", err)
+		}
+	}
+	return nil
+}
+
 // Encode writes the byte encoding of b to w
 func (b *BatchV2) Encode(w io.Writer) error {
-	// TODO
+	if err := b.EncodePrefix(w); err != nil {
+		return err
+	}
+	if err := b.EncodePayload(w); err != nil {
+		return err
+	}
 	return nil
 }
 
 // EncodeBytes returns the byte encoding of b
 func (b *BatchV2) EncodeBytes() ([]byte, error) {
-	// TODO
-	return []byte{}, nil
+	var buf bytes.Buffer
+	if err := b.Encode(&buf); err != nil {
+		return []byte{}, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (b *BatchV1) Epoch() eth.BlockID {
