@@ -199,10 +199,10 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 
 // DecodeBytes parses data into b from data
 func (b *BatchV2) DecodeBytes(data []byte) error {
-	if err := b.DecodePrefix(data[:8+20+20]); err != nil {
+	if err := b.DecodePrefix(data[:BatchV2PrefixLen]); err != nil {
 		return err
 	}
-	if err := b.DecodePayload(data[8+20+20:]); err != nil {
+	if err := b.DecodePayload(data[BatchV2PrefixLen:]); err != nil {
 		return err
 	}
 	return nil
