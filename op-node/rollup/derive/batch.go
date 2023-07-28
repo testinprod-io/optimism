@@ -209,7 +209,9 @@ func (b *BatchV2) DecodeBytes(data []byte) error {
 }
 
 func (b *BatchV2) EncodePrefix(w io.Writer) error {
-	if err := binary.Write(w, binary.BigEndian, b.Timestamp); err != nil {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], b.Timestamp)
+	if _, err := w.Write(buf[:]); err != nil {
 		return fmt.Errorf("cannot write timestamp: %w", err)
 	}
 	if _, err := w.Write(b.ParentCheck); err != nil {
