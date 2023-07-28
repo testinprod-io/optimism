@@ -222,8 +222,8 @@ func (b *BatchV2) EncodePrefix(w io.Writer) error {
 }
 
 func (b *BatchV2) EncodePayload(w io.Writer) error {
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, b.BlockCount)
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], b.BlockCount)
 	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write block count: %w", err)
 	}
@@ -231,13 +231,13 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		return fmt.Errorf("cannot write origin bits: %w", err)
 	}
 	for _, blockTxCount := range b.BlockTxCounts {
-		n = binary.PutUvarint(buf, blockTxCount)
+		n = binary.PutUvarint(buf[:], blockTxCount)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx count: %w", err)
 		}
 	}
 	for _, txDataHeader := range b.TxDataHeaders {
-		n = binary.PutUvarint(buf, txDataHeader)
+		n = binary.PutUvarint(buf[:], txDataHeader)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx data header: %w", err)
 		}
@@ -248,7 +248,7 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		}
 	}
 	for _, txSig := range b.TxSigs {
-		n = binary.PutUvarint(buf, txSig.V)
+		n = binary.PutUvarint(buf[:], txSig.V)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write tx sig v: %w", err)
 		}
@@ -275,8 +275,10 @@ func (b *BatchV2) Encode(w io.Writer) error {
 
 // EncodeBytes returns the byte encoding of b
 func (b *BatchV2) EncodeBytes() ([]byte, error) {
-	var buf bytes.Buffer
-	if err := b.Encode(&buf); err != nil {
+	buf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(buf)
+	buf.Reset()
+	if err := b.Encode(buf); err != nil {
 		return []byte{}, err
 	}
 	return buf.Bytes(), nil
