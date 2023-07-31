@@ -120,7 +120,7 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 		bits := originBitBuffer[i/8]
 		for j := i; j < end; j++ {
 			bit := uint((bits >> (j - i)) & 1)
-			originBits = originBits.SetBit(originBits, j, bit)
+			originBits.SetBit(originBits, j, bit)
 		}
 	}
 	b.OriginBits = originBits
