@@ -392,15 +392,6 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	}
 }
 
-// TODO: make it zero copy
-func GetBatchV2TxData(rawTx hexutil.Bytes) (hexutil.Bytes, error) {
-	// signature is truncated from each EIP-2718 encoded tx
-
-	// TODO
-
-	return nil, nil
-}
-
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
 // Input batchV1 must be sorted by timestamp
 func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
@@ -447,7 +438,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
 			txSig.R = R
 			txSig.S = S
 			txSigs = append(txSigs, txSig)
-			txData, err := GetBatchV2TxData(rawTx)
+			txData, err := EncodeBatchV2TxDataBytes(tx)
 			if err != nil {
 				return err
 			}
