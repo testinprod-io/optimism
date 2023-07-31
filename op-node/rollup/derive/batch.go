@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 )
@@ -70,6 +71,8 @@ type BatchV2Payload struct {
 	BlockCount    uint64
 	OriginBits    *big.Int
 	BlockTxCounts []uint64
+
+	// below fields may be generalized
 	TxDataHeaders []uint64
 	TxDatas       []hexutil.Bytes
 	TxSigs        []BatchV2Signature
@@ -387,4 +390,75 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
 	}
+}
+
+// TODO: make it zero copy
+func GetBatchV2TxData(rawTx hexutil.Bytes) (hexutil.Bytes, error) {
+	// signature is truncated from each EIP-2718 encoded tx
+
+	// TODO
+
+	return nil, nil
+}
+
+// MergeBatchV1s merges BatchV1 List and initialize single BatchV2
+// Input batchV1 must be sorted by timestamp
+func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
+	if len(batchV1s) == 0 {
+		return errors.New("cannot merge empty batchV1 list")
+	}
+	// BatchV2Prefix
+	anchor := batchV1s[0]
+	b.Timestamp = anchor.Timestamp
+	b.ParentCheck = make([]byte, 20)
+	copy(b.ParentCheck, anchor.ParentHash[:20])
+	b.L1OriginCheck = make([]byte, 20)
+	copy(b.L1OriginCheck, anchor.EpochHash[:20])
+	// BatchV2Payload
+	b.BlockCount = uint64(len(batchV1s))
+	b.OriginBits = new(big.Int)
+	// First originBit is always 0
+	b.OriginBits.SetBit(b.OriginBits, 0, 0)
+	for i := 1; i < len(batchV1s); i++ {
+		bit := uint(0)
+		if batchV1s[i-1].EpochNum < batchV1s[i].EpochNum {
+			bit = 1
+		}
+		b.OriginBits.SetBit(b.OriginBits, i, bit)
+	}
+	var blockTxCounts []uint64
+	var txDataHeaders []uint64
+	var txDatas []hexutil.Bytes
+	var txSigs []BatchV2Signature
+	for _, batchV1 := range batchV1s {
+		blockTxCount := uint64(len(batchV1.Transactions))
+		blockTxCounts = append(blockTxCounts, blockTxCount)
+		for _, rawTx := range batchV1.Transactions {
+			// below segment may be generalized
+			var tx types.Transaction
+			if err := tx.UnmarshalBinary(rawTx); err != nil {
+				return errors.New("failed to decode tx")
+			}
+			var txSig BatchV2Signature
+			v, r, s := tx.RawSignatureValues()
+			R, _ := uint256.FromBig(r)
+			S, _ := uint256.FromBig(s)
+			txSig.V = v.Uint64()
+			txSig.R = R
+			txSig.S = S
+			txSigs = append(txSigs, txSig)
+			txData, err := GetBatchV2TxData(rawTx)
+			if err != nil {
+				return err
+			}
+			txDataHeader := uint64(len(txData))
+			txDataHeaders = append(txDataHeaders, txDataHeader)
+			txDatas = append(txDatas, txData)
+		}
+	}
+	b.BlockTxCounts = blockTxCounts
+	b.TxDataHeaders = txDataHeaders
+	b.TxDatas = txDatas
+	b.TxSigs = txSigs
+	return nil
 }
