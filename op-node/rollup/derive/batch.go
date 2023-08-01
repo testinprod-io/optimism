@@ -438,9 +438,13 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
 			txSig.R = R
 			txSig.S = S
 			txSigs = append(txSigs, txSig)
-			txData, err := EncodeBatchV2TxDataBytes(tx)
+			batchV2Tx, err := NewBatchV2Tx(tx)
 			if err != nil {
-				return err
+				return nil
+			}
+			txData, err := batchV2Tx.MarshalBinary()
+			if err != nil {
+				return nil
 			}
 			txDataHeader := uint64(len(txData))
 			txDataHeaders = append(txDataHeaders, txDataHeader)
