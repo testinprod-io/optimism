@@ -127,3 +127,43 @@ func TestBatchRoundTrip(t *testing.T) {
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}
 }
+
+func TestBatchV2MergeSplit(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x13371337))
+
+	l1OriginBlock, _ := testutils.RandomBlock(rng, uint64(rng.Intn(8)))
+	batchV2 := RandomBatchV2(rng).BatchV2
+	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
+	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
+	// recover parentHash
+	var parentHash []byte = append(batchV2.ParentCheck, testutils.RandomData(rng, 12)...)
+	firstOriginBit := batchV2.OriginBits.Bit(0)
+
+	fetchL1Block := func(blockNum uint64) (*types.Block, error) {
+		switch blockNum {
+		case batchV2.L1OriginNum:
+			return l1OriginBlock, nil
+		default:
+			randomL1Block, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
+			return randomL1Block, nil
+		}
+	}
+	safeL2head := testutils.RandomL2BlockRef(rng)
+	safeL2head.Hash = common.BytesToHash(parentHash)
+	l2BlockTime := uint64(2)
+	// safeL2head must be parent so subtract l2BlockTime
+	safeL2head.Time = batchV2.Timestamp - l2BlockTime
+	var batchV1s []BatchV1
+	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	assert.NoError(t, err)
+
+	// batchV1s does not have parent hash
+	// manually include first element's parent hash
+	batchV1s[0].ParentHash = common.BytesToHash(parentHash)
+
+	var batchV2Merged BatchV2
+	err = batchV2Merged.MergeBatchV1s(batchV1s, firstOriginBit)
+	assert.NoError(t, err)
+
+	assert.Equal(t, batchV2, batchV2Merged, "BatchV2 not equal")
+}
