@@ -5,12 +5,15 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 func RandomBatchV2(rng *rand.Rand) *BatchData {
@@ -66,8 +69,24 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 	}
 }
 
+func RandomBatchV1(rng *rand.Rand, txCount int) *BatchData {
+	l1Block := types.NewBlock(testutils.RandomHeader(rng),
+		nil, nil, nil, trie.NewStackTrie(nil))
+	l1InfoTx, err := L1InfoDeposit(0, eth.BlockToInfo(l1Block), eth.SystemConfig{}, testutils.RandomBool(rng))
+	if err != nil {
+		panic("L1InfoDeposit: " + err.Error())
+	}
+	l2Block, _ := testutils.RandomBlockPrependTxs(rng, txCount, types.NewTx(l1InfoTx))
+	batchData, _, err := BlockToBatch(l2Block)
+	if err != nil {
+		panic("BlockToBatch:" + err.Error())
+	}
+	return batchData
+}
+
 func TestBatchRoundTrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xdeadbeef))
+
 	batches := []*BatchData{
 		{
 			BatchV1: BatchV1{
@@ -85,6 +104,8 @@ func TestBatchRoundTrip(t *testing.T) {
 				Transactions: []hexutil.Bytes{[]byte{0, 0, 0}, []byte{0x76, 0xfd, 0x7c}},
 			},
 		},
+		RandomBatchV1(rng, 5),
+		RandomBatchV1(rng, 7),
 		RandomBatchV2(rng),
 	}
 
