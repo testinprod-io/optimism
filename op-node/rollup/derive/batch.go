@@ -484,24 +484,29 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 	for i := 0; i < int(b.BlockCount); i++ {
 		batchV1s[i].Timestamp = safeL2Head.Time + uint64(i+1)*blockTime
 	}
-	fetchL1 := true
+	// first fetch last L2 block in BatchV2
 	var l1OriginBlock *types.Block
 	var l1OriginBlockNumber = b.L1OriginNum
 	var err error
+	l1OriginBlock, err = fetchL1Block(l1OriginBlockNumber)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(l1OriginBlock.Hash().Bytes()[:20], b.L1OriginCheck) {
+		return nil, errors.New("l1 origin hash mismatch")
+	}
+	// backward digest leftover L2 blocks
 	for i := int(b.BlockCount) - 1; i >= 0; i-- {
-		if fetchL1 {
+		batchV1s[i].EpochNum = rollup.Epoch(l1OriginBlockNumber)
+		batchV1s[i].EpochHash = l1OriginBlock.Hash()
+		// no need to fetch L1 when first block because not used
+		if b.OriginBits.Bit(i) == 1 && i > 0 {
+			l1OriginBlockNumber--
 			l1OriginBlock, err = fetchL1Block(l1OriginBlockNumber)
 			if err != nil {
 				return nil, err
 			}
-			l1OriginBlockNumber--
 		}
-		if i == int(b.BlockCount)-1 && !bytes.Equal(l1OriginBlock.Hash().Bytes()[:20], b.L1OriginCheck) {
-			return nil, errors.New("l1 origin hash mismatch")
-		}
-		batchV1s[i].EpochNum = rollup.Epoch(l1OriginBlock.NumberU64())
-		batchV1s[i].EpochHash = l1OriginBlock.Hash()
-		fetchL1 = b.OriginBits.Bit(i) == 1
 	}
 	idx := 0
 	for i := 0; i < int(b.BlockCount); i++ {
