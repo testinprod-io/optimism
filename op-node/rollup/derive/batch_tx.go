@@ -170,6 +170,60 @@ func (tx *BatchV2Tx) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// ConvertToFullTx takes signature value and convert BatchV2Tx to types.Transaction
+func (tx BatchV2Tx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error) {
+	var inner types.TxData
+	switch tx.Type() {
+	case types.LegacyTxType:
+		batchTxInner := tx.inner.(BatchV2LegacyTxData)
+		inner = &types.LegacyTx{
+			Nonce:    batchTxInner.Nonce,
+			GasPrice: batchTxInner.GasPrice,
+			Gas:      batchTxInner.Gas,
+			To:       batchTxInner.To,
+			Value:    batchTxInner.Value,
+			Data:     batchTxInner.Data,
+			V:        V,
+			R:        R,
+			S:        S,
+		}
+	case types.AccessListTxType:
+		batchTxInner := tx.inner.(BatchV2AccessListTxData)
+		inner = &types.AccessListTx{
+			ChainID:    batchTxInner.ChainID,
+			Nonce:      batchTxInner.Nonce,
+			GasPrice:   batchTxInner.GasPrice,
+			Gas:        batchTxInner.Gas,
+			To:         batchTxInner.To,
+			Value:      batchTxInner.Value,
+			Data:       batchTxInner.Data,
+			AccessList: batchTxInner.AccessList,
+			V:          V,
+			R:          R,
+			S:          S,
+		}
+	case types.DynamicFeeTxType:
+		batchTxInner := tx.inner.(BatchV2DynamicFeeTxData)
+		inner = &types.DynamicFeeTx{
+			ChainID:    batchTxInner.ChainID,
+			Nonce:      batchTxInner.Nonce,
+			GasTipCap:  batchTxInner.GasTipCap,
+			GasFeeCap:  batchTxInner.GasFeeCap,
+			Gas:        batchTxInner.Gas,
+			To:         batchTxInner.To,
+			Value:      batchTxInner.Value,
+			Data:       batchTxInner.Data,
+			AccessList: batchTxInner.AccessList,
+			V:          V,
+			R:          R,
+			S:          S,
+		}
+	default:
+		return nil, fmt.Errorf("invalid tx type: %d", tx.Type())
+	}
+	return types.NewTx(inner), nil
+}
+
 // NewBatchV2Tx creates a new batchV2 transaction.
 func NewBatchV2Tx(tx types.Transaction) (*BatchV2Tx, error) {
 	var inner BatchV2TxData
