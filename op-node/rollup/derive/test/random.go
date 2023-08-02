@@ -21,3 +21,12 @@ func RandomL2Block(rng *rand.Rand, txCount int) (*types.Block, []*types.Receipt)
 	}
 	return testutils.RandomBlockPrependTxs(rng, txCount, types.NewTx(l1InfoTx))
 }
+
+func RandomBatchV1(rng *rand.Rand, txCount int) *derive.BatchData {
+	l2Block, _ := RandomL2Block(rng, txCount)
+	batchData, _, err := derive.BlockToBatch(l2Block)
+	if err != nil {
+		panic("BlockToBatch:" + err.Error())
+	}
+	return batchData
+}
