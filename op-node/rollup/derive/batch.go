@@ -136,6 +136,7 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 func (b *BatchV2) DecodePayload(data []byte) error {
 	r := bytes.NewReader(data)
 	blockCount, err := binary.ReadUvarint(r)
+	// TODO: check block count is not too large
 	if err != nil {
 		return fmt.Errorf("failed to read block count var int: %w", err)
 	}
@@ -152,6 +153,7 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(blockCount); i++ {
 		blockTxCount, err := binary.ReadUvarint(r)
+		// TODO: check blockTxCount is not too large
 		if err != nil {
 			return fmt.Errorf("failed to read block tx count: %w", err)
 		}
@@ -161,6 +163,7 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 	txDataHeaders := make([]uint64, totalBlockTxCount)
 	for i := 0; i < int(totalBlockTxCount); i++ {
 		txDataHeader, err := binary.ReadUvarint(r)
+		// TODO: check txDataHeader is not too large
 		if err != nil {
 			return fmt.Errorf("failed to read tx data header: %w", err)
 		}
@@ -472,6 +475,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 // SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
 func (b *BatchV2) SplitBatchV2() ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
+
 
 
 
