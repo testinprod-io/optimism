@@ -494,6 +494,7 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 			if err != nil {
 				return nil, err
 			}
+			l1OriginBlockNumber--
 		}
 		if i == int(b.BlockCount)-1 && !bytes.Equal(l1OriginBlock.Hash().Bytes()[:20], b.L1OriginCheck) {
 			return nil, errors.New("l1 origin hash mismatch")
