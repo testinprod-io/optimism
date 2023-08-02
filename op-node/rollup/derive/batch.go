@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sort"
 	"sync"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
@@ -403,11 +404,14 @@ func (b *BatchData) decodeTyped(data []byte) error {
 }
 
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
-// Input batchV1 must be sorted by timestamp
 func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
+	// Sort by timestamp of L2 block
+	sort.Slice(batchV1s, func(i, j int) bool {
+		return batchV1s[i].Timestamp < batchV1s[j].Timestamp
+	})
 	// BatchV2Prefix
 	span_start := batchV1s[0]
 	span_end := batchV1s[len(batchV1s)-1]
