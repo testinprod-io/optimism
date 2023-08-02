@@ -14,7 +14,7 @@ import (
 )
 
 func RandomBatchV2(rng *rand.Rand) *BatchData {
-	blockCount := uint64(rng.Int() & 0xFF)
+	blockCount := uint64(1 + rng.Int()&0xFF)
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i++ {
 		bit := uint(0)
