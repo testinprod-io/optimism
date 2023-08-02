@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-func RandomBatchV2(rng *rand.Rand) BatchV2 {
+func RandomBatchV2(rng *rand.Rand) *BatchData {
 	blockCount := uint64(rng.Int() & 0xFF)
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i++ {
@@ -45,20 +45,23 @@ func RandomBatchV2(rng *rand.Rand) BatchV2 {
 		txDatas = append(txDatas, txData)
 		txSigs = append(txSigs, txSig)
 	}
-	return BatchV2{
-		BatchV2Prefix: BatchV2Prefix{
-			Timestamp:     rng.Uint64(),
-			L1OriginNum:   rng.Uint64(),
-			ParentCheck:   testutils.RandomData(rng, 20),
-			L1OriginCheck: testutils.RandomData(rng, 20),
-		},
-		BatchV2Payload: BatchV2Payload{
-			BlockCount:    blockCount,
-			OriginBits:    originBits,
-			BlockTxCounts: blockTxCounts,
-			TxDataHeaders: txDataHeaders,
-			TxDatas:       txDatas,
-			TxSigs:        txSigs,
+	return &BatchData{
+		BatchType: BatchV2Type,
+		BatchV2: BatchV2{
+			BatchV2Prefix: BatchV2Prefix{
+				Timestamp:     rng.Uint64(),
+				L1OriginNum:   rng.Uint64(),
+				ParentCheck:   testutils.RandomData(rng, 20),
+				L1OriginCheck: testutils.RandomData(rng, 20),
+			},
+			BatchV2Payload: BatchV2Payload{
+				BlockCount:    blockCount,
+				OriginBits:    originBits,
+				BlockTxCounts: blockTxCounts,
+				TxDataHeaders: txDataHeaders,
+				TxDatas:       txDatas,
+				TxSigs:        txSigs,
+			},
 		},
 	}
 }
@@ -82,10 +85,7 @@ func TestBatchRoundTrip(t *testing.T) {
 				Transactions: []hexutil.Bytes{[]byte{0, 0, 0}, []byte{0x76, 0xfd, 0x7c}},
 			},
 		},
-		{
-			BatchType: BatchV2Type,
-			BatchV2:   RandomBatchV2(rng),
-		},
+		RandomBatchV2(rng),
 	}
 
 	for i, batch := range batches {
