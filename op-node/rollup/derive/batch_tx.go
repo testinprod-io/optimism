@@ -175,7 +175,7 @@ func (tx BatchV2Tx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error
 	var inner types.TxData
 	switch tx.Type() {
 	case types.LegacyTxType:
-		batchTxInner := tx.inner.(BatchV2LegacyTxData)
+		batchTxInner := tx.inner.(*BatchV2LegacyTxData)
 		inner = &types.LegacyTx{
 			Nonce:    batchTxInner.Nonce,
 			GasPrice: batchTxInner.GasPrice,
@@ -188,7 +188,7 @@ func (tx BatchV2Tx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error
 			S:        S,
 		}
 	case types.AccessListTxType:
-		batchTxInner := tx.inner.(BatchV2AccessListTxData)
+		batchTxInner := tx.inner.(*BatchV2AccessListTxData)
 		inner = &types.AccessListTx{
 			ChainID:    batchTxInner.ChainID,
 			Nonce:      batchTxInner.Nonce,
@@ -203,7 +203,7 @@ func (tx BatchV2Tx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error
 			S:          S,
 		}
 	case types.DynamicFeeTxType:
-		batchTxInner := tx.inner.(BatchV2DynamicFeeTxData)
+		batchTxInner := tx.inner.(*BatchV2DynamicFeeTxData)
 		inner = &types.DynamicFeeTx{
 			ChainID:    batchTxInner.ChainID,
 			Nonce:      batchTxInner.Nonce,
