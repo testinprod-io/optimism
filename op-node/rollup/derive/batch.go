@@ -29,10 +29,10 @@ import (
 // Note: the type system is based on L1 typed transactions.
 // BatchV2Type := 1
 // batchV2 := BatchV2Type ++ prefix ++ payload
-// prefix := rel_timestamp ++ parent_check ++ l1_origin_check
+// prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data_headers ++ tx_data ++ tx_sigs
 //
-// len(prefix) = 8 bytes(rel_timestamp) + 20 bytes(parent_check) + 20 bytes(l1_origin_check)
+// len(prefix) = 8 bytes(rel_timestamp) + 8 bytes(l1_origin_num) + 20 bytes(parent_check) + 20 bytes(l1_origin_check)
 
 // encodeBufferPool holds temporary encoder buffers for batch encoding
 var encodeBufferPool = sync.Pool{
@@ -53,10 +53,11 @@ type BatchV1 struct {
 	Transactions []hexutil.Bytes
 }
 
-const BatchV2PrefixLen = 8 + 20 + 20
+const BatchV2PrefixLen = 8 + 8 + 20 + 20
 
 type BatchV2Prefix struct {
 	Timestamp     uint64
+	L1OriginNum   uint64
 	ParentCheck   []byte
 	L1OriginCheck []byte
 }
@@ -104,6 +105,8 @@ func (b *BatchV2) DecodePrefix(data []byte) error {
 	}
 	offset := uint32(0)
 	b.Timestamp = binary.BigEndian.Uint64(data[offset : offset+8])
+	offset += 8
+	b.L1OriginNum = binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
 	b.ParentCheck = make([]byte, 20)
 	copy(b.ParentCheck, data[offset:offset+20])
@@ -218,6 +221,10 @@ func (b *BatchV2) EncodePrefix(w io.Writer) error {
 	binary.BigEndian.PutUint64(buf[:], b.Timestamp)
 	if _, err := w.Write(buf[:]); err != nil {
 		return fmt.Errorf("cannot write timestamp: %w", err)
+	}
+	binary.BigEndian.PutUint64(buf[:], b.L1OriginNum)
+	if _, err := w.Write(buf[:]); err != nil {
+		return fmt.Errorf("cannot write l1 origin number: %w", err)
 	}
 	if _, err := w.Write(b.ParentCheck); err != nil {
 		return fmt.Errorf("cannot write parent check: %w", err)
@@ -401,6 +408,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
 	// BatchV2Prefix
 	anchor := batchV1s[0]
 	b.Timestamp = anchor.Timestamp
+	b.L1OriginNum = uint64(anchor.EpochNum)
 	b.ParentCheck = make([]byte, 20)
 	copy(b.ParentCheck, anchor.ParentHash[:20])
 	b.L1OriginCheck = make([]byte, 20)

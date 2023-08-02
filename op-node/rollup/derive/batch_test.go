@@ -48,6 +48,7 @@ func RandomBatchV2(rng *rand.Rand) BatchV2 {
 	return BatchV2{
 		BatchV2Prefix: BatchV2Prefix{
 			Timestamp:     rng.Uint64(),
+			L1OriginNum:   rng.Uint64(),
 			ParentCheck:   testutils.RandomData(rng, 20),
 			L1OriginCheck: testutils.RandomData(rng, 20),
 		},
