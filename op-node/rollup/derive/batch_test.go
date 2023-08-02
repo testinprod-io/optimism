@@ -36,9 +36,18 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 	txDataHeaders := make([]uint64, 0)
 	txDatas := make([]hexutil.Bytes, 0)
 	txSigs := make([]BatchV2Signature, 0)
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 	for i := 0; i < int(totalblockTxCounts); i++ {
-		txDataHeader := uint64(rng.Intn(128))
-		txData := testutils.RandomData(rng, int(txDataHeader))
+		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
+		batchV2Tx, err := NewBatchV2Tx(*tx)
+		if err != nil {
+			panic("NewBatchV2Tx:" + err.Error())
+		}
+		txData, err := batchV2Tx.MarshalBinary()
+		if err != nil {
+			panic("MarshalBinary:" + err.Error())
+		}
+		txDataHeader := uint64(len(txData))
 		txSig := BatchV2Signature{
 			V: rng.Uint64(),
 			R: new(uint256.Int).SetBytes32(testutils.RandomData(rng, 32)),
