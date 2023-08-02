@@ -24,7 +24,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		if testutils.RandomBool(rng) {
 			bit = uint(1)
 		}
-		originBits = originBits.SetBit(originBits, i, bit)
+		originBits.SetBit(originBits, i, bit)
 	}
 	var blockTxCounts []uint64
 	totalblockTxCounts := uint64(0)
