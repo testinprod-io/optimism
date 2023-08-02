@@ -406,13 +406,14 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
 		return errors.New("cannot merge empty batchV1 list")
 	}
 	// BatchV2Prefix
-	anchor := batchV1s[0]
-	b.Timestamp = anchor.Timestamp
-	b.L1OriginNum = uint64(anchor.EpochNum)
+	span_start := batchV1s[0]
+	span_end := batchV1s[len(batchV1s) - 1]
+	b.Timestamp = span_start.Timestamp
+	b.L1OriginNum = uint64(span_end.EpochNum)
 	b.ParentCheck = make([]byte, 20)
-	copy(b.ParentCheck, anchor.ParentHash[:20])
+	copy(b.ParentCheck, span_start.ParentHash[:20])
 	b.L1OriginCheck = make([]byte, 20)
-	copy(b.L1OriginCheck, anchor.EpochHash[:20])
+	copy(b.L1OriginCheck, span_end.EpochHash[:20])
 	// BatchV2Payload
 	b.BlockCount = uint64(len(batchV1s))
 	b.OriginBits = new(big.Int)
@@ -464,4 +465,17 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1) error {
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
 	return nil
+}
+
+// This requires L1. May be moved to new pipeline step: for epoch_number and epoch_hash
+// need function which converts BatchV2TxData to types.Transaction
+
+// SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
+func (b *BatchV2) SplitBatchV2() ([]BatchV1, error) {
+	batchV1s := make([]BatchV1, b.BlockCount)
+
+
+
+
+	return batchV1s, nil
 }
