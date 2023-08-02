@@ -410,7 +410,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 	}
 	// BatchV2Prefix
 	span_start := batchV1s[0]
-	span_end := batchV1s[len(batchV1s) - 1]
+	span_end := batchV1s[len(batchV1s)-1]
 	b.Timestamp = span_start.Timestamp
 	b.L1OriginNum = uint64(span_end.EpochNum)
 	b.ParentCheck = make([]byte, 20)
@@ -469,16 +469,56 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 	return nil
 }
 
-// This requires L1. May be moved to new pipeline step: for epoch_number and epoch_hash
-// need function which converts BatchV2TxData to types.Transaction
-
 // SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
-func (b *BatchV2) SplitBatchV2() ([]BatchV1, error) {
+// Cannot fill in BatchV1 parent hash because we cannot trust other L2s yet.
+// Therefore leave each ParentHash field empty
+func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime uint64) ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
-
-
-
-
-
+	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
+		return nil, errors.New("parent hash mismatch")
+	}
+	for i := 0; i < int(b.BlockCount); i++ {
+		batchV1s[i].Timestamp = safeL2Head.Time + uint64(i+1)*blockTime
+	}
+	fetchL1 := true
+	var l1OriginBlock *types.Block
+	var l1OriginBlockNumber = b.L1OriginNum
+	var err error
+	for i := int(b.BlockCount) - 1; i >= 0; i-- {
+		if fetchL1 {
+			l1OriginBlock, err = fetchL1Block(l1OriginBlockNumber)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if i == int(b.BlockCount)-1 && !bytes.Equal(l1OriginBlock.Hash().Bytes()[:20], b.L1OriginCheck) {
+			return nil, errors.New("l1 origin hash mismatch")
+		}
+		batchV1s[i].EpochNum = rollup.Epoch(l1OriginBlock.NumberU64())
+		batchV1s[i].EpochHash = l1OriginBlock.Hash()
+		fetchL1 = b.OriginBits.Bit(i) == 1
+	}
+	idx := 0
+	for i := 0; i < int(b.BlockCount); i++ {
+		for txIndex := 0; txIndex < int(b.BlockTxCounts[i]); txIndex++ {
+			var batchV2Tx BatchV2Tx
+			if err := batchV2Tx.UnmarshalBinary(b.TxDatas[idx]); err != nil {
+				return nil, err
+			}
+			v := new(big.Int).SetUint64(b.TxSigs[idx].V)
+			r := b.TxSigs[idx].R.ToBig()
+			s := b.TxSigs[idx].S.ToBig()
+			tx, err := batchV2Tx.ConvertToFullTx(v, r, s)
+			if err != nil {
+				return nil, err
+			}
+			encodedTx, err := tx.MarshalBinary()
+			if err != nil {
+				return nil, err
+			}
+			batchV1s[i].Transactions = append(batchV1s[i].Transactions, encodedTx)
+			idx++
+		}
+	}
 	return batchV1s, nil
 }
