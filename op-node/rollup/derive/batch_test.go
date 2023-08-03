@@ -62,7 +62,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		BatchType: BatchV2Type,
 		BatchV2: BatchV2{
 			BatchV2Prefix: BatchV2Prefix{
-				Timestamp:     rng.Uint64(),
+				RelTimestamp:  rng.Uint64(),
 				L1OriginNum:   rng.Uint64(),
 				ParentCheck:   testutils.RandomData(rng, 20),
 				L1OriginCheck: testutils.RandomData(rng, 20),
@@ -132,9 +132,10 @@ func TestBatchRoundTrip(t *testing.T) {
 func TestBatchV2Merge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x7331))
 
+	genesisTimeStamp := rng.Uint64()
 	var batchV1sEmpty []BatchV1
 	var batchV2Empty BatchV2
-	err := batchV2Empty.MergeBatchV1s(batchV1sEmpty, uint(0))
+	err := batchV2Empty.MergeBatchV1s(batchV1sEmpty, uint(0), genesisTimeStamp)
 	require.ErrorContains(t, err, "cannot merge empty batchV1 list")
 
 	blockNum := 1 + rng.Intn(8)
@@ -147,13 +148,14 @@ func TestBatchV2Merge(t *testing.T) {
 	batchV1s[0].Transactions[0][0] = 0x33
 
 	var batchV2 BatchV2
-	err = batchV2.MergeBatchV1s(batchV1s, uint(0))
+	err = batchV2.MergeBatchV1s(batchV1s, uint(0), genesisTimeStamp)
 	require.ErrorContains(t, err, "failed to decode tx")
 }
 
 func TestBatchV2Split(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xcafe))
 
+	genesisTimeStamp := rng.Uint64()
 	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
 	batchV2 := RandomBatchV2(rng).BatchV2
 	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
@@ -180,29 +182,30 @@ func TestBatchV2Split(t *testing.T) {
 	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
 	l2BlockTime := uint64(2)
 	// safeL2head must be parent so subtract l2BlockTime
-	safeL2head.Time = batchV2.Timestamp - l2BlockTime
+	safeL2head.Time = genesisTimeStamp + batchV2.RelTimestamp - l2BlockTime
 
 	// above datas are sane. Now contaminate with wrong datas
 
 	// set invalid tx type to make tx marshaling fail
 	batchV2.TxDatas[0][0] = 0x33
-	_, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	_, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
 
 	// set invalid l1 origin check
 	batchV2.L1OriginCheck = testutils.RandomData(rng, 20)
-	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, "l1 origin hash mismatch")
 
 	// set invalid parent check
 	batchV2.ParentCheck = testutils.RandomData(rng, 20)
-	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, "parent hash mismatch")
 }
 
 func TestBatchV2SplitMerge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x13371337))
 
+	genesisTimeStamp := rng.Uint64()
 	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
 	batchV2 := RandomBatchV2(rng).BatchV2
 	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
@@ -230,14 +233,14 @@ func TestBatchV2SplitMerge(t *testing.T) {
 	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
 	l2BlockTime := uint64(2)
 	// safeL2head must be parent so subtract l2BlockTime
-	safeL2head.Time = batchV2.Timestamp - l2BlockTime
+	safeL2head.Time = batchV2.RelTimestamp - l2BlockTime
 
 	var batchV1s []BatchV1
-	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	assert.NoError(t, err)
 
 	var batchV2Merged BatchV2
-	err = batchV2Merged.MergeBatchV1s(batchV1s, originChangedBit)
+	err = batchV2Merged.MergeBatchV1s(batchV1s, originChangedBit, genesisTimeStamp)
 	assert.NoError(t, err)
 
 	assert.Equal(t, batchV2, batchV2Merged, "BatchV2 not equal")
