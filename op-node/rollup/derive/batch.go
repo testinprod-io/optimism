@@ -474,13 +474,15 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 }
 
 // SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
-// Cannot fill in BatchV1 parent hash because we cannot trust other L2s yet.
+// Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
 // Therefore leave each ParentHash field empty
 func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime uint64) ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
 	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
 		return nil, errors.New("parent hash mismatch")
 	}
+	// set only the first batchV1's parent hash
+	batchV1s[0].ParentHash = safeL2Head.Hash
 	for i := 0; i < int(b.BlockCount); i++ {
 		batchV1s[i].Timestamp = safeL2Head.Time + uint64(i+1)*blockTime
 	}
