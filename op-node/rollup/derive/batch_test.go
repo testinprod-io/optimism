@@ -137,8 +137,13 @@ func TestBatchV2MergeSplit(t *testing.T) {
 	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
 	// recover parentHash
 	var parentHash []byte = append(batchV2.ParentCheck, testutils.RandomData(rng, 12)...)
-	firstOriginBit := batchV2.OriginBits.Bit(0)
-
+	originChangedBit := batchV2.OriginBits.Bit(0)
+	originBitSum := uint64(0)
+	for i := 0; i < int(batchV2.BlockCount); i++ {
+		if batchV2.OriginBits.Bit(i) == 1 {
+			originBitSum++
+		}
+	}
 	fetchL1Block := func(blockNum uint64) (*types.Block, error) {
 		switch blockNum {
 		case batchV2.L1OriginNum:
@@ -150,6 +155,7 @@ func TestBatchV2MergeSplit(t *testing.T) {
 	}
 	safeL2head := testutils.RandomL2BlockRef(rng)
 	safeL2head.Hash = common.BytesToHash(parentHash)
+	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
 	l2BlockTime := uint64(2)
 	// safeL2head must be parent so subtract l2BlockTime
 	safeL2head.Time = batchV2.Timestamp - l2BlockTime
@@ -159,8 +165,17 @@ func TestBatchV2MergeSplit(t *testing.T) {
 	assert.NoError(t, err)
 
 	var batchV2Merged BatchV2
-	err = batchV2Merged.MergeBatchV1s(batchV1s, firstOriginBit)
+	err = batchV2Merged.MergeBatchV1s(batchV1s, originChangedBit)
 	assert.NoError(t, err)
 
 	assert.Equal(t, batchV2, batchV2Merged, "BatchV2 not equal")
+
+	// check invariants
+	// start_epoch_num = safe_l2_head.origin.block_number + (origin_changed_bit ? 1 : 0)
+	startEpochNum := uint64(batchV1s[0].EpochNum)
+	assert.True(t, startEpochNum == safeL2head.L1Origin.Number+uint64(originChangedBit))
+	// end_epoch_num = safe_l2_head.origin.block_number + sum(origin_bits)
+	endEpochNum := batchV2.L1OriginNum
+	assert.True(t, endEpochNum == safeL2head.L1Origin.Number+originBitSum)
+	assert.True(t, endEpochNum == uint64(batchV1s[len(batchV1s)-1].EpochNum))
 }
