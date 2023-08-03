@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
@@ -133,26 +134,62 @@ func TestBatchV2Merge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x7331))
 
 	genesisTimeStamp := rng.Uint64()
-	var batchV1sEmpty []BatchV1
-	var batchV2Empty BatchV2
-	err := batchV2Empty.MergeBatchV1s(batchV1sEmpty, uint(0), genesisTimeStamp)
-	require.ErrorContains(t, err, "cannot merge empty batchV1 list")
+	l2BlockTime := uint64(2)
 
-	blockNum := 1 + rng.Intn(8)
+	blockCount := 1 + rng.Intn(128)
 	var batchV1s []BatchV1
-	for i := 0; i < blockNum; i++ {
+	for i := 0; i < blockCount; i++ {
 		batchV1 := RandomBatchV1(rng, 1+rng.Intn(8)).BatchV1
 		batchV1s = append(batchV1s, batchV1)
 	}
-	// set invalid tx type to make tx unmarshaling fail
-	batchV1s[0].Transactions[0][0] = 0x33
+	l1BlockNum := rng.Uint64()
+	for i := 0; i < blockCount; i++ {
+		if rng.Intn(2) == 1 {
+			l1BlockNum++
+		}
+		batchV1s[i].EpochNum = rollup.Epoch(l1BlockNum)
+		if i == 0 {
+			continue
+		}
+		batchV1s[i].Timestamp = batchV1s[i-1].Timestamp + l2BlockTime
+	}
 
 	var batchV2 BatchV2
-	err = batchV2.MergeBatchV1s(batchV1s, uint(0), genesisTimeStamp)
+	err := batchV2.MergeBatchV1s(batchV1s, uint(0), genesisTimeStamp)
+	assert.NoError(t, err)
+	assert.Equal(t, batchV2.ParentCheck, batchV1s[0].ParentHash.Bytes()[:20], "invalid parent check")
+	assert.Equal(t, batchV2.L1OriginCheck, batchV1s[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
+	assert.Equal(t, batchV2.RelTimestamp, batchV1s[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
+	for i := 1; i < blockCount; i++ {
+		if batchV2.OriginBits.Bit(i) == 1 {
+			assert.True(t, batchV1s[i].EpochNum == batchV1s[i-1].EpochNum+1)
+		}
+	}
+	cnt := 0
+	for i := 0; i < len(batchV1s); i++ {
+		txCount := len(batchV1s[i].Transactions)
+		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
+		for txIdx := 0; txIdx < txCount; txIdx++ {
+			txDataHeader := batchV2.TxDataHeaders[cnt]
+			txData := batchV2.TxDatas[cnt]
+			assert.True(t, int(txDataHeader) == len(txData))
+			cnt++
+		}
+	}
+
+	// set invalid tx type to make tx unmarshaling fail
+	batchV1s[0].Transactions[0][0] = 0x33
+	var batchV2WrongTxType BatchV2
+	err = batchV2WrongTxType.MergeBatchV1s(batchV1s, uint(0), genesisTimeStamp)
 	require.ErrorContains(t, err, "failed to decode tx")
+
+	var batchV1sEmpty []BatchV1
+	var batchV2Empty BatchV2
+	err = batchV2Empty.MergeBatchV1s(batchV1sEmpty, uint(0), genesisTimeStamp)
+	require.ErrorContains(t, err, "cannot merge empty batchV1 list")
 }
 
-func prepareSplitBatchValidation(rng *rand.Rand, l2BlockTime uint64) (func(blockNum uint64) (*types.Block, error), uint64, BatchV2, eth.L2BlockRef) {
+func prepareSplitBatch(rng *rand.Rand, l2BlockTime uint64) (func(blockNum uint64) (*types.Block, error), uint64, BatchV2, eth.L2BlockRef) {
 	genesisTimeStamp := rng.Uint64()
 	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
 	batchV2 := RandomBatchV2(rng).BatchV2
@@ -184,11 +221,47 @@ func prepareSplitBatchValidation(rng *rand.Rand, l2BlockTime uint64) (func(block
 	return fetchL1Block, genesisTimeStamp, batchV2, safeL2head
 }
 
+func TestBatchV2Split(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xbab0bab0))
+
+	l2BlockTime := uint64(2)
+	fetchL1Block, genesisTimeStamp, batchV2, _ := prepareSplitBatch(rng, l2BlockTime)
+
+	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, l2BlockTime, genesisTimeStamp)
+	assert.NoError(t, err)
+
+	assert.True(t, len(batchV1s) == int(batchV2.BlockCount))
+
+	for i := 1; i < len(batchV1s); i++ {
+		assert.True(t, batchV1s[i].Timestamp == batchV1s[i-1].Timestamp+l2BlockTime)
+	}
+
+	l1OriginBlockNumber := batchV1s[0].EpochNum
+	for i := 1; i < len(batchV1s); i++ {
+		if batchV2.OriginBits.Bit(i) == 1 {
+			l1OriginBlockNumber++
+		}
+		assert.True(t, batchV1s[i].EpochNum == l1OriginBlockNumber)
+	}
+
+	cnt := 0
+	for i := 0; i < len(batchV1s); i++ {
+		txCount := len(batchV1s[i].Transactions)
+		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
+		for txIdx := 0; txIdx < txCount; txIdx++ {
+			txDataHeader := batchV2.TxDataHeaders[cnt]
+			txData := batchV2.TxDatas[cnt]
+			assert.True(t, int(txDataHeader) == len(txData))
+			cnt++
+		}
+	}
+}
+
 func TestBatchV2SplitValidation(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xcafe))
 
 	l2BlockTime := uint64(2)
-	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatchValidation(rng, l2BlockTime)
+	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatch(rng, l2BlockTime)
 	// above datas are sane. Now contaminate with wrong datas
 
 	// set invalid l1 origin check
@@ -211,7 +284,7 @@ func TestBatchV2SplitMerge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x13371337))
 
 	l2BlockTime := uint64(2)
-	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatchValidation(rng, l2BlockTime)
+	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatch(rng, l2BlockTime)
 	originChangedBit := batchV2.OriginBits.Bit(0)
 	originBitSum := batchV2.L1OriginNum - safeL2head.L1Origin.Number
 
