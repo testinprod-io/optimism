@@ -57,7 +57,7 @@ type BatchV1 struct {
 const BatchV2PrefixLen = 8 + 8 + 20 + 20
 
 type BatchV2Prefix struct {
-	Timestamp     uint64
+	RelTimestamp  uint64
 	L1OriginNum   uint64
 	ParentCheck   []byte
 	L1OriginCheck []byte
@@ -105,7 +105,7 @@ func (b *BatchV2) DecodePrefix(data []byte) error {
 		return fmt.Errorf("invalid prefix length: %d", len(data))
 	}
 	offset := uint32(0)
-	b.Timestamp = binary.BigEndian.Uint64(data[offset : offset+8])
+	b.RelTimestamp = binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
 	b.L1OriginNum = binary.BigEndian.Uint64(data[offset : offset+8])
 	offset += 8
@@ -222,7 +222,7 @@ func (b *BatchV2) DecodeBytes(data []byte) error {
 
 func (b *BatchV2) EncodePrefix(w io.Writer) error {
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], b.Timestamp)
+	binary.BigEndian.PutUint64(buf[:], b.RelTimestamp)
 	if _, err := w.Write(buf[:]); err != nil {
 		return fmt.Errorf("cannot write timestamp: %w", err)
 	}
@@ -404,7 +404,7 @@ func (b *BatchData) decodeTyped(data []byte) error {
 }
 
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
-func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint) error {
+func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genesisTimestamp uint64) error {
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
@@ -415,7 +415,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint) error
 	// BatchV2Prefix
 	span_start := batchV1s[0]
 	span_end := batchV1s[len(batchV1s)-1]
-	b.Timestamp = span_start.Timestamp
+	b.RelTimestamp = span_start.Timestamp - genesisTimestamp
 	b.L1OriginNum = uint64(span_end.EpochNum)
 	b.ParentCheck = make([]byte, 20)
 	copy(b.ParentCheck, span_start.ParentHash[:20])
@@ -476,7 +476,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint) error
 // SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
 // Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
 // Therefore leave each ParentHash field empty
-func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime uint64) ([]BatchV1, error) {
+func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
 	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
 		return nil, errors.New("parent hash mismatch")
@@ -484,7 +484,7 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 	// set only the first batchV1's parent hash
 	batchV1s[0].ParentHash = safeL2Head.Hash
 	for i := 0; i < int(b.BlockCount); i++ {
-		batchV1s[i].Timestamp = safeL2Head.Time + uint64(i+1)*blockTime
+		batchV1s[i].Timestamp = b.RelTimestamp + genesisTimestamp + uint64(i)*blockTime
 	}
 	// first fetch last L2 block in BatchV2
 	var l1OriginBlock *types.Block
