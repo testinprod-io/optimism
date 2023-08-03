@@ -404,7 +404,7 @@ func (b *BatchData) decodeTyped(data []byte) error {
 }
 
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
-func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
+func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint) error {
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
@@ -424,7 +424,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, firstOriginBit uint) error {
 	// BatchV2Payload
 	b.BlockCount = uint64(len(batchV1s))
 	b.OriginBits = new(big.Int)
-	b.OriginBits.SetBit(b.OriginBits, 0, firstOriginBit)
+	b.OriginBits.SetBit(b.OriginBits, 0, originChangedBit)
 	for i := 1; i < len(batchV1s); i++ {
 		bit := uint(0)
 		if batchV1s[i-1].EpochNum < batchV1s[i].EpochNum {
