@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -128,10 +129,81 @@ func TestBatchRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBatchV2Merge(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x7331))
+
+	var batchV1sEmpty []BatchV1
+	var batchV2Empty BatchV2
+	err := batchV2Empty.MergeBatchV1s(batchV1sEmpty, uint(0))
+	require.ErrorContains(t, err, "cannot merge empty batchV1 list")
+
+	blockNum := 1 + rng.Intn(8)
+	var batchV1s []BatchV1
+	for i := 0; i < blockNum; i++ {
+		batchV1 := RandomBatchV1(rng, 1+rng.Intn(8)).BatchV1
+		batchV1s = append(batchV1s, batchV1)
+	}
+	// set invalid tx type to make tx unmarshaling fail
+	batchV1s[0].Transactions[0][0] = 0x33
+
+	var batchV2 BatchV2
+	err = batchV2.MergeBatchV1s(batchV1s, uint(0))
+	require.ErrorContains(t, err, "failed to decode tx")
+}
+
+func TestBatchV2Split(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xcafe))
+
+	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
+	batchV2 := RandomBatchV2(rng).BatchV2
+	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
+	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
+	// recover parentHash
+	var parentHash []byte = append(batchV2.ParentCheck, testutils.RandomData(rng, 12)...)
+	originBitSum := uint64(0)
+	for i := 0; i < int(batchV2.BlockCount); i++ {
+		if batchV2.OriginBits.Bit(i) == 1 {
+			originBitSum++
+		}
+	}
+	fetchL1Block := func(blockNum uint64) (*types.Block, error) {
+		switch blockNum {
+		case batchV2.L1OriginNum:
+			return l1OriginBlock, nil
+		default:
+			randomL1Block, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
+			return randomL1Block, nil
+		}
+	}
+	safeL2head := testutils.RandomL2BlockRef(rng)
+	safeL2head.Hash = common.BytesToHash(parentHash)
+	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
+	l2BlockTime := uint64(2)
+	// safeL2head must be parent so subtract l2BlockTime
+	safeL2head.Time = batchV2.Timestamp - l2BlockTime
+
+	// above datas are sane. Now contaminate with wrong datas
+
+	// set invalid tx type to make tx marshaling fail
+	batchV2.TxDatas[0][0] = 0x33
+	_, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
+
+	// set invalid l1 origin check
+	batchV2.L1OriginCheck = testutils.RandomData(rng, 20)
+	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	require.ErrorContains(t, err, "l1 origin hash mismatch")
+
+	// set invalid parent check
+	batchV2.ParentCheck = testutils.RandomData(rng, 20)
+	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
+	require.ErrorContains(t, err, "parent hash mismatch")
+}
+
 func TestBatchV2SplitMerge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x13371337))
 
-	l1OriginBlock, _ := testutils.RandomBlock(rng, uint64(rng.Intn(8)))
+	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
 	batchV2 := RandomBatchV2(rng).BatchV2
 	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
 	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
