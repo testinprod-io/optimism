@@ -152,9 +152,7 @@ func TestBatchV2Merge(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode tx")
 }
 
-func TestBatchV2SplitValidation(t *testing.T) {
-	rng := rand.New(rand.NewSource(0xcafe))
-
+func prepareSplitBatchValidation(rng *rand.Rand, l2BlockTime uint64) (func(blockNum uint64) (*types.Block, error), uint64, BatchV2, eth.L2BlockRef) {
 	genesisTimeStamp := rng.Uint64()
 	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
 	batchV2 := RandomBatchV2(rng).BatchV2
@@ -177,13 +175,20 @@ func TestBatchV2SplitValidation(t *testing.T) {
 			return randomL1Block, nil
 		}
 	}
+
 	safeL2head := testutils.RandomL2BlockRef(rng)
 	safeL2head.Hash = common.BytesToHash(parentHash)
 	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
-	l2BlockTime := uint64(2)
 	// safeL2head must be parent so subtract l2BlockTime
 	safeL2head.Time = genesisTimeStamp + batchV2.RelTimestamp - l2BlockTime
+	return fetchL1Block, genesisTimeStamp, batchV2, safeL2head
+}
 
+func TestBatchV2SplitValidation(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xcafe))
+
+	l2BlockTime := uint64(2)
+	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatchValidation(rng, l2BlockTime)
 	// above datas are sane. Now contaminate with wrong datas
 
 	// set invalid l1 origin check
@@ -205,35 +210,10 @@ func TestBatchV2SplitValidation(t *testing.T) {
 func TestBatchV2SplitMerge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x13371337))
 
-	genesisTimeStamp := rng.Uint64()
-	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
-	batchV2 := RandomBatchV2(rng).BatchV2
-	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
-	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
-	// recover parentHash
-	var parentHash []byte = append(batchV2.ParentCheck, testutils.RandomData(rng, 12)...)
-	originChangedBit := batchV2.OriginBits.Bit(0)
-	originBitSum := uint64(0)
-	for i := 0; i < int(batchV2.BlockCount); i++ {
-		if batchV2.OriginBits.Bit(i) == 1 {
-			originBitSum++
-		}
-	}
-	fetchL1Block := func(blockNum uint64) (*types.Block, error) {
-		switch blockNum {
-		case batchV2.L1OriginNum:
-			return l1OriginBlock, nil
-		default:
-			randomL1Block, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
-			return randomL1Block, nil
-		}
-	}
-	safeL2head := testutils.RandomL2BlockRef(rng)
-	safeL2head.Hash = common.BytesToHash(parentHash)
-	safeL2head.L1Origin.Number = batchV2.L1OriginNum - originBitSum
 	l2BlockTime := uint64(2)
-	// safeL2head must be parent so subtract l2BlockTime
-	safeL2head.Time = batchV2.RelTimestamp - l2BlockTime
+	fetchL1Block, genesisTimeStamp, batchV2, safeL2head := prepareSplitBatchValidation(rng, l2BlockTime)
+	originChangedBit := batchV2.OriginBits.Bit(0)
+	originBitSum := batchV2.L1OriginNum - safeL2head.L1Origin.Number
 
 	var batchV1s []BatchV1
 	batchV1s, err := batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
