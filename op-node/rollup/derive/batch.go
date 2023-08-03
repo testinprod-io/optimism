@@ -473,7 +473,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	return nil
 }
 
-// SplitBatchV2CheckValidation splits single BatchV2 and initialize BatchV1 lists
+// SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
 // Cannot fill every BatchV1 parent hash
 func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
