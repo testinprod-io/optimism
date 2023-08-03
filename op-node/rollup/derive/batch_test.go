@@ -152,7 +152,7 @@ func TestBatchV2Merge(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode tx")
 }
 
-func TestBatchV2Split(t *testing.T) {
+func TestBatchV2SplitValidation(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xcafe))
 
 	genesisTimeStamp := rng.Uint64()
@@ -186,20 +186,20 @@ func TestBatchV2Split(t *testing.T) {
 
 	// above datas are sane. Now contaminate with wrong datas
 
-	// set invalid tx type to make tx marshaling fail
-	batchV2.TxDatas[0][0] = 0x33
-	_, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
-	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
-
 	// set invalid l1 origin check
 	batchV2.L1OriginCheck = testutils.RandomData(rng, 20)
-	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
+	_, err := batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, "l1 origin hash mismatch")
 
 	// set invalid parent check
 	batchV2.ParentCheck = testutils.RandomData(rng, 20)
-	_, err = batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
+	_, err = batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, "parent hash mismatch")
+
+	// set invalid tx type to make tx marshaling fail
+	batchV2.TxDatas[0][0] = 0x33
+	_, err = batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
+	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
 }
 
 func TestBatchV2SplitMerge(t *testing.T) {
@@ -236,7 +236,7 @@ func TestBatchV2SplitMerge(t *testing.T) {
 	safeL2head.Time = batchV2.RelTimestamp - l2BlockTime
 
 	var batchV1s []BatchV1
-	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
+	batchV1s, err := batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	assert.NoError(t, err)
 
 	var batchV2Merged BatchV2

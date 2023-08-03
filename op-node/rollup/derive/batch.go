@@ -473,16 +473,10 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	return nil
 }
 
-// SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
-// Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
-// Therefore leave each ParentHash field empty
-func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
+// SplitBatchV2CheckValidation splits single BatchV2 and initialize BatchV1 lists
+// Cannot fill every BatchV1 parent hash
+func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
 	batchV1s := make([]BatchV1, b.BlockCount)
-	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
-		return nil, errors.New("parent hash mismatch")
-	}
-	// set only the first batchV1's parent hash
-	batchV1s[0].ParentHash = safeL2Head.Hash
 	for i := 0; i < int(b.BlockCount); i++ {
 		batchV1s[i].Timestamp = b.RelTimestamp + genesisTimestamp + uint64(i)*blockTime
 	}
@@ -493,9 +487,6 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 	l1OriginBlock, err = fetchL1Block(l1OriginBlockNumber)
 	if err != nil {
 		return nil, err
-	}
-	if !bytes.Equal(l1OriginBlock.Hash().Bytes()[:20], b.L1OriginCheck) {
-		return nil, errors.New("l1 origin hash mismatch")
 	}
 	// backward digest leftover L2 blocks
 	for i := int(b.BlockCount) - 1; i >= 0; i-- {
@@ -531,6 +522,25 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 			batchV1s[i].Transactions = append(batchV1s[i].Transactions, encodedTx)
 			idx++
 		}
+	}
+	return batchV1s, nil
+}
+
+// SplitBatchV2CheckValidation splits single BatchV2 and initialize BatchV1 lists and validates ParentCheck and L1OriginCheck
+// Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
+func (b *BatchV2) SplitBatchV2CheckValidation(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
+	batchV1s, err := b.SplitBatchV2(fetchL1Block, blockTime, genesisTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	// set only the first batchV1's parent hash
+	batchV1s[0].ParentHash = safeL2Head.Hash
+	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
+		return nil, errors.New("parent hash mismatch")
+	}
+	l1OriginBlockHash := batchV1s[len(batchV1s)-1].EpochHash
+	if !bytes.Equal(l1OriginBlockHash[:20], b.L1OriginCheck) {
+		return nil, errors.New("l1 origin hash mismatch")
 	}
 	return batchV1s, nil
 }
