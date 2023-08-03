@@ -153,13 +153,10 @@ func TestBatchV2MergeSplit(t *testing.T) {
 	l2BlockTime := uint64(2)
 	// safeL2head must be parent so subtract l2BlockTime
 	safeL2head.Time = batchV2.Timestamp - l2BlockTime
+
 	var batchV1s []BatchV1
 	batchV1s, err := batchV2.SplitBatchV2(fetchL1Block, safeL2head, l2BlockTime)
 	assert.NoError(t, err)
-
-	// batchV1s does not have parent hash
-	// manually include first element's parent hash
-	batchV1s[0].ParentHash = common.BytesToHash(parentHash)
 
 	var batchV2Merged BatchV2
 	err = batchV2Merged.MergeBatchV1s(batchV1s, firstOriginBit)
