@@ -128,7 +128,7 @@ func TestBatchRoundTrip(t *testing.T) {
 	}
 }
 
-func TestBatchV2MergeSplit(t *testing.T) {
+func TestBatchV2SplitMerge(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x13371337))
 
 	l1OriginBlock, _ := testutils.RandomBlock(rng, uint64(rng.Intn(8)))
