@@ -32,8 +32,6 @@ import (
 // batchV2 := BatchV2Type ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data_headers ++ tx_data ++ tx_sigs
-//
-// len(prefix) = 8 bytes(rel_timestamp) + 8 bytes(l1_origin_num) + 20 bytes(parent_check) + 20 bytes(l1_origin_check)
 
 // encodeBufferPool holds temporary encoder buffers for batch encoding
 var encodeBufferPool = sync.Pool{
@@ -53,8 +51,6 @@ type BatchV1 struct {
 	// no feeRecipient address input, all fees go to a L2 contract
 	Transactions []hexutil.Bytes
 }
-
-const BatchV2PrefixLen = 8 + 8 + 20 + 20
 
 type BatchV2Prefix struct {
 	RelTimestamp  uint64
@@ -99,21 +95,28 @@ func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 	}
 }
 
-// DecodePrefix parses data into b.BatchV2Prefix from data
-func (b *BatchV2) DecodePrefix(data []byte) error {
-	if len(data) != BatchV2PrefixLen {
-		return fmt.Errorf("invalid prefix length: %d", len(data))
+// DecodePrefix parses data into b.BatchV2Prefix from data and returns consumed byte
+func (b *BatchV2) DecodePrefix(r *bytes.Reader) error {
+	relTimestamp, err := binary.ReadUvarint(r)
+	if err != nil {
+		return fmt.Errorf("failed to read rel timestamp: %w", err)
 	}
-	offset := uint32(0)
-	b.RelTimestamp = binary.BigEndian.Uint64(data[offset : offset+8])
-	offset += 8
-	b.L1OriginNum = binary.BigEndian.Uint64(data[offset : offset+8])
-	offset += 8
+	b.RelTimestamp = relTimestamp
+	L1OriginNum, err := binary.ReadUvarint(r)
+	if err != nil {
+		return fmt.Errorf("failed to read l1 origin num: %w", err)
+	}
+	b.L1OriginNum = L1OriginNum
 	b.ParentCheck = make([]byte, 20)
-	copy(b.ParentCheck, data[offset:offset+20])
-	offset += 20
+	_, err = io.ReadFull(r, b.ParentCheck)
+	if err != nil {
+		return fmt.Errorf("failed to read parent check: %w", err)
+	}
 	b.L1OriginCheck = make([]byte, 20)
-	copy(b.L1OriginCheck, data[offset:offset+20])
+	_, err = io.ReadFull(r, b.L1OriginCheck)
+	if err != nil {
+		return fmt.Errorf("failed to read l1 origin check: %w", err)
+	}
 	return nil
 }
 
@@ -134,12 +137,11 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 }
 
 // DecodePayload parses data into b.BatchV2Payload from data
-func (b *BatchV2) DecodePayload(data []byte) error {
-	r := bytes.NewReader(data)
+func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
 	// TODO: check block count is not too large
 	if err != nil {
-		return fmt.Errorf("failed to read block count var int: %w", err)
+		return fmt.Errorf("failed to read block count: %w", err)
 	}
 	originBitBufferLen := blockCount / 8
 	if blockCount%8 != 0 {
@@ -211,23 +213,24 @@ func (b *BatchV2) DecodePayload(data []byte) error {
 
 // DecodeBytes parses data into b from data
 func (b *BatchV2) DecodeBytes(data []byte) error {
-	if err := b.DecodePrefix(data[:BatchV2PrefixLen]); err != nil {
+	r := bytes.NewReader(data)
+	if err := b.DecodePrefix(r); err != nil {
 		return err
 	}
-	if err := b.DecodePayload(data[BatchV2PrefixLen:]); err != nil {
+	if err := b.DecodePayload(r); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (b *BatchV2) EncodePrefix(w io.Writer) error {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], b.RelTimestamp)
-	if _, err := w.Write(buf[:]); err != nil {
-		return fmt.Errorf("cannot write timestamp: %w", err)
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], b.RelTimestamp)
+	if _, err := w.Write(buf[:n]); err != nil {
+		return fmt.Errorf("cannot write rel timestamp: %w", err)
 	}
-	binary.BigEndian.PutUint64(buf[:], b.L1OriginNum)
-	if _, err := w.Write(buf[:]); err != nil {
+	n = binary.PutUvarint(buf[:], b.L1OriginNum)
+	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write l1 origin number: %w", err)
 	}
 	if _, err := w.Write(b.ParentCheck); err != nil {
