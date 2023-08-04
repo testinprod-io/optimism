@@ -95,7 +95,7 @@ func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 	}
 }
 
-// DecodePrefix parses data into b.BatchV2Prefix from data and returns consumed byte
+// DecodePrefix parses data into b.BatchV2Prefix
 func (b *BatchV2) DecodePrefix(r *bytes.Reader) error {
 	relTimestamp, err := binary.ReadUvarint(r)
 	if err != nil {
@@ -136,7 +136,7 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 	b.OriginBits = originBits
 }
 
-// DecodePayload parses data into b.BatchV2Payload from data
+// DecodePayload parses data into b.BatchV2Payload
 func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
 	// TODO: check block count is not too large
