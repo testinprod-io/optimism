@@ -8,10 +8,10 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -19,6 +19,7 @@ type Config struct {
 	Start, End   uint64
 	ChainID      *big.Int
 	OutDirectory string
+	Parallel     uint64
 }
 
 // Batches fetches blocks in the given block range (inclusive to exclusive)
@@ -27,12 +28,23 @@ func Batches(client *ethclient.Client, config Config) error {
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
-	number := new(big.Int).SetUint64(config.Start)
-	for i := config.Start; i < config.End; i++ {
-		if err := fetchBatchesPerBlock(client, number, config); err != nil {
-			return err
+	parallel := config.Parallel
+
+	var wg sync.WaitGroup
+	for i := config.Start; i < config.End; i += parallel {
+		end := i + parallel
+		if end > config.End {
+			end = config.End
 		}
-		number = number.Add(number, common.Big1)
+		for j := i; j < end; j++ {
+			wg.Add(1)
+			number := new(big.Int).SetUint64(j)
+			go func() {
+				defer wg.Done()
+				fetchBatchesPerBlock(client, number, config)
+			}()
+		}
+		wg.Wait()
 	}
 	return nil
 }

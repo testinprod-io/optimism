@@ -42,6 +42,11 @@ func main() {
 					Usage:    "L2 RPC URL",
 					EnvVars:  []string{"L2_RPC"},
 				},
+				&cli.IntFlag{
+					Name:  "concurrent-requests",
+					Value: 10,
+					Usage: "Concurrency level when fetching L2",
+				},
 			},
 			Action: func(cliCtx *cli.Context) error {
 				client, err := ethclient.Dial(cliCtx.String("l2"))
@@ -59,6 +64,7 @@ func main() {
 					End:          uint64(cliCtx.Int("end")),
 					ChainID:      chainID,
 					OutDirectory: cliCtx.String("out"),
+					Parallel:     uint64(cliCtx.Int("concurrent-requests")),
 				}
 				if err := fetch.Batches(client, config); err != nil {
 					return err
