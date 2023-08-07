@@ -44,6 +44,8 @@ type BatchQueue struct {
 
 	// batches in order of when we've first seen them, grouped by L2 timestamp
 	batches map[uint64][]*BatchWithL1InclusionBlock
+
+	nextSpan []*BatchV1
 }
 
 // NewBatchQueue creates a BatchQueue, which should be Reset(origin) before use.
@@ -59,7 +61,13 @@ func (bq *BatchQueue) Origin() eth.L1BlockRef {
 	return bq.prev.Origin()
 }
 
-func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*BatchData, error) {
+func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*BatchV1, error) {
+	if len(bq.nextSpan) > 0 {
+		nextBatch := bq.nextSpan[0]
+		bq.nextSpan = bq.nextSpan[1:]
+		return nextBatch, nil
+	}
+
 	// Note: We use the origin that we will have to determine if it's behind. This is important
 	// because it's the future origin that gets saved into the l1Blocks array.
 	// We always update the origin of this stage if it is not the same so after the update code
@@ -111,7 +119,18 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	} else if err != nil {
 		return nil, err
 	}
-	return batch, nil
+	if batch.BatchType == BatchV1Type {
+		return &batch.BatchV1, nil
+	} else if batch.BatchType == BatchV2Type {
+		nextSpan, err := batch.SplitBatchV2(bq.l1Blocks)
+		if err != nil {
+			return nil, err
+		}
+		nextBatch := nextSpan[0]
+		bq.nextSpan = nextSpan[1:]
+		return nextBatch, nil
+	}
+	return nil, nil
 }
 
 func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.SystemConfig) error {
@@ -124,6 +143,7 @@ func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.Syst
 	// throw out this block.
 	bq.l1Blocks = bq.l1Blocks[:0]
 	bq.l1Blocks = append(bq.l1Blocks, base)
+	bq.nextSpan = bq.nextSpan[:0]
 	return io.EOF
 }
 

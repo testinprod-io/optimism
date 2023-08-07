@@ -3,6 +3,7 @@ package derive
 import (
 	"bytes"
 	"context"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"io"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -16,6 +17,7 @@ import (
 // must be tagged with an L1 inclusion block to be passed to the batch queue.
 type ChannelInReader struct {
 	log log.Logger
+	cfg *rollup.Config
 
 	nextBatchFn func() (BatchWithL1InclusionBlock, error)
 
@@ -27,9 +29,10 @@ type ChannelInReader struct {
 var _ ResettableStage = (*ChannelInReader)(nil)
 
 // NewChannelInReader creates a ChannelInReader, which should be Reset(origin) before use.
-func NewChannelInReader(log log.Logger, prev *ChannelBank, metrics Metrics) *ChannelInReader {
+func NewChannelInReader(log log.Logger, cfg *rollup.Config, prev *ChannelBank, metrics Metrics) *ChannelInReader {
 	return &ChannelInReader{
 		log:     log,
+		cfg:     cfg,
 		prev:    prev,
 		metrics: metrics,
 	}
@@ -83,6 +86,9 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (*BatchData, error) {
 		cr.log.Warn("failed to read batch from channel reader, skipping to next channel now", "err", err)
 		cr.NextChannel()
 		return nil, NotEnoughData
+	}
+	if batch.Batch.BatchType == BatchV2Type {
+		batch.Batch.BatchV2.DeriveBatchV2Fields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
 	}
 	return batch.Batch, nil
 }
