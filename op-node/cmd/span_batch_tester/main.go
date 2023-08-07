@@ -33,7 +33,7 @@ func main() {
 				},
 				&cli.StringFlag{
 					Name:  "out",
-					Value: "/tmp/batch_encoder/batches_v0_cache",
+					Value: "/tmp/span_batch_tester/batches_v0_cache",
 					Usage: "Cache directory for the found v0 batches",
 				},
 				&cli.StringFlag{
