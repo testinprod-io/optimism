@@ -110,7 +110,7 @@ func processFrames(id derive.ChannelID, frames []FrameWithMetadata) ChannelWithM
 					fmt.Printf("Error reading batch for channel %v. Err: %v\n", id.String(), err)
 					invalidBatches = true
 				} else {
-					batches = append(batches, batch.Batch.BatchV1)
+					batches = append(batches, batch.BatchV1)
 				}
 			}
 		} else {
