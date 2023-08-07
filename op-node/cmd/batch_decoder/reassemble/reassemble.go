@@ -103,7 +103,7 @@ func processFrames(id derive.ChannelID, frames []FrameWithMetadata) ChannelWithM
 	var batches []derive.BatchV1
 	invalidBatches := false
 	if ch.IsReady() {
-		br, err := derive.BatchReader(ch.Reader(), eth.L1BlockRef{})
+		br, err := derive.BatchReader(ch.Reader())
 		if err == nil {
 			for batch, err := br(); err != io.EOF; batch, err = br() {
 				if err != nil {

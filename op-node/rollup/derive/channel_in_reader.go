@@ -19,7 +19,7 @@ type ChannelInReader struct {
 	log log.Logger
 	cfg *rollup.Config
 
-	nextBatchFn func() (BatchWithL1InclusionBlock, error)
+	nextBatchFn func() (*BatchData, error)
 
 	prev *ChannelBank
 
@@ -44,7 +44,7 @@ func (cr *ChannelInReader) Origin() eth.L1BlockRef {
 
 // TODO: Take full channel for better logging
 func (cr *ChannelInReader) WriteChannel(data []byte) error {
-	if f, err := BatchReader(bytes.NewBuffer(data), cr.Origin()); err == nil {
+	if f, err := BatchReader(bytes.NewBuffer(data)); err == nil {
 		cr.nextBatchFn = f
 		cr.metrics.RecordChannelInputBytes(len(data))
 		return nil
@@ -87,10 +87,10 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (*BatchData, error) {
 		cr.NextChannel()
 		return nil, NotEnoughData
 	}
-	if batch.Batch.BatchType == BatchV2Type {
-		batch.Batch.BatchV2.DeriveBatchV2Fields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
+	if batch.BatchType == BatchV2Type {
+		batch.BatchV2.DeriveBatchV2Fields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
 	}
-	return batch.Batch, nil
+	return batch, nil
 }
 
 func (cr *ChannelInReader) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.SystemConfig) error {
