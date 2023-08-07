@@ -60,11 +60,11 @@ func main() {
 					log.Fatal(err)
 				}
 				config := fetch.Config{
-					Start:        uint64(cliCtx.Int("start")),
-					End:          uint64(cliCtx.Int("end")),
-					ChainID:      chainID,
-					OutDirectory: cliCtx.String("out"),
-					Parallel:     uint64(cliCtx.Int("concurrent-requests")),
+					Start:              uint64(cliCtx.Int("start")),
+					End:                uint64(cliCtx.Int("end")),
+					ChainID:            chainID,
+					OutDirectory:       cliCtx.String("out"),
+					ConcurrentRequests: uint64(cliCtx.Int("concurrent-requests")),
 				}
 				if err := fetch.Batches(client, config); err != nil {
 					return err

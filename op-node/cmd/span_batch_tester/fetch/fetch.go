@@ -16,10 +16,10 @@ import (
 )
 
 type Config struct {
-	Start, End   uint64
-	ChainID      *big.Int
-	OutDirectory string
-	Parallel     uint64
+	Start, End         uint64
+	ChainID            *big.Int
+	OutDirectory       string
+	ConcurrentRequests uint64
 }
 
 // Batches fetches blocks in the given block range (inclusive to exclusive)
@@ -28,11 +28,11 @@ func Batches(client *ethclient.Client, config Config) error {
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
-	parallel := config.Parallel
+	concurrentRequests := config.ConcurrentRequests
 
 	var wg sync.WaitGroup
-	for i := config.Start; i < config.End; i += parallel {
-		end := i + parallel
+	for i := config.Start; i < config.End; i += concurrentRequests {
+		end := i + concurrentRequests
 		if end > config.End {
 			end = config.End
 		}
