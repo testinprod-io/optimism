@@ -8,6 +8,8 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
@@ -32,36 +34,50 @@ type TransactionWithMetadata struct {
 }
 
 type Config struct {
-	Start, End   uint64
-	ChainID      *big.Int
-	BatchInbox   common.Address
-	BatchSenders map[common.Address]struct{}
-	OutDirectory string
+	Start, End         uint64
+	ChainID            *big.Int
+	BatchInbox         common.Address
+	BatchSenders       map[common.Address]struct{}
+	OutDirectory       string
+	ConcurrentRequests uint64
 }
 
 // Batches fetches & stores all transactions sent to the batch inbox address in
 // the given block range (inclusive to exclusive).
 // The transactions & metadata are written to the out directory.
-func Batches(client *ethclient.Client, config Config) (totalValid, totalInvalid int) {
+func Batches(client *ethclient.Client, config Config) (totalValid, totalInvalid uint64) {
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
-	number := new(big.Int).SetUint64(config.Start)
 	signer := types.LatestSignerForChainID(config.ChainID)
-	for i := config.Start; i < config.End; i++ {
-		valid, invalid := fetchBatchesPerBlock(client, number, signer, config)
-		totalValid += valid
-		totalInvalid += invalid
-		number = number.Add(number, common.Big1)
+	concurrentRequests := config.ConcurrentRequests
+
+	var wg sync.WaitGroup
+	for i := config.Start; i < config.End; i += concurrentRequests {
+		end := i + concurrentRequests
+		if end > config.End {
+			end = config.End
+		}
+		for j := i; j < end; j++ {
+			wg.Add(1)
+			number := j
+			go func() {
+				defer wg.Done()
+				valid, invalid := fetchBatchesPerBlock(client, number, signer, config)
+				atomic.AddUint64(&totalValid, valid)
+				atomic.AddUint64(&totalInvalid, invalid)
+			}()
+		}
+		wg.Wait()
 	}
 	return
 }
 
 // fetchBatchesPerBlock gets a block & the parses all of the transactions in the block.
-func fetchBatchesPerBlock(client *ethclient.Client, number *big.Int, signer types.Signer, config Config) (validBatchCount, invalidBatchCount int) {
+func fetchBatchesPerBlock(client *ethclient.Client, number uint64, signer types.Signer, config Config) (validBatchCount, invalidBatchCount uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	block, err := client.BlockByNumber(ctx, number)
+	block, err := client.BlockByNumber(ctx, new(big.Int).SetUint64(number))
 	if err != nil {
 		log.Fatal(err)
 	}
