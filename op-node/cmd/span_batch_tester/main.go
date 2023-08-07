@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
@@ -72,6 +73,29 @@ func main() {
 				fmt.Printf("Fetched v0 batches in range [%v,%v).\n", config.Start, config.End)
 				fmt.Printf("Fetch Config: Chain ID: %v.\n", config.ChainID)
 				return nil
+			},
+		},
+		{
+			Name:  "convert",
+			Usage: "Converts channel with v0 batch to channel with single v1 batch",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "in",
+					Value: "/tmp/span_batch_tester/channel_cache",
+					Usage: "Cache directory for the found channels",
+				},
+				&cli.StringFlag{
+					Name:  "out",
+					Value: "/tmp/span_batch_tester/converted_channel_cache",
+					Usage: "Cache directory for the converted channels",
+				},
+			},
+			Action: func(cliCtx *cli.Context) error {
+				config := convert.Config{
+					InDirectory: cliCtx.String("in"),
+					OutDirectory: cliCtx.String("out"),
+				}
+				return convert.Convert(config)
 			},
 		},
 	}
