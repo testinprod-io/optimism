@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -25,6 +26,7 @@ type Config struct {
 
 type BatchV2WithMetadata struct {
 	BatchV2    derive.BatchV2
+	BatchV2Hash []byte
 	L1StartNum uint64
 	L1EndNum   uint64
 	L2StartNum uint64
@@ -108,8 +110,14 @@ func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata
 	if err := batchV2.MergeBatchV1s(chm.Batches, originChangedBit, genesisTimestamp); err != nil {
 		log.Fatal(err)
 	}
+	batchV2Encoded, err := batchV2.EncodeBytes()
+	if err != nil {
+		log.Fatal(err)
+	}
+	batchV2Hash := crypto.Keccak256(batchV2Encoded)
 	return BatchV2WithMetadata{
 		BatchV2:    batchV2,
+		BatchV2Hash: batchV2Hash,
 		L2StartNum: startNum,
 		L2EndNum:   startNum + uint64(len(chm.Batches)) - 1,
 		L1StartNum: uint64(chm.Batches[0].EpochNum),
