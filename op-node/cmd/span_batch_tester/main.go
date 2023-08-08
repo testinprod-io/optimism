@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -87,6 +86,12 @@ func main() {
 					Usage:    "L2 RPC URL",
 					EnvVars:  []string{"L2_RPC"},
 				},
+				&cli.Uint64Flag{
+					Name:     "genesis-timestamp",
+					Required: true,
+					Usage:    "genesis timestamp",
+					EnvVars:  []string{"GENESIS_TIMESTAMP"},
+				},
 				&cli.StringFlag{
 					Name:  "in",
 					Value: "/tmp/span_batch_tester/channel_cache",
@@ -103,22 +108,10 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				// TODO: fix this(maybe update spec)
-				// use first block as genesis because genesis timestamp is zero
-				genesisBlock, err := client.BlockByNumber(ctx, common.Big1)
-				if err != nil {
-					return err
-				}
-				genesisTimestamp := genesisBlock.Time()
-
-				fmt.Println("genesis: ", genesisTimestamp)
-
 				config := convert.Config{
 					InDirectory:      cliCtx.String("in"),
 					OutDirectory:     cliCtx.String("out"),
-					GenesisTimestamp: genesisTimestamp,
+					GenesisTimestamp: cliCtx.Uint64("genesis-timestamp"),
 				}
 				convert.Convert(client, config)
 				return nil
