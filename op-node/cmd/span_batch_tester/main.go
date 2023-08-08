@@ -122,12 +122,12 @@ func main() {
 			Usage: "Analyze span batch",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:  "in_channel",
+					Name:  "in-channel",
 					Value: "/tmp/span_batch_tester/channel_cache",
 					Usage: "Cache directory for the found channels",
 				},
 				&cli.StringFlag{
-					Name:  "in_span_batch",
+					Name:  "in-span-batch",
 					Value: "/tmp/span_batch_tester/span_batch_cache",
 					Usage: "Cache directory for the converted batch",
 				},
@@ -139,8 +139,8 @@ func main() {
 			},
 			Action: func(cliCtx *cli.Context) error {
 				config := analyze.Config{
-					InChannelDirectory:            cliCtx.String("in_channel"),
-					InSpanBatchDirectoryDirectory: cliCtx.String("in_span_batch"),
+					InChannelDirectory:            cliCtx.String("in-channel"),
+					InSpanBatchDirectoryDirectory: cliCtx.String("in-span-batch"),
 					OutDirectory:                  cliCtx.String("out"),
 				}
 				analyze.Analyze(config)
