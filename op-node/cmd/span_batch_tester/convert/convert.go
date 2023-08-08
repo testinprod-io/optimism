@@ -150,7 +150,7 @@ func Convert(client *ethclient.Client, config Config) {
 		if err := writeBatch(bm, filename); err != nil {
 			log.Fatal(err)
 		}
-		L2BlockCnt := bm.L2EndNum - bm.L2StartNum
+		L2BlockCnt := bm.L2EndNum - bm.L2StartNum + 1
 		logPrefix := fmt.Sprintf("[%d/%d]", idx+1, numChannels)
 		fmt.Printf(logPrefix+" Channel ID: %s, L2StartNum: %d, L2EndNum: %d, L2BlockCnt, %d\n",
 			channel.ID.String(), bm.L2StartNum, bm.L2EndNum, L2BlockCnt)
