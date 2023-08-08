@@ -78,7 +78,7 @@ func main() {
 		},
 		{
 			Name:  "convert",
-			Usage: "Converts channel with v0 batch to channel with single v1 batch",
+			Usage: "Converts channel with v0 batch to channel with single span batch",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "l2",
