@@ -89,7 +89,7 @@ func main() {
 				&cli.Uint64Flag{
 					Name:     "genesis-timestamp",
 					Required: true,
-					Usage:    "genesis timestamp",
+					Usage:    "l2 genesis bedrock timestamp",
 					EnvVars:  []string{"GENESIS_TIMESTAMP"},
 				},
 				&cli.StringFlag{
