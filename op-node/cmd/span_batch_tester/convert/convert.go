@@ -25,12 +25,12 @@ type Config struct {
 }
 
 type BatchV2WithMetadata struct {
-	BatchV2    derive.BatchV2
+	BatchV2     derive.BatchV2
 	BatchV2Hash []byte
-	L1StartNum uint64
-	L1EndNum   uint64
-	L2StartNum uint64
-	L2EndNum   uint64
+	L1StartNum  uint64
+	L1EndNum    uint64
+	L2StartNum  uint64
+	L2EndNum    uint64
 }
 
 func LoadChannels(dir string) []reassemble.ChannelWithMetadata {
@@ -41,13 +41,13 @@ func LoadChannels(dir string) []reassemble.ChannelWithMetadata {
 	var out []reassemble.ChannelWithMetadata
 	for _, file := range files {
 		f := path.Join(dir, file.Name())
-		chm := loadChannelFile(f)
+		chm := LoadChannelFile(f)
 		out = append(out, chm)
 	}
 	return out
 }
 
-func loadChannelFile(file string) reassemble.ChannelWithMetadata {
+func LoadChannelFile(file string) reassemble.ChannelWithMetadata {
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
@@ -116,12 +116,12 @@ func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata
 	}
 	batchV2Hash := crypto.Keccak256(batchV2Encoded)
 	return BatchV2WithMetadata{
-		BatchV2:    batchV2,
+		BatchV2:     batchV2,
 		BatchV2Hash: batchV2Hash,
-		L2StartNum: startNum,
-		L2EndNum:   startNum + uint64(len(chm.Batches)) - 1,
-		L1StartNum: uint64(chm.Batches[0].EpochNum),
-		L1EndNum:   uint64(chm.Batches[len(chm.Batches)-1].EpochNum),
+		L2StartNum:  startNum,
+		L2EndNum:    startNum + uint64(len(chm.Batches)) - 1,
+		L1StartNum:  uint64(chm.Batches[0].EpochNum),
+		L1EndNum:    uint64(chm.Batches[len(chm.Batches)-1].EpochNum),
 	}
 }
 
