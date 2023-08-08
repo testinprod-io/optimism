@@ -24,7 +24,7 @@ type Config struct {
 	GenesisTimestamp uint64
 }
 
-type BatchV2WithMetadata struct {
+type SpanBatchWithMetadata struct {
 	BatchV2     derive.BatchV2
 	BatchV2Hash []byte
 	L1StartNum  uint64
@@ -96,7 +96,7 @@ func GetOriginChangedBit(client *ethclient.Client, l2BlockNum uint64, l1OriginHa
 }
 
 // ConvertChannel initialize BatchV2 using BatchV1s per channel
-func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) BatchV2WithMetadata {
+func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) SpanBatchWithMetadata {
 	startNum, err := GetL2StartNum(client, chm)
 	if err != nil {
 		log.Fatal(err)
@@ -115,7 +115,7 @@ func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata
 		log.Fatal(err)
 	}
 	batchV2Hash := crypto.Keccak256(batchV2Encoded)
-	return BatchV2WithMetadata{
+	return SpanBatchWithMetadata{
 		BatchV2:     batchV2,
 		BatchV2Hash: batchV2Hash,
 		L2StartNum:  startNum,
@@ -125,7 +125,7 @@ func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata
 	}
 }
 
-func writeBatch(bm BatchV2WithMetadata, filename string) error {
+func writeBatch(bm SpanBatchWithMetadata, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatal(err)
