@@ -47,6 +47,7 @@ Example logs(on mainnet):
 ````
 
 Example logs(on goerli):
+
 ```
 [1/143] Channel ID: 0012531bbbd7f87b3f5dc39b9ffa1b39, L1SizeReductionPercentage: 1.551085 %
 [2/143] Channel ID: 001d0b74e42e5748c2e151503de38c6a, L1SizeReductionPercentage: 14.540396 %
@@ -64,7 +65,8 @@ Example logs(on goerli):
 [14/143] Channel ID: 0157f7cb58119647361444bf6bb9ae57, L1SizeReductionPercentage: 0.721008 %
 ...
 ```
-Percentage spike is strange. Need to sanity check.
+
+Percentage spike is strange and only occurs in goerli. Need to sanity check.
 
 
 Example output of result json. `091d4dc2bd07eb9043cc451bb6128b50` is channel ID:
