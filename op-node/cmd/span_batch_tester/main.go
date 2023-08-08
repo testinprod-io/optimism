@@ -93,8 +93,8 @@ func main() {
 				},
 				&cli.StringFlag{
 					Name:  "out",
-					Value: "/tmp/span_batch_tester/converted_channel_cache",
-					Usage: "Cache directory for the converted channels",
+					Value: "/tmp/span_batch_tester/batches_v1_cache",
+					Usage: "Cache directory for the converted batch",
 				},
 			},
 			Action: func(cliCtx *cli.Context) error {
@@ -115,11 +115,12 @@ func main() {
 				fmt.Println("genesis: ", genesisTimestamp)
 
 				config := convert.Config{
-					InDirectory: cliCtx.String("in"),
-					OutDirectory: cliCtx.String("out"),
+					InDirectory:      cliCtx.String("in"),
+					OutDirectory:     cliCtx.String("out"),
 					GenesisTimestamp: genesisTimestamp,
 				}
-				return convert.Convert(config)
+				convert.Convert(client, config)
+				return nil
 			},
 		},
 	}

@@ -1,16 +1,20 @@
 package convert
 
 import (
-	"bytes"
-	"compress/zlib"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Config struct {
@@ -19,9 +23,12 @@ type Config struct {
 	GenesisTimestamp uint64
 }
 
-type ChannelWithConversion struct {
-	reassemble.ChannelWithMetadata
-	BatchV2 derive.BatchV2
+type BatchV2WithMetadata struct {
+	BatchV2    derive.BatchV2
+	L1StartNum uint64
+	L1EndNum   uint64
+	L2StartNum uint64
+	L2EndNum   uint64
 }
 
 func LoadChannels(dir string) []reassemble.ChannelWithMetadata {
@@ -52,48 +59,92 @@ func loadChannelFile(file string) reassemble.ChannelWithMetadata {
 	return chm
 }
 
-func ConvertChannel(chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) {
-	framesDataLen := 0
-	for _, frame := range chm.Frames {
-		framesDataLen += len(frame.Frame.Data)
+// GetL2StartNum returns L2 block start number per channel
+func GetL2StartNum(client *ethclient.Client, chm reassemble.ChannelWithMetadata) (uint64, error) {
+	if len(chm.Batches) == 0 {
+		return 0, errors.New("channel is empty")
 	}
-	fmt.Println("number of frames: ", len(chm.Frames))
-	fmt.Println("number of frame data sum(zlib): ", framesDataLen)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	startParent, err := client.BlockByHash(ctx, chm.Batches[0].ParentHash)
+	if err != nil {
+		return 0, err
+	}
+	startNum := startParent.NumberU64() + 1
+	return startNum, nil
+}
 
-	// TODO: get real value using L2
-	originChangedBit := uint(1)
+// GetOriginChangedBit returns bit indicating L1Origin has changed for given l2 block number compared to its parent
+func GetOriginChangedBit(client *ethclient.Client, l2BlockNum uint64, l1OriginHash common.Hash) (uint, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
+	parentBlock, err := client.BlockByNumber(ctx, new(big.Int).SetUint64(l2BlockNum-1))
+	if err != nil {
+		return 0, err
+	}
+	batch, _, err := derive.BlockToBatch(parentBlock)
+	if err != nil {
+		return 0, err
+	}
+	if batch.BatchV1.EpochHash == l1OriginHash {
+		return 0, nil
+	}
+	return 1, nil
+}
+
+// ConvertChannel initialize BatchV2 using BatchV1s per channel
+func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) BatchV2WithMetadata {
+	startNum, err := GetL2StartNum(client, chm)
+	if err != nil {
+		log.Fatal(err)
+	}
+	l1OriginHash := chm.Batches[0].EpochHash
+	originChangedBit, err := GetOriginChangedBit(client, startNum, l1OriginHash)
+	if err != nil {
+		log.Fatal(err)
+	}
 	var batchV2 derive.BatchV2
 	if err := batchV2.MergeBatchV1s(chm.Batches, originChangedBit, genesisTimestamp); err != nil {
 		log.Fatal(err)
 	}
-
-	enc, err := batchV2.EncodeBytes()
-	if err != nil {
-		log.Fatal(err)
+	return BatchV2WithMetadata{
+		BatchV2:    batchV2,
+		L2StartNum: startNum,
+		L2EndNum:   startNum + uint64(len(chm.Batches)) - 1,
+		L1StartNum: uint64(chm.Batches[0].EpochNum),
+		L1EndNum:   uint64(chm.Batches[len(chm.Batches)-1].EpochNum),
 	}
-	fmt.Println("batchV2 marshal size(not zlibbed): ", len(enc))
-	var b bytes.Buffer
-	w, err := zlib.NewWriterLevel(&b, zlib.BestCompression)
-	if err != nil {
-		log.Fatal(err)
-	}
-	w.Write(enc)
-	w.Close()
-
-	fmt.Println("batchV2 marshal size(zlib): ", len(b.Bytes()))
-
-	percent := 100.0 * (1.0 - float64(len(b.Bytes()))/float64(framesDataLen))
-	fmt.Println("percent: ", percent)
 }
 
-func Convert(config Config) error {
+func writeBatch(bm BatchV2WithMetadata, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	enc := json.NewEncoder(file)
+	return enc.Encode(bm)
+}
+
+func Convert(client *ethclient.Client, config Config) {
+	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
+		log.Fatal(err)
+	}
 	channels := LoadChannels(config.InDirectory)
-	for _, channel := range channels {
+	numChannels := len(channels)
+	for idx, channel := range channels {
 		if !channel.IsReady {
 			continue
 		}
-		ConvertChannel(channel, config.GenesisTimestamp)
+		bm := ConvertChannel(client, channel, config.GenesisTimestamp)
+		filename := path.Join(config.OutDirectory, fmt.Sprintf("%s.json", channel.ID.String()))
+		if err := writeBatch(bm, filename); err != nil {
+			log.Fatal(err)
+		}
+		L2BlockCnt := bm.L2EndNum - bm.L2StartNum
+		logPrefix := fmt.Sprintf("[%d/%d]", idx+1, numChannels)
+		fmt.Printf(logPrefix+" Channel ID: %s, L2StartNum: %d, L2EndNum: %d, L2BlockCnt, %d\n",
+			channel.ID.String(), bm.L2StartNum, bm.L2EndNum, L2BlockCnt)
 	}
-	return nil
 }
