@@ -139,9 +139,9 @@ func main() {
 			},
 			Action: func(cliCtx *cli.Context) error {
 				config := analyze.Config{
-					InChannelDirectory:            cliCtx.String("in-channel"),
-					InSpanBatchDirectoryDirectory: cliCtx.String("in-span-batch"),
-					OutDirectory:                  cliCtx.String("out"),
+					InChannelDirectory:   cliCtx.String("in-channel"),
+					InSpanBatchDirectory: cliCtx.String("in-span-batch"),
+					OutDirectory:         cliCtx.String("out"),
 				}
 				analyze.Analyze(config)
 				return nil
