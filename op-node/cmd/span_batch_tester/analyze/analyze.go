@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Config struct {
@@ -49,7 +51,6 @@ func LoadChannelIDs(config Config) []string {
 }
 
 func LoadSpanBatch(file string) convert.SpanBatchWithMetadata {
-	fmt.Println(file)
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
@@ -60,11 +61,20 @@ func LoadSpanBatch(file string) convert.SpanBatchWithMetadata {
 	if err := dec.Decode(&sbm); err != nil {
 		log.Fatalf("Failed to decode %v. Err: %v\n", file, err)
 	}
+	batchV2Encoded, err := sbm.BatchV2.EncodeBytes()
+	if err != nil {
+		log.Fatal(err)
+	}
+	batchV2Hash := crypto.Keccak256(batchV2Encoded)
+	if !bytes.Equal(batchV2Hash, sbm.BatchV2Hash) {
+		log.Fatal("Span batch data sanity check failure")
+	}
+
 	return sbm
 }
 
-func CompareBatches(channel *reassemble.ChannelWithMetadata, sbm *convert.SpanBatchWithMetadata) {
-	// TODO
+func CompareBatches(channel *reassemble.ChannelWithMetadata, sbm *convert.SpanBatchWithMetadata) *Result{
+	return nil
 }
 
 func Analyze(config Config) {
