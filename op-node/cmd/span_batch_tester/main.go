@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
 	"github.com/ethereum/go-ethereum/common"
@@ -93,7 +94,7 @@ func main() {
 				},
 				&cli.StringFlag{
 					Name:  "out",
-					Value: "/tmp/span_batch_tester/batches_v1_cache",
+					Value: "/tmp/span_batch_tester/span_batch_cache",
 					Usage: "Cache directory for the converted batch",
 				},
 			},
@@ -120,6 +121,36 @@ func main() {
 					GenesisTimestamp: genesisTimestamp,
 				}
 				convert.Convert(client, config)
+				return nil
+			},
+		},
+		{
+			Name:  "analyze",
+			Usage: "Analyze span batch",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "in_channel",
+					Value: "/tmp/span_batch_tester/channel_cache",
+					Usage: "Cache directory for the found channels",
+				},
+				&cli.StringFlag{
+					Name:  "in_span_batch",
+					Value: "/tmp/span_batch_tester/span_batch_cache",
+					Usage: "Cache directory for the converted batch",
+				},
+				&cli.StringFlag{
+					Name:  "out",
+					Value: "/tmp/span_batch_tester/result",
+					Usage: "Directory for the analysis result",
+				},
+			},
+			Action: func(cliCtx *cli.Context) error {
+				config := analyze.Config{
+					InChannelDirectory:            cliCtx.String("in_channel"),
+					InSpanBatchDirectoryDirectory: cliCtx.String("in_span_batch"),
+					OutDirectory:                  cliCtx.String("out"),
+				}
+				analyze.Analyze(config)
 				return nil
 			},
 		},
