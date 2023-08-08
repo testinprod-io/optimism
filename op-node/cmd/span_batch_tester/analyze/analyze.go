@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 type Config struct {
@@ -22,6 +24,22 @@ type Config struct {
 }
 
 type Result struct {
+	FrameCount                int
+	BatchV1sCompressedSize    int // sum of frame data size
+	BatchV1sUncompressedSize  int // channel size
+	BatchV1sCompressionRatio  float64
+	SpanBatchCompressedSize   int
+	SpanBatchUncompressedSize int
+	SpanBatchCompressionRatio float64
+
+	L1SizeReductionPercentage float64
+
+	L1StartNum   uint64
+	L1EndNum     uint64
+	L1BlockCount uint64
+	L2StartNum   uint64
+	L2EndNum     uint64
+	L2BlockCount uint64
 }
 
 // Load channel ids which can be analyzed
@@ -73,8 +91,81 @@ func LoadSpanBatch(file string) convert.SpanBatchWithMetadata {
 	return sbm
 }
 
-func CompareBatches(channel *reassemble.ChannelWithMetadata, sbm *convert.SpanBatchWithMetadata) *Result{
-	return nil
+func (r *Result) AnalyzeBatchV1s(chm *reassemble.ChannelWithMetadata) {
+	r.FrameCount = len(chm.Frames)
+	var buf bytes.Buffer
+	for _, frame := range chm.Frames {
+		if err := frame.Frame.MarshalBinary(&buf); err != nil {
+			log.Fatal(err)
+		}
+		r.BatchV1sCompressedSize += buf.Len()
+		buf.Reset()
+	}
+	// refer to channel_out.go::AddBatch
+	for _, batch := range chm.Batches {
+		if err := rlp.Encode(&buf, batch); err != nil {
+			log.Fatal(err)
+		}
+		r.BatchV1sUncompressedSize += buf.Len()
+		buf.Reset()
+	}
+	if r.BatchV1sCompressedSize > r.BatchV1sUncompressedSize {
+		log.Fatal("batchV1s compress size is larger than uncompressed")
+	}
+	if r.BatchV1sCompressedSize == 0 || r.BatchV1sUncompressedSize == 0 {
+		log.Fatal("batchV1s size is 0")
+	}
+	r.BatchV1sCompressionRatio = float64(r.BatchV1sCompressedSize) / float64(r.BatchV1sUncompressedSize)
+}
+
+func (r *Result) AnalyzeBatchV2(sbm *convert.SpanBatchWithMetadata) {
+	spanBatchEncoded, err := sbm.BatchV2.EncodeBytes()
+	if err != nil {
+		log.Fatal(err)
+	}
+	r.SpanBatchUncompressedSize = len(spanBatchEncoded)
+	var buf bytes.Buffer
+	w, err := zlib.NewWriterLevel(&buf, zlib.BestCompression)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = w.Write(spanBatchEncoded)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+	r.SpanBatchCompressedSize = buf.Len()
+	if r.SpanBatchCompressedSize > r.SpanBatchUncompressedSize {
+		log.Fatal("Span batch compress size is larger than uncompressed")
+	}
+	if r.SpanBatchCompressedSize == 0 || r.SpanBatchUncompressedSize == 0 {
+		log.Fatal("Span batch size is 0")
+	}
+	r.SpanBatchCompressionRatio = float64(r.SpanBatchCompressedSize) / float64(r.SpanBatchUncompressedSize)
+	r.L1StartNum = sbm.L1StartNum
+	r.L1EndNum = sbm.L1EndNum
+	r.L1BlockCount = sbm.L1EndNum - sbm.L1StartNum + 1
+	r.L2StartNum = sbm.L2StartNum
+	r.L2EndNum = sbm.L2EndNum
+	r.L2BlockCount = sbm.L2EndNum - sbm.L2StartNum + 1
+}
+
+func (r *Result) AnalyzeBatch(chm *reassemble.ChannelWithMetadata, sbm *convert.SpanBatchWithMetadata) {
+	r.AnalyzeBatchV1s(chm)
+	r.AnalyzeBatchV2(sbm)
+	r.L1SizeReductionPercentage = 100.0 * (1.0 - float64(r.SpanBatchCompressedSize)/float64(r.BatchV1sCompressedSize))
+}
+
+func writeResult(r Result, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	enc := json.NewEncoder(file)
+	return enc.Encode(r)
 }
 
 func Analyze(config Config) {
@@ -82,11 +173,19 @@ func Analyze(config Config) {
 		log.Fatal(err)
 	}
 	channelIDs := LoadChannelIDs(config)
-	for _, channelID := range channelIDs {
+	numChannels := len(channelIDs)
+	for idx, channelID := range channelIDs {
 		channelFilename := path.Join(config.InChannelDirectory, fmt.Sprintf("%s.json", channelID))
 		channel := convert.LoadChannelFile(channelFilename)
 		batchV2Filename := path.Join(config.InSpanBatchDirectory, fmt.Sprintf("%s.json", channelID))
 		batchV2 := LoadSpanBatch(batchV2Filename)
-		CompareBatches(&channel, &batchV2)
+		var result Result
+		result.AnalyzeBatch(&channel, &batchV2)
+		filename := path.Join(config.OutDirectory, fmt.Sprintf("%s.json", channelID))
+		if err := writeResult(result, filename); err != nil {
+			log.Fatal(err)
+		}
+		logPrefix := fmt.Sprintf("[%d/%d]", idx+1, numChannels)
+		fmt.Printf(logPrefix+" Channel ID: %s, L1SizeReductionPercentage: %f %%\n", channelID, result.L1SizeReductionPercentage)
 	}
 }
