@@ -242,6 +242,16 @@ func (b *BatchV2) EncodePrefix(w io.Writer) error {
 	return nil
 }
 
+func (b BatchV2) PrefixSize() (int, error) {
+	buf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(buf)
+	buf.Reset()
+	if err := b.EncodePrefix(buf); err != nil {
+		return 0, err
+	}
+	return buf.Len(), nil
+}
+
 func (b *BatchV2Payload) EncodeOriginBits() []byte {
 	originBitBufferLen := b.BlockCount / 8
 	if b.BlockCount%8 != 0 {
