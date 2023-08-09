@@ -118,7 +118,7 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.
 	return &BatchSubmitter{
 		Config: cfg,
 		txMgr:  cfg.TxManager,
-		state:  NewChannelManager(l, m, cfg.Channel),
+		state:  NewChannelManager(l, m, cfg.Channel, cfg.Rollup),
 	}, nil
 
 }
@@ -136,7 +136,11 @@ func (l *BatchSubmitter) Start() error {
 
 	l.shutdownCtx, l.cancelShutdownCtx = context.WithCancel(context.Background())
 	l.killCtx, l.cancelKillCtx = context.WithCancel(context.Background())
-	l.state.Clear()
+	syncStatus, err := l.fetchSyncStatus(context.Background())
+	if err != nil {
+		return nil
+	}
+	l.state.Clear(&syncStatus.SafeL2)
 	l.lastStoredBlock = eth.BlockID{}
 
 	l.wg.Add(1)
@@ -240,18 +244,26 @@ func (l *BatchSubmitter) loadBlockIntoState(ctx context.Context, blockNumber uin
 	return block, nil
 }
 
+func (l *BatchSubmitter) fetchSyncStatus(ctx context.Context) (*eth.SyncStatus, error) {
+	syncStatus, err := l.RollupNode.SyncStatus(ctx)
+	// Ensure that we have the sync status
+	if err != nil {
+		return &eth.SyncStatus{}, fmt.Errorf("failed to get sync status: %w", err)
+	}
+	if syncStatus.HeadL1 == (eth.L1BlockRef{}) {
+		return &eth.SyncStatus{}, errors.New("empty sync status")
+	}
+	return syncStatus, nil
+}
+
 // calculateL2BlockRangeToStore determines the range (start,end] that should be loaded into the local state.
 // It also takes care of initializing some local state (i.e. will modify l.lastStoredBlock in certain conditions)
 func (l *BatchSubmitter) calculateL2BlockRangeToStore(ctx context.Context) (eth.BlockID, eth.BlockID, error) {
 	ctx, cancel := context.WithTimeout(ctx, l.NetworkTimeout)
 	defer cancel()
-	syncStatus, err := l.RollupNode.SyncStatus(ctx)
-	// Ensure that we have the sync status
+	syncStatus, err := l.fetchSyncStatus(ctx)
 	if err != nil {
-		return eth.BlockID{}, eth.BlockID{}, fmt.Errorf("failed to get sync status: %w", err)
-	}
-	if syncStatus.HeadL1 == (eth.L1BlockRef{}) {
-		return eth.BlockID{}, eth.BlockID{}, errors.New("empty sync status")
+		return eth.BlockID{}, eth.BlockID{}, err
 	}
 
 	// Check last stored to see if it needs to be set on startup OR set if is lagged behind.
@@ -301,7 +313,9 @@ func (l *BatchSubmitter) loop() {
 					l.log.Error("error closing the channel manager to handle a L2 reorg", "err", err)
 				}
 				l.publishStateToL1(queue, receiptsCh, true)
-				l.state.Clear()
+				syncStatus, err := l.fetchSyncStatus(context.Background())
+				// TODO: error handling
+				l.state.Clear(&syncStatus.SafeL2)
 				continue
 			}
 			l.publishStateToL1(queue, receiptsCh, false)

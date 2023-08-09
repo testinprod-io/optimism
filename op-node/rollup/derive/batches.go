@@ -38,7 +38,7 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 		}
 		return CheckBatchV2(cfg, log, l1Blocks, l2SafeHead, batch)
 	default:
-		log.Warn("unrecognized batch type: %d", batch.Batch.BatchType))
+		log.Warn("unrecognized batch type: %d", batch.Batch.BatchType)
 		return BatchDrop
 	}
 }

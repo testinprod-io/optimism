@@ -3,6 +3,7 @@ package batcher
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"io"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
@@ -26,11 +27,14 @@ type channelManager struct {
 	log  log.Logger
 	metr metrics.Metricer
 	cfg  ChannelConfig
+	rcfg *rollup.Config
 
 	// All blocks since the last request for new tx data.
 	blocks []*types.Block
 	// last block hash - for reorg detection
 	tip common.Hash
+
+	lastProcessedBlock *eth.L2BlockRef
 
 	// channel to write new block data to
 	currentChannel *channel
@@ -43,18 +47,19 @@ type channelManager struct {
 	closed bool
 }
 
-func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig) *channelManager {
+func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, rcfg *rollup.Config) *channelManager {
 	return &channelManager{
 		log:        log,
 		metr:       metr,
 		cfg:        cfg,
+		rcfg:       rcfg,
 		txChannels: make(map[txID]*channel),
 	}
 }
 
 // Clear clears the entire state of the channel manager.
 // It is intended to be used after an L2 reorg.
-func (s *channelManager) Clear() {
+func (s *channelManager) Clear(safeHead *eth.L2BlockRef) {
 	s.log.Trace("clearing channel manager state")
 	s.blocks = s.blocks[:0]
 	s.tip = common.Hash{}
@@ -62,6 +67,7 @@ func (s *channelManager) Clear() {
 	s.currentChannel = nil
 	s.channelQueue = nil
 	s.txChannels = make(map[txID]*channel)
+	s.lastProcessedBlock = safeHead
 }
 
 // TxFailed records a transaction as failed. It will attempt to resubmit the data
@@ -185,7 +191,11 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 		return nil
 	}
 
-	pc, err := newChannel(s.log, s.metr, s.cfg)
+	batchType := derive.BatchV1Type
+	if s.rcfg.IsSpanBatch(s.lastProcessedBlock.Time + s.rcfg.BlockTime) {
+		batchType = derive.BatchV2Type
+	}
+	pc, err := newChannel(s.log, s.metr, s.cfg, batchType, s.rcfg, s.lastProcessedBlock)
 	if err != nil {
 		return fmt.Errorf("creating new channel: %w", err)
 	}
@@ -219,6 +229,10 @@ func (s *channelManager) processBlocks() error {
 		latestL2ref eth.L2BlockRef
 	)
 	for i, block := range s.blocks {
+		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.batchType == derive.BatchV1Type {
+			s.currentChannel.Close()
+			break
+		}
 		l1info, err := s.currentChannel.AddBlock(block)
 		if errors.As(err, &_chFullErr) {
 			// current block didn't get added because channel is already full
@@ -229,6 +243,7 @@ func (s *channelManager) processBlocks() error {
 		blocksAdded += 1
 		latestL2ref = l2BlockRefFromBlockAndL1Info(block, l1info)
 		s.metr.RecordL2BlockInChannel(block)
+		s.lastProcessedBlock = &latestL2ref
 		// current block got added but channel is now full
 		if s.currentChannel.IsFull() {
 			break

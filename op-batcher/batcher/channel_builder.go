@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/eth"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"io"
 	"math"
 
@@ -127,12 +129,12 @@ type channelBuilder struct {
 
 // newChannelBuilder creates a new channel builder or returns an error if the
 // channel out could not be created.
-func newChannelBuilder(cfg ChannelConfig) (*channelBuilder, error) {
+func newChannelBuilder(cfg ChannelConfig, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*channelBuilder, error) {
 	c, err := cfg.CompressorConfig.NewCompressor()
 	if err != nil {
 		return nil, err
 	}
-	co, err := derive.NewChannelOut(c)
+	co, err := derive.NewChannelOut(c, batchType, rcfg, lastBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +196,7 @@ func (c *channelBuilder) AddBlock(block *types.Block) (derive.L1BlockInfo, error
 		return derive.L1BlockInfo{}, c.FullErr()
 	}
 
-	batch, l1info, err := derive.BlockToBatch(block)
+	batch, l1info, err := derive.BlockToBatchV1(block)
 	if err != nil {
 		return l1info, fmt.Errorf("converting block to batch: %w", err)
 	}
@@ -252,7 +254,7 @@ func (c *channelBuilder) updateDurationTimeout(l1BlockNum uint64) {
 // derived from the batch's origin L1 block. The timeout is only moved forward
 // if the derived sequencer window timeout is earlier than the currently set
 // timeout.
-func (c *channelBuilder) updateSwTimeout(batch *derive.BatchData) {
+func (c *channelBuilder) updateSwTimeout(batch *derive.BatchV1) {
 	timeout := uint64(batch.EpochNum) + c.cfg.SeqWindowSize - c.cfg.SubSafetyMargin
 	c.updateTimeout(timeout, ErrSeqWindowClose)
 }

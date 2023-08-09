@@ -152,6 +152,6 @@ func TestForceCloseTxData(t *testing.T) {
 
 func TestBlockToBatchValidity(t *testing.T) {
 	block := new(types.Block)
-	_, _, err := BlockToBatch(block)
+	_, _, err := BlockToBatchV1(block)
 	require.ErrorContains(t, err, "has no transactions")
 }

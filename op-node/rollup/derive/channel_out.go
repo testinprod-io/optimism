@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"io"
 
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -46,6 +47,8 @@ type Compressor interface {
 	// calls to Write will fail if an error is returned from this method, but calls to Write
 	// can still return CompressorFullErr even if this does not.
 	FullErr() error
+
+	ForceWrite(p []byte) (int, error)
 }
 
 type ChannelOut struct {
@@ -59,18 +62,29 @@ type ChannelOut struct {
 	compress Compressor
 
 	closed bool
+
+	batchType int
+
+	rcfg *rollup.Config
+
+	spanBatchBuf *BatchV2
+
+	lastBlock *eth.L2BlockRef
 }
 
 func (co *ChannelOut) ID() ChannelID {
 	return co.id
 }
 
-func NewChannelOut(compress Compressor) (*ChannelOut, error) {
+func NewChannelOut(compress Compressor, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
 	c := &ChannelOut{
 		id:        ChannelID{}, // TODO: use GUID here instead of fully random data
 		frame:     0,
 		rlpLength: 0,
 		compress:  compress,
+		batchType: batchType,
+		rcfg:      rcfg,
+		lastBlock: lastBlock,
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -99,7 +113,7 @@ func (co *ChannelOut) AddBlock(block *types.Block) (uint64, error) {
 		return 0, errors.New("already closed")
 	}
 
-	batch, _, err := BlockToBatch(block)
+	batch, _, err := BlockToBatchV1(block)
 	if err != nil {
 		return 0, err
 	}
@@ -111,19 +125,45 @@ func (co *ChannelOut) AddBlock(block *types.Block) (uint64, error) {
 // that it returns is ErrTooManyRLPBytes. If this error is returned, the channel
 // should be closed and a new one should be made.
 //
-// AddBatch should be used together with BlockToBatch if you need to access the
+// AddBatch should be used together with BlockToBatchV1 if you need to access the
 // BatchData before adding a block to the channel. It isn't possible to access
 // the batch data with AddBlock.
-func (co *ChannelOut) AddBatch(batch *BatchData) (uint64, error) {
+func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 	if co.closed {
 		return 0, errors.New("already closed")
 	}
 
-	// We encode to a temporary buffer to determine the encoded length to
-	// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
+	isSpanBatch := co.batchType == BatchV2Type
+
 	var buf bytes.Buffer
-	if err := rlp.Encode(&buf, batch); err != nil {
-		return 0, err
+	var lastSpanBatch bytes.Buffer
+	if isSpanBatch {
+		if co.spanBatchBuf.BlockCount == 0 {
+			originChangeBit := uint(0)
+			if batch.EpochHash != co.lastBlock.L1Origin.Hash {
+				originChangeBit = 1
+			}
+			if err := co.spanBatchBuf.MergeBatchV1s([]*BatchV1{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
+				return 0, err
+			}
+		} else {
+			if err := rlp.Encode(&lastSpanBatch, InitBatchDataV2(*co.spanBatchBuf)); err != nil {
+				return 0, err
+			}
+			if err := co.spanBatchBuf.AppendBatchV1(batch); err != nil {
+				return 0, err
+			}
+		}
+		if err := rlp.Encode(&buf, InitBatchDataV2(*co.spanBatchBuf)); err != nil {
+			return 0, err
+		}
+		co.rlpLength = 0
+	} else {
+		// We encode to a temporary buffer to determine the encoded length to
+		// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
+		if err := rlp.Encode(&buf, InitBatchDataV1(*batch)); err != nil {
+			return 0, err
+		}
 	}
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
 		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
@@ -133,6 +173,21 @@ func (co *ChannelOut) AddBatch(batch *BatchData) (uint64, error) {
 
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
+	if errors.Is(err, CompressorFullErr) {
+		if isSpanBatch {
+			if co.spanBatchBuf.BlockCount == 1 {
+				co.compress.Reset()
+			} else {
+				co.compress.Reset()
+				written, _ = co.compress.ForceWrite(lastSpanBatch.Bytes())
+				return uint64(written), err
+			}
+			co.compress.Reset()
+		} else if co.compress.Len() == 0 {
+			co.compress.Reset()
+			written, err = co.compress.ForceWrite(buf.Bytes())
+		}
+	}
 	return uint64(written), err
 }
 
@@ -213,8 +268,8 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 	}
 }
 
-// BlockToBatch transforms a block into a batch object that can easily be RLP encoded.
-func BlockToBatch(block *types.Block) (*BatchData, L1BlockInfo, error) {
+// BlockToBatchV1 transforms a block into a batch object that can easily be RLP encoded.
+func BlockToBatchV1(block *types.Block) (*BatchV1, L1BlockInfo, error) {
 	opaqueTxs := make([]hexutil.Bytes, 0, len(block.Transactions()))
 	for i, tx := range block.Transactions() {
 		if tx.Type() == types.DepositTxType {
@@ -238,14 +293,13 @@ func BlockToBatch(block *types.Block) (*BatchData, L1BlockInfo, error) {
 		return nil, l1Info, fmt.Errorf("could not parse the L1 Info deposit: %w", err)
 	}
 
-	return InitBatchDataV1(
-		BatchV1{
-			ParentHash:   block.ParentHash(),
-			EpochNum:     rollup.Epoch(l1Info.Number),
-			EpochHash:    l1Info.BlockHash,
-			Timestamp:    block.Time(),
-			Transactions: opaqueTxs,
-		}), l1Info, nil
+	return &BatchV1{
+		ParentHash:   block.ParentHash(),
+		EpochNum:     rollup.Epoch(l1Info.Number),
+		EpochHash:    l1Info.BlockHash,
+		Timestamp:    block.Time(),
+		Transactions: opaqueTxs,
+	}, l1Info, nil
 }
 
 // ForceCloseTxData generates the transaction data for a transaction which will force close

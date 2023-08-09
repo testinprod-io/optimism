@@ -788,7 +788,7 @@ func defaultChannelBuilderSetup(t *testing.T) (*channelBuilder, ChannelConfig) {
 
 func blockBatchRlpSize(t *testing.T, b *types.Block) int {
 	t.Helper()
-	batch, _, err := derive.BlockToBatch(b)
+	batch, _, err := derive.BlockToBatchV1(b)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	require.NoError(t, batch.EncodeRLP(&buf), "RLP-encoding batch")

@@ -88,9 +88,9 @@ func RandomBatchV1(rng *rand.Rand, txCount int) *BatchData {
 		panic("L1InfoDeposit: " + err.Error())
 	}
 	l2Block, _ := testutils.RandomBlockPrependTxs(rng, txCount, types.NewTx(l1InfoTx))
-	batchData, _, err := BlockToBatch(l2Block)
+	batchData, _, err := BlockToBatchV1(l2Block)
 	if err != nil {
-		panic("BlockToBatch:" + err.Error())
+		panic("BlockToBatchV1:" + err.Error())
 	}
 	return batchData
 }

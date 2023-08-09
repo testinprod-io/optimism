@@ -2,6 +2,7 @@ package batcher
 
 import (
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"math"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
@@ -24,10 +25,12 @@ type channel struct {
 	pendingTransactions map[txID]txData
 	// Set of confirmed txID -> inclusion block. For determining if the channel is timed out
 	confirmedTransactions map[txID]eth.BlockID
+
+	batchType int
 }
 
-func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig) (*channel, error) {
-	cb, err := newChannelBuilder(cfg)
+func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*channel, error) {
+	cb, err := newChannelBuilder(cfg, batchType, rcfg, lastBlock)
 	if err != nil {
 		return nil, fmt.Errorf("creating new channel: %w", err)
 	}
@@ -38,6 +41,7 @@ func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig) (*chan
 		channelBuilder:        cb,
 		pendingTransactions:   make(map[txID]txData),
 		confirmedTransactions: make(map[txID]eth.BlockID),
+		batchType:             batchType,
 	}, nil
 }
 

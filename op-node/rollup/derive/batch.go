@@ -414,7 +414,7 @@ func (b *BatchData) decodeTyped(data []byte) error {
 }
 
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
-func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genesisTimestamp uint64) error {
+func (b *BatchV2) MergeBatchV1s(batchV1s []*BatchV1, originChangedBit uint, genesisTimestamp uint64) error {
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
@@ -446,9 +446,13 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	var txSigs []BatchV2Signature
+	var blockTimstamps []uint64
+	var blockOriginNums []uint64
 	for _, batchV1 := range batchV1s {
 		blockTxCount := uint64(len(batchV1.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
+		blockTimstamps = append(blockTimstamps, batchV1.Timestamp)
+		blockOriginNums = append(blockOriginNums, uint64(batchV1.EpochNum))
 		for _, rawTx := range batchV1.Transactions {
 			// below segment may be generalized
 			var tx types.Transaction
@@ -480,6 +484,9 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
+	b.BatchTimestamp = blockTimstamps[0]
+	b.BlockTimestamps = blockTimstamps
+	b.BlockOriginNums = blockOriginNums
 	return nil
 }
 
@@ -561,4 +568,45 @@ func (b *BatchV2) DeriveBatchV2Fields(blockTime, genesisTimestamp uint64) {
 			l1OriginBlockNumber--
 		}
 	}
+}
+
+func (b *BatchV2) AppendBatchV1(batchV1 *BatchV1) error {
+	b.BlockCount += 1
+	originBit := uint(0)
+	if b.L1OriginNum != uint64(batchV1.EpochNum) {
+		originBit = 1
+	}
+	b.OriginBits.SetBit(b.OriginBits, int(b.BlockCount-1), originBit)
+	b.L1OriginNum = uint64(batchV1.EpochNum)
+	b.L1OriginCheck = batchV1.EpochHash.Bytes()[:20]
+	b.BlockTxCounts = append(b.BlockTxCounts, uint64(len(batchV1.Transactions)))
+	for _, rawTx := range batchV1.Transactions {
+		// below segment may be generalized
+		var tx types.Transaction
+		if err := tx.UnmarshalBinary(rawTx); err != nil {
+			return errors.New("failed to decode tx")
+		}
+		var txSig BatchV2Signature
+		v, r, s := tx.RawSignatureValues()
+		R, _ := uint256.FromBig(r)
+		S, _ := uint256.FromBig(s)
+		txSig.V = v.Uint64()
+		txSig.R = R
+		txSig.S = S
+		b.TxSigs = append(b.TxSigs, txSig)
+		batchV2Tx, err := NewBatchV2Tx(tx)
+		if err != nil {
+			return err
+		}
+		txData, err := batchV2Tx.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		txDataHeader := uint64(len(txData))
+		b.TxDataHeaders = append(b.TxDataHeaders, txDataHeader)
+		b.TxDatas = append(b.TxDatas, txData)
+	}
+	b.BlockTimestamps = append(b.BlockTimestamps, batchV1.Timestamp)
+	b.BlockOriginNums = append(b.BlockOriginNums, uint64(batchV1.EpochNum))
+	return nil
 }
