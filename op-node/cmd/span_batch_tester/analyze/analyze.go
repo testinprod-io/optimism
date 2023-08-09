@@ -41,8 +41,8 @@ type Result struct {
 	SpanBatchPrefixSize  int
 	SpanBatchPayloadSize int
 
-	UncompressedSizeReductionPercentage float64
-	L1SizeReductionPercentage           float64
+	CompressedReductionPercent       float64
+	UncompressedSizeReductionPercent float64
 
 	L2TxCount int
 
@@ -183,8 +183,8 @@ func (r *Result) AnalyzeBatchV2(sbm *convert.SpanBatchWithMetadata) {
 func (r *Result) AnalyzeBatch(chm *reassemble.ChannelWithMetadata, sbm *convert.SpanBatchWithMetadata) {
 	r.AnalyzeBatchV1s(chm)
 	r.AnalyzeBatchV2(sbm)
-	r.L1SizeReductionPercentage = 100.0 * (1.0 - float64(r.SpanBatchCompressedSize)/float64(r.BatchV1sCompressedSize))
-	r.UncompressedSizeReductionPercentage = 100 * (1.0 - float64(r.SpanBatchUncompressedSize)/float64(r.BatchV1sUncompressedSize))
+	r.CompressedReductionPercent = 100.0 * (1.0 - float64(r.SpanBatchCompressedSize)/float64(r.BatchV1sCompressedSize))
+	r.UncompressedSizeReductionPercent = 100 * (1.0 - float64(r.SpanBatchUncompressedSize)/float64(r.BatchV1sUncompressedSize))
 }
 
 func writeResult(r Result, filename string) error {
@@ -215,6 +215,6 @@ func Analyze(config Config) {
 			log.Fatal(err)
 		}
 		logPrefix := fmt.Sprintf("[%d/%d]", idx+1, numChannels)
-		fmt.Printf(logPrefix+" Channel ID: %s, L1SizeReductionPercentage: %f %%\n", channelID, result.L1SizeReductionPercentage)
+		fmt.Printf(logPrefix+" Channel ID: %s, CompressedReductionPercent: %f %%\n", channelID, result.CompressedReductionPercent)
 	}
 }
