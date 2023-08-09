@@ -32,6 +32,9 @@ type Result struct {
 	SpanBatchUncompressedSize int
 	SpanBatchCompressionRatio float64
 
+	BatchV1sMetadataSize int // every data size except tx
+	BatchV1sTxSize       int
+
 	SpanBatchPrefixSize  int
 	SpanBatchPayloadSize int
 
@@ -91,7 +94,6 @@ func LoadSpanBatch(file string) convert.SpanBatchWithMetadata {
 	if !bytes.Equal(batchV2Hash, sbm.BatchV2Hash) {
 		log.Fatal("Span batch data sanity check failure")
 	}
-
 	return sbm
 }
 
@@ -112,7 +114,11 @@ func (r *Result) AnalyzeBatchV1s(chm *reassemble.ChannelWithMetadata) {
 		}
 		r.BatchV1sUncompressedSize += buf.Len()
 		buf.Reset()
+		for _, tx := range batch.Transactions {
+			r.BatchV1sTxSize += len(tx)
+		}
 	}
+	r.BatchV1sMetadataSize = r.BatchV1sUncompressedSize - r.BatchV1sTxSize
 	if r.BatchV1sCompressedSize > r.BatchV1sUncompressedSize {
 		log.Fatal("batchV1s compress size is larger than uncompressed")
 	}
