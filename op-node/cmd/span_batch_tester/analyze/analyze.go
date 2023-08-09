@@ -41,8 +41,10 @@ type Result struct {
 	SpanBatchPrefixSize  int
 	SpanBatchPayloadSize int
 
-	L1SizeReductionPercentage float64
-	L2TxCount                 int
+	UncompressedSizeReductionPercentage float64
+	L1SizeReductionPercentage           float64
+
+	L2TxCount int
 
 	L1StartNum   uint64
 	L1EndNum     uint64
@@ -182,6 +184,7 @@ func (r *Result) AnalyzeBatch(chm *reassemble.ChannelWithMetadata, sbm *convert.
 	r.AnalyzeBatchV1s(chm)
 	r.AnalyzeBatchV2(sbm)
 	r.L1SizeReductionPercentage = 100.0 * (1.0 - float64(r.SpanBatchCompressedSize)/float64(r.BatchV1sCompressedSize))
+	r.UncompressedSizeReductionPercentage = 100 * (1.0 - float64(r.SpanBatchUncompressedSize)/float64(r.BatchV1sUncompressedSize))
 }
 
 func writeResult(r Result, filename string) error {
