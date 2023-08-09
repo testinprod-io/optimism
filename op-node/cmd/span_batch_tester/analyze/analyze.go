@@ -35,6 +35,9 @@ type Result struct {
 	BatchV1sMetadataSize int // every data size except tx
 	BatchV1sTxSize       int
 
+	SpanBatchMetadataSize int // every data size except tx
+	SpanBatchTxSize       int
+
 	SpanBatchPrefixSize  int
 	SpanBatchPayloadSize int
 
@@ -160,6 +163,11 @@ func (r *Result) AnalyzeBatchV2(sbm *convert.SpanBatchWithMetadata) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	r.SpanBatchMetadataSize, err = sbm.BatchV2.MetadataSize()
+	if err != nil {
+		log.Fatal(err)
+	}
+	r.SpanBatchTxSize = r.SpanBatchUncompressedSize - r.SpanBatchMetadataSize
 	r.SpanBatchPayloadSize = r.SpanBatchUncompressedSize - r.SpanBatchPrefixSize
 	r.SpanBatchCompressionRatio = float64(r.SpanBatchCompressedSize) / float64(r.SpanBatchUncompressedSize)
 	r.L1StartNum = sbm.L1StartNum
