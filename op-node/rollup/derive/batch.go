@@ -252,6 +252,26 @@ func (b BatchV2) PrefixSize() (int, error) {
 	return buf.Len(), nil
 }
 
+func (b BatchV2) MetadataSize() (int, error) {
+	// define metadata as every data except tx related field
+	size := 0
+	prefixSize, err := b.PrefixSize()
+	if err != nil {
+		return 0, err
+	}
+	size += prefixSize
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], b.BlockCount)
+	size += n
+	originBitBuffer := b.EncodeOriginBits()
+	size += len(originBitBuffer)
+	for _, blockTxCount := range b.BlockTxCounts {
+		n = binary.PutUvarint(buf[:], blockTxCount)
+		size += n
+	}
+	return size, nil
+}
+
 func (b *BatchV2Payload) EncodeOriginBits() []byte {
 	originBitBufferLen := b.BlockCount / 8
 	if b.BlockCount%8 != 0 {
