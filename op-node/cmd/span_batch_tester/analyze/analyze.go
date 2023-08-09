@@ -33,6 +33,7 @@ type Result struct {
 	SpanBatchCompressionRatio float64
 
 	L1SizeReductionPercentage float64
+	L2TxCount                 int
 
 	L1StartNum   uint64
 	L1EndNum     uint64
@@ -142,6 +143,9 @@ func (r *Result) AnalyzeBatchV2(sbm *convert.SpanBatchWithMetadata) {
 	}
 	if r.SpanBatchCompressedSize == 0 || r.SpanBatchUncompressedSize == 0 {
 		log.Fatal("Span batch size is 0")
+	}
+	for _, blockTxCount := range sbm.BatchV2.BlockTxCounts {
+		r.L2TxCount += int(blockTxCount)
 	}
 	r.SpanBatchCompressionRatio = float64(r.SpanBatchCompressedSize) / float64(r.SpanBatchUncompressedSize)
 	r.L1StartNum = sbm.L1StartNum
