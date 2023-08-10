@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 )
 
 // Batch format
@@ -57,12 +56,6 @@ type BatchV2Prefix struct {
 	L1OriginNum   uint64
 	ParentCheck   []byte
 	L1OriginCheck []byte
-}
-
-type BatchV2Signature struct {
-	V uint64
-	R *uint256.Int
-	S *uint256.Int
 }
 
 type BatchV2Txs interface {
@@ -379,50 +372,22 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		}
 		b.OriginBits.SetBit(b.OriginBits, i, bit)
 	}
+
 	var blockTxCounts []uint64
-	var txDataHeaders []uint64
-	var txDatas []hexutil.Bytes
-	var txSigs []BatchV2Signature
-	totalBlockTxCount := uint64(0)
+	var txs [][]byte
 	for _, batchV1 := range batchV1s {
 		blockTxCount := uint64(len(batchV1.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		totalBlockTxCount += blockTxCount
 		for _, rawTx := range batchV1.Transactions {
-			// below segment may be generalized
-			var tx types.Transaction
-			if err := tx.UnmarshalBinary(rawTx); err != nil {
-				return errors.New("failed to decode tx")
-			}
-			var txSig BatchV2Signature
-			v, r, s := tx.RawSignatureValues()
-			R, _ := uint256.FromBig(r)
-			S, _ := uint256.FromBig(s)
-			txSig.V = v.Uint64()
-			txSig.R = R
-			txSig.S = S
-			txSigs = append(txSigs, txSig)
-			batchV2Tx, err := NewBatchV2Tx(tx)
-			if err != nil {
-				return nil
-			}
-			txData, err := batchV2Tx.MarshalBinary()
-			if err != nil {
-				return nil
-			}
-			txDataHeader := uint64(len(txData))
-			txDataHeaders = append(txDataHeaders, txDataHeader)
-			txDatas = append(txDatas, txData)
+			txs = append(txs, rawTx)
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
-	var batchV2TxsV1 *BatchV2TxsV1 = &BatchV2TxsV1{
-		TotalBlockTxCount: totalBlockTxCount,
-		TxDataHeaders:     txDataHeaders,
-		TxDatas:           txDatas,
-		TxSigs:            txSigs,
+	batchV2Txs, err := NewBatchV2TxsV1(txs)
+	if err != nil {
+		return err
 	}
-	b.Txs = batchV2TxsV1
+	b.Txs = batchV2Txs
 	return nil
 }
 

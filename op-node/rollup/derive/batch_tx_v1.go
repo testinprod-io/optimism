@@ -15,6 +15,12 @@ import (
 	"github.com/holiman/uint256"
 )
 
+type BatchV2Signature struct {
+	V uint64
+	R *uint256.Int
+	S *uint256.Int
+}
+
 type BatchV2TxsV1 struct {
 	TotalBlockTxCount uint64
 	TxDataHeaders     []uint64
@@ -119,6 +125,44 @@ func (btx *BatchV2TxsV1) FullTxs() ([][]byte, error) {
 		txs = append(txs, encodedTx)
 	}
 	return txs, nil
+}
+
+func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
+	totalBlockTxCount := uint64(len(txs))
+	var txDataHeaders []uint64
+	var txDatas []hexutil.Bytes
+	var txSigs []BatchV2Signature
+	for idx := 0; idx < int(totalBlockTxCount); idx++ {
+		var tx types.Transaction
+		if err := tx.UnmarshalBinary(txs[idx]); err != nil {
+			return nil, errors.New("failed to decode tx")
+		}
+		var txSig BatchV2Signature
+		v, r, s := tx.RawSignatureValues()
+		R, _ := uint256.FromBig(r)
+		S, _ := uint256.FromBig(s)
+		txSig.V = v.Uint64()
+		txSig.R = R
+		txSig.S = S
+		txSigs = append(txSigs, txSig)
+		batchV2TxV1, err := NewBatchV2TxV1(tx)
+		if err != nil {
+			return nil, err
+		}
+		txData, err := batchV2TxV1.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		txDataHeader := uint64(len(txData))
+		txDataHeaders = append(txDataHeaders, txDataHeader)
+		txDatas = append(txDatas, txData)
+	}
+	return &BatchV2TxsV1{
+		TotalBlockTxCount: totalBlockTxCount,
+		TxDataHeaders:     txDataHeaders,
+		TxDatas:           txDatas,
+		TxSigs:            txSigs,
+	}, nil
 }
 
 type BatchV2TxData interface {
@@ -333,8 +377,8 @@ func (tx BatchV2Tx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error
 	return types.NewTx(inner), nil
 }
 
-// NewBatchV2Tx creates a new batchV2 transaction.
-func NewBatchV2Tx(tx types.Transaction) (*BatchV2Tx, error) {
+// NewBatchV2TxV1 creates a new batchV2 transaction with V1 tx encoding.
+func NewBatchV2TxV1(tx types.Transaction) (*BatchV2Tx, error) {
 	var inner BatchV2TxData
 	switch tx.Type() {
 	case types.LegacyTxType:

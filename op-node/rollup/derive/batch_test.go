@@ -8,7 +8,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
-	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,35 +34,19 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		blockTxCounts = append(blockTxCounts, blockTxCount)
 		totalblockTxCount += blockTxCount
 	}
-	txDataHeaders := make([]uint64, 0)
-	txDatas := make([]hexutil.Bytes, 0)
-	txSigs := make([]BatchV2Signature, 0)
+	var txs [][]byte
 	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 	for i := 0; i < int(totalblockTxCount); i++ {
 		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
-		batchV2Tx, err := NewBatchV2Tx(*tx)
-		if err != nil {
-			panic("NewBatchV2Tx:" + err.Error())
-		}
-		txData, err := batchV2Tx.MarshalBinary()
+		rawTx, err := tx.MarshalBinary()
 		if err != nil {
 			panic("MarshalBinary:" + err.Error())
 		}
-		txDataHeader := uint64(len(txData))
-		txSig := BatchV2Signature{
-			V: rng.Uint64(),
-			R: new(uint256.Int).SetBytes32(testutils.RandomData(rng, 32)),
-			S: new(uint256.Int).SetBytes32(testutils.RandomData(rng, 32)),
-		}
-		txDataHeaders = append(txDataHeaders, txDataHeader)
-		txDatas = append(txDatas, txData)
-		txSigs = append(txSigs, txSig)
+		txs = append(txs, rawTx)
 	}
-	var batchV2TxsV1 *BatchV2TxsV1 = &BatchV2TxsV1{
-		TotalBlockTxCount: totalblockTxCount,
-		TxDataHeaders:     txDataHeaders,
-		TxDatas:           txDatas,
-		TxSigs:            txSigs,
+	batchV2TxsV1, err := NewBatchV2TxsV1(txs)
+	if err != nil {
+		panic("NewBatchV2TxsV1:" + err.Error())
 	}
 	return &BatchData{
 		BatchType: BatchV2Type,
