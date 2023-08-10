@@ -199,7 +199,7 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 	channelCfg := s.cfg
 	channelCfg.BatchType = batchType
 	channelCfg.ParentRef = s.lastProcessedBlock
-	pc, err := newChannel(s.log, s.metr, s.cfg, s.rcfg)
+	pc, err := newChannel(s.log, s.metr, channelCfg, s.rcfg)
 	if err != nil {
 		return fmt.Errorf("creating new channel: %w", err)
 	}
@@ -233,7 +233,7 @@ func (s *channelManager) processBlocks() error {
 		latestL2ref eth.L2BlockRef
 	)
 	for i, block := range s.blocks {
-		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.batchType == derive.BatchV1Type {
+		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.BatchV1Type {
 			s.currentChannel.Close()
 			break
 		}

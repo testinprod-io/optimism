@@ -78,13 +78,14 @@ func (co *ChannelOut) ID() ChannelID {
 
 func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
 	c := &ChannelOut{
-		id:        ChannelID{}, // TODO: use GUID here instead of fully random data
-		frame:     0,
-		rlpLength: 0,
-		compress:  compress,
-		batchType: batchType,
-		rcfg:      rcfg,
-		lastBlock: lastBlock,
+		id:           ChannelID{}, // TODO: use GUID here instead of fully random data
+		frame:        0,
+		rlpLength:    0,
+		compress:     compress,
+		batchType:    batchType,
+		rcfg:         rcfg,
+		lastBlock:    lastBlock,
+		spanBatchBuf: &BatchV2{},
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -181,6 +182,7 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 				return uint64(written), err
 			}
 			co.compress.Reset()
+			written, err = co.compress.ForceWrite(buf.Bytes())
 		} else if co.compress.Len() == 0 {
 			co.compress.Reset()
 			written, err = co.compress.ForceWrite(buf.Bytes())
