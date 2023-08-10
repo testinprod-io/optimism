@@ -26,7 +26,7 @@ Lets define metrics.
 
 So span batch size == `SpanBatchMetadataSize + SpanBatchTxSize`, and batchV1s size == `BatchV1sMetadataSize + BatchV1sTxSize`.
 
-The effect of using span batch will be maximized when `BatchV1sMetadataSize` is relatively larger than `BatchV1sTxSize`, this is because span batch reduces `BatchV1sMetadataSize`.
+The effect of using span batch will be maximized when `BatchV1sMetadataSize` is relatively larger than `BatchV1sTxSize`, this is because span batch reduces `BatchV1sMetadataSize`(span batch also reduces `BatchV1sTxSize`, by removing RLP headers etc, but negligible compared to the reduction of metadata size).
 
 Lets sample two channels from goerli. Some fields of results are omitted.
 
@@ -66,7 +66,7 @@ B = {
 }
 ```
 
-Although span batch reduced metadata size a lost, from `BatchV1sMetadataSize` to `SpanBatchMetadataSize`, reduction of tx size, from `BatchV1sTxSize` to `SpanBatchTxSize` is negligible. This means span batch has more effect when tx size is relatively small compared to metadata size.
+Although span batch reduced metadata size a lot, from `BatchV1sMetadataSize` to `SpanBatchMetadataSize`, reduction of tx size, from `BatchV1sTxSize` to `SpanBatchTxSize` is negligible. This means span batch has more effect when tx size is relatively small compared to metadata size.
 
 `BatchV1sTxSize / (BatchV1sMetadataSize + BatchV1sTxSize) * 100`
 - A: `99.09 = 268250 / (2457 + 268250) * 100`
