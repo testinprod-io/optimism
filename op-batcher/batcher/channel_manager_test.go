@@ -2,6 +2,7 @@ package batcher
 
 import (
 	"io"
+	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-batcher/compressor"
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
 	"github.com/ethereum-optimism/optimism/op-node/eth"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	derivetest "github.com/ethereum-optimism/optimism/op-node/rollup/derive/test"
 	"github.com/ethereum-optimism/optimism/op-node/testlog"
@@ -19,11 +21,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestChannelManagerReturnsErrReorg ensures that the channel manager
+func TestChannelManagerBatchType(t *testing.T) {
+	maxTs := uint64(math.MaxUint64)
+	spanBatchNotActivated := rollup.Config{
+		SpanBatchTime: &maxTs,
+	}
+	zeroTs := uint64(0)
+	spanBatchActivated := rollup.Config{
+		SpanBatchTime: &zeroTs,
+	}
+	safeHead := eth.L2BlockRef{
+		Time: 0,
+	}
+	tests := []struct {
+		name string
+		f    func(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef)
+	}{
+		{"ChannelManagerReturnsErrReorg", ChannelManagerReturnsErrReorg},
+		{"ChannelManagerReturnsErrReorgWhenDrained", ChannelManagerReturnsErrReorgWhenDrained},
+		{"ChannelManager_Clear", ChannelManager_Clear},
+		{"ChannelManager_TxResend", ChannelManager_TxResend},
+		{"ChannelManagerCloseBeforeFirstUse", ChannelManagerCloseBeforeFirstUse},
+		{"ChannelManagerCloseNoPendingChannel", ChannelManagerCloseNoPendingChannel},
+		{"ChannelManagerClosePendingChannel", ChannelManagerClosePendingChannel},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_BatchV1", func(t *testing.T) {
+			test.f(t, &spanBatchNotActivated, &safeHead)
+		})
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_BatchV2", func(t *testing.T) {
+			test.f(t, &spanBatchActivated, &safeHead)
+		})
+	}
+}
+
+// ChannelManagerReturnsErrReorg ensures that the channel manager
 // detects a reorg when it has cached L1 blocks.
-func TestChannelManagerReturnsErrReorg(t *testing.T) {
+func ChannelManagerReturnsErrReorg(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	log := testlog.Logger(t, log.LvlCrit)
-	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{})
+	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{}, rcfg, safeHead)
 
 	a := types.NewBlock(&types.Header{
 		Number: big.NewInt(0),
@@ -49,9 +90,9 @@ func TestChannelManagerReturnsErrReorg(t *testing.T) {
 	require.Equal(t, []*types.Block{a, b, c}, m.blocks)
 }
 
-// TestChannelManagerReturnsErrReorgWhenDrained ensures that the channel manager
+// ChannelManagerReturnsErrReorgWhenDrained ensures that the channel manager
 // detects a reorg even if it does not have any blocks inside it.
-func TestChannelManagerReturnsErrReorgWhenDrained(t *testing.T) {
+func ChannelManagerReturnsErrReorgWhenDrained(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
 		ChannelConfig{
@@ -61,7 +102,9 @@ func TestChannelManagerReturnsErrReorgWhenDrained(t *testing.T) {
 				TargetNumFrames:  1,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		},
+		rcfg, safeHead,
+	)
 
 	a := newMiniL2Block(0)
 	x := newMiniL2BlockWithNumberParent(0, big.NewInt(1), common.Hash{0xff})
@@ -76,8 +119,8 @@ func TestChannelManagerReturnsErrReorgWhenDrained(t *testing.T) {
 	require.ErrorIs(t, m.AddL2Block(x), ErrReorg)
 }
 
-// TestChannelManager_Clear tests clearing the channel manager.
-func TestChannelManager_Clear(t *testing.T) {
+// ChannelManager_Clear tests clearing the channel manager.
+func ChannelManager_Clear(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 
 	// Create a channel manager
@@ -96,7 +139,9 @@ func TestChannelManager_Clear(t *testing.T) {
 			TargetNumFrames:  1,
 			ApproxComprRatio: 1.0,
 		},
-	})
+	},
+		rcfg, safeHead,
+	)
 
 	// Channel Manager state should be empty by default
 	require.Empty(m.blocks)
@@ -143,7 +188,7 @@ func TestChannelManager_Clear(t *testing.T) {
 	require.Equal(b.Hash(), m.tip)
 
 	// Clear the channel manager
-	m.Clear()
+	m.Clear(&eth.L2BlockRef{})
 
 	// Check that the entire channel manager state cleared
 	require.Empty(m.blocks)
@@ -153,7 +198,7 @@ func TestChannelManager_Clear(t *testing.T) {
 	require.Empty(m.txChannels)
 }
 
-func TestChannelManager_TxResend(t *testing.T) {
+func ChannelManager_TxResend(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	log := testlog.Logger(t, log.LvlError)
@@ -165,7 +210,9 @@ func TestChannelManager_TxResend(t *testing.T) {
 				TargetNumFrames:  1,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		},
+		rcfg, safeHead,
+	)
 
 	a, _ := derivetest.RandomL2Block(rng, 4)
 
@@ -195,9 +242,9 @@ func TestChannelManager_TxResend(t *testing.T) {
 	require.Len(fs, 1)
 }
 
-// TestChannelManagerCloseBeforeFirstUse ensures that the channel manager
+// ChannelManagerCloseBeforeFirstUse ensures that the channel manager
 // will not produce any frames if closed immediately.
-func TestChannelManagerCloseBeforeFirstUse(t *testing.T) {
+func ChannelManagerCloseBeforeFirstUse(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	log := testlog.Logger(t, log.LvlCrit)
@@ -209,7 +256,9 @@ func TestChannelManagerCloseBeforeFirstUse(t *testing.T) {
 				TargetFrameSize:  0,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		},
+		rcfg, safeHead,
+	)
 
 	a, _ := derivetest.RandomL2Block(rng, 4)
 
@@ -222,10 +271,10 @@ func TestChannelManagerCloseBeforeFirstUse(t *testing.T) {
 	require.ErrorIs(err, io.EOF, "Expected closed channel manager to contain no tx data")
 }
 
-// TestChannelManagerCloseNoPendingChannel ensures that the channel manager
+// ChannelManagerCloseNoPendingChannel ensures that the channel manager
 // can gracefully close with no pending channels, and will not emit any new
 // channel frames.
-func TestChannelManagerCloseNoPendingChannel(t *testing.T) {
+func ChannelManagerCloseNoPendingChannel(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -237,7 +286,9 @@ func TestChannelManagerCloseNoPendingChannel(t *testing.T) {
 				TargetNumFrames:  1,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		},
+		rcfg, safeHead,
+	)
 	a := newMiniL2Block(0)
 	b := newMiniL2BlockWithNumberParent(0, big.NewInt(1), a.Hash())
 
@@ -261,10 +312,10 @@ func TestChannelManagerCloseNoPendingChannel(t *testing.T) {
 	require.ErrorIs(err, io.EOF, "Expected closed channel manager to return no new tx data")
 }
 
-// TestChannelManagerCloseNoPendingChannel ensures that the channel manager
+// ChannelManagerCloseNoPendingChannel ensures that the channel manager
 // can gracefully close with a pending channel, and will not produce any
 // new channel frames after this point.
-func TestChannelManagerClosePendingChannel(t *testing.T) {
+func ChannelManagerClosePendingChannel(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -276,7 +327,9 @@ func TestChannelManagerClosePendingChannel(t *testing.T) {
 				TargetFrameSize:  1000,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		},
+		rcfg, safeHead,
+	)
 
 	a := newMiniL2Block(50_000)
 	b := newMiniL2BlockWithNumberParent(10, big.NewInt(1), a.Hash())
@@ -306,10 +359,10 @@ func TestChannelManagerClosePendingChannel(t *testing.T) {
 	require.ErrorIs(err, io.EOF, "Expected closed channel manager to produce no more tx data")
 }
 
-// TestChannelManagerCloseAllTxsFailed ensures that the channel manager
+// ChannelManagerCloseAllTxsFailed ensures that the channel manager
 // can gracefully close after producing transaction frames if none of these
 // have successfully landed on chain.
-func TestChannelManagerCloseAllTxsFailed(t *testing.T) {
+func ChannelManagerCloseAllTxsFailed(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -321,7 +374,8 @@ func TestChannelManagerCloseAllTxsFailed(t *testing.T) {
 				TargetFrameSize:  1000,
 				ApproxComprRatio: 1.0,
 			},
-		})
+		}, rcfg, safeHead,
+	)
 
 	a := newMiniL2Block(50_000)
 
