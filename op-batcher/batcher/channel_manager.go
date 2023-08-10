@@ -47,13 +47,14 @@ type channelManager struct {
 	closed bool
 }
 
-func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, rcfg *rollup.Config) *channelManager {
+func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, rcfg *rollup.Config, safeHead *eth.L2BlockRef) *channelManager {
 	return &channelManager{
-		log:        log,
-		metr:       metr,
-		cfg:        cfg,
-		rcfg:       rcfg,
-		txChannels: make(map[txID]*channel),
+		log:                log,
+		metr:               metr,
+		cfg:                cfg,
+		rcfg:               rcfg,
+		txChannels:         make(map[txID]*channel),
+		lastProcessedBlock: safeHead,
 	}
 }
 
