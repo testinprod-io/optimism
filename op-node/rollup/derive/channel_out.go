@@ -159,6 +159,7 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 			return 0, err
 		}
 		co.rlpLength = 0
+		co.compress.Reset()
 	} else {
 		// We encode to a temporary buffer to determine the encoded length to
 		// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
