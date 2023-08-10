@@ -33,36 +33,35 @@ We need [batch_decoder](../batch_decoder/) to obtain channels.
 Example logs(on mainnet):
 
 ```
-[1/80] Channel ID: 00b9f5ad2cc4bda91e9d83a1149b91fc, L1SizeReductionPercentage: 2.741022 %
-[2/80] Channel ID: 0180be8f09ef9ba8c8f34da4de99754c, L1SizeReductionPercentage: 2.640372 %
-[3/80] Channel ID: 019865185fb821c3500ec92bf18cdf1f, L1SizeReductionPercentage: 2.892947 %
-[4/80] Channel ID: 01a74f320aab8a35150d5d1d71e42c13, L1SizeReductionPercentage: 3.762513 %
-[5/80] Channel ID: 022ac44dbfb8756dc8918366a8b7cee4, L1SizeReductionPercentage: 2.969038 %
-[6/80] Channel ID: 0628f6c8090a5bd0e1a36a2294d54f4b, L1SizeReductionPercentage: 5.704166 %
-[7/80] Channel ID: 06d33430ef7a25fdf16513d0830ed1d8, L1SizeReductionPercentage: 3.452649 %
-[8/80] Channel ID: 091d4dc2bd07eb9043cc451bb6128b50, L1SizeReductionPercentage: 3.388687 %
-[9/80] Channel ID: 09a455ff8f48fd3c4c4c119844d14e23, L1SizeReductionPercentage: 3.095162 %
-[10/80] Channel ID: 0d54213c48e51c52ff01bad07e67aca0, L1SizeReductionPercentage: 2.956510 %
+[1/80] Channel ID: 00b9f5ad2cc4bda91e9d83a1149b91fc, CompressedReductionPercent: 2.741022 %
+[2/80] Channel ID: 0180be8f09ef9ba8c8f34da4de99754c, CompressedReductionPercent: 2.640372 %
+[3/80] Channel ID: 019865185fb821c3500ec92bf18cdf1f, CompressedReductionPercent: 2.892947 %
+[4/80] Channel ID: 01a74f320aab8a35150d5d1d71e42c13, CompressedReductionPercent: 3.762513 %
+[5/80] Channel ID: 022ac44dbfb8756dc8918366a8b7cee4, CompressedReductionPercent: 2.969038 %
+[6/80] Channel ID: 0628f6c8090a5bd0e1a36a2294d54f4b, CompressedReductionPercent: 5.704166 %
+[7/80] Channel ID: 06d33430ef7a25fdf16513d0830ed1d8, CompressedReductionPercent: 3.452649 %
+[8/80] Channel ID: 091d4dc2bd07eb9043cc451bb6128b50, CompressedReductionPercent: 3.388687 %
+[9/80] Channel ID: 09a455ff8f48fd3c4c4c119844d14e23, CompressedReductionPercent: 3.095162 %
+[10/80] Channel ID: 0d54213c48e51c52ff01bad07e67aca0, CompressedReductionPercent: 2.956510 %
 ...
 ````
 
 Example logs(on goerli):
 
 ```
-[1/143] Channel ID: 0012531bbbd7f87b3f5dc39b9ffa1b39, L1SizeReductionPercentage: 1.551085 %
-[2/143] Channel ID: 001d0b74e42e5748c2e151503de38c6a, L1SizeReductionPercentage: 14.540396 %
-[3/143] Channel ID: 0028b671a15b759e6f0a162c36bcd3c9, L1SizeReductionPercentage: 1.143876 %
-[4/143] Channel ID: 002d6753f1ecc4dac5ece135d5ad30c4, L1SizeReductionPercentage: 1.291216 %
-[5/143] Channel ID: 006442c4c387b4e5abfbf1b5868cc660, L1SizeReductionPercentage: 1.071292 %
-[6/143] Channel ID: 00a833117462681c9b3679c27ad614dc, L1SizeReductionPercentage: 0.896322 %
-[7/143] Channel ID: 00ccb5d85a6f9063d2a84db65c41f03f, L1SizeReductionPercentage: 1.147978 %
-[8/143] Channel ID: 00d652b37b72966598471c5ced5b61ab, L1SizeReductionPercentage: 1.529358 %
-[9/143] Channel ID: 00dce9e162acb73ccfee63eeefb9eadd, L1SizeReductionPercentage: 0.701666 %
-[10/143] Channel ID: 010e97dedbaba821e6c53d36b97d0a2b, L1SizeReductionPercentage: 2.392510 %
-[11/143] Channel ID: 01144a2232b99afb4548ae86bffee31f, L1SizeReductionPercentage: 18.849324 %
-[12/143] Channel ID: 0130423b23897cccc4c83490c57d6bc8, L1SizeReductionPercentage: 21.818182 %
-[13/143] Channel ID: 01378731f9c58ac26cd457a51107a1aa, L1SizeReductionPercentage: 14.045595 %
-[14/143] Channel ID: 0157f7cb58119647361444bf6bb9ae57, L1SizeReductionPercentage: 0.721008 %
+[1/143] Channel ID: 0012531bbbd7f87b3f5dc39b9ffa1b39, CompressedReductionPercent: 1.551085 %
+[2/143] Channel ID: 001d0b74e42e5748c2e151503de38c6a, CompressedReductionPercent: 14.540396 %
+[3/143] Channel ID: 0028b671a15b759e6f0a162c36bcd3c9, CompressedReductionPercent: 1.143876 %
+[4/143] Channel ID: 002d6753f1ecc4dac5ece135d5ad30c4, CompressedReductionPercent: 1.291216 %
+[5/143] Channel ID: 006442c4c387b4e5abfbf1b5868cc660, CompressedReductionPercent: 1.071292 %
+[6/143] Channel ID: 00a833117462681c9b3679c27ad614dc, CompressedReductionPercent: 0.896322 %
+[7/143] Channel ID: 00ccb5d85a6f9063d2a84db65c41f03f, CompressedReductionPercent: 1.147978 %
+[8/143] Channel ID: 00d652b37b72966598471c5ced5b61ab, CompressedReductionPercent: 1.529358 %
+[9/143] Channel ID: 00dce9e162acb73ccfee63eeefb9eadd, CompressedReductionPercent: 0.701666 %
+[10/143] Channel ID: 010e97dedbaba821e6c53d36b97d0a2b, CompressedReductionPercent: 2.392510 %
+[11/143] Channel ID: 01144a2232b99afb4548ae86bffee31f, CompressedReductionPercent: 18.849324 %
+[12/143] Channel ID: 0130423b23897cccc4c83490c57d6bc8, CompressedReductionPercent: 21.818182 %
+[13/143] Channel ID: 01378731f9c58ac26cd457a51107a1aa, CompressedReductionPercent: 14.045595 %
 ...
 ```
 
@@ -86,7 +85,8 @@ Example output of result json. `091d4dc2bd07eb9043cc451bb6128b50` is channel ID:
   "SpanBatchTxSize": 3367870,
   "SpanBatchPrefixSize": 48,
   "SpanBatchPayloadSize": 3368210,
-  "L1SizeReductionPercentage": 3.3886872705342075,
+  "CompressedReductionPercent": 3.3886872705342075,
+  "UncompressedSizeReductionPercent": 1.1942320390710526,
   "L2TxCount": 5359,
   "L1StartNum": 17766518,
   "L1EndNum": 17766567,
