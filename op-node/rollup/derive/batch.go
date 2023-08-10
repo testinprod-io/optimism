@@ -159,7 +159,7 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-
+	// abstract out by BatchV2Txs type
 	b.Txs = &BatchV2TxsV1{}
 	b.Txs.(*BatchV2TxsV1).TotalBlockTxCount = totalBlockTxCount
 	b.Txs.Decode(r)
@@ -383,6 +383,7 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
+	// abstract out by BatchV2Txs type
 	batchV2Txs, err := NewBatchV2TxsV1(txs)
 	if err != nil {
 		return err
