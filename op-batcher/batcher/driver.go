@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/sources"
 	"io"
 	"math/big"
 	_ "net/http/pprof"
@@ -115,10 +116,17 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.
 
 	cfg.metr = m
 
+	syncStatus, err := fetchSyncStatus(ctx, cfg.RollupNode)
+	if err != nil {
+		return nil, err
+	}
+
+	state := NewChannelManager(l, m, cfg.Channel, cfg.Rollup, &syncStatus.SafeL2)
+
 	return &BatchSubmitter{
 		Config: cfg,
 		txMgr:  cfg.TxManager,
-		state:  NewChannelManager(l, m, cfg.Channel, cfg.Rollup),
+		state:  state,
 	}, nil
 
 }
@@ -136,7 +144,7 @@ func (l *BatchSubmitter) Start() error {
 
 	l.shutdownCtx, l.cancelShutdownCtx = context.WithCancel(context.Background())
 	l.killCtx, l.cancelKillCtx = context.WithCancel(context.Background())
-	syncStatus, err := l.fetchSyncStatus(context.Background())
+	syncStatus, err := fetchSyncStatus(context.Background(), l.RollupNode)
 	if err != nil {
 		return nil
 	}
@@ -244,24 +252,12 @@ func (l *BatchSubmitter) loadBlockIntoState(ctx context.Context, blockNumber uin
 	return block, nil
 }
 
-func (l *BatchSubmitter) fetchSyncStatus(ctx context.Context) (*eth.SyncStatus, error) {
-	syncStatus, err := l.RollupNode.SyncStatus(ctx)
-	// Ensure that we have the sync status
-	if err != nil {
-		return &eth.SyncStatus{}, fmt.Errorf("failed to get sync status: %w", err)
-	}
-	if syncStatus.HeadL1 == (eth.L1BlockRef{}) {
-		return &eth.SyncStatus{}, errors.New("empty sync status")
-	}
-	return syncStatus, nil
-}
-
 // calculateL2BlockRangeToStore determines the range (start,end] that should be loaded into the local state.
 // It also takes care of initializing some local state (i.e. will modify l.lastStoredBlock in certain conditions)
 func (l *BatchSubmitter) calculateL2BlockRangeToStore(ctx context.Context) (eth.BlockID, eth.BlockID, error) {
 	ctx, cancel := context.WithTimeout(ctx, l.NetworkTimeout)
 	defer cancel()
-	syncStatus, err := l.fetchSyncStatus(ctx)
+	syncStatus, err := fetchSyncStatus(ctx, l.RollupNode)
 	if err != nil {
 		return eth.BlockID{}, eth.BlockID{}, err
 	}
@@ -313,7 +309,7 @@ func (l *BatchSubmitter) loop() {
 					l.log.Error("error closing the channel manager to handle a L2 reorg", "err", err)
 				}
 				l.publishStateToL1(queue, receiptsCh, true)
-				syncStatus, err := l.fetchSyncStatus(context.Background())
+				syncStatus, err := fetchSyncStatus(context.Background(), l.RollupNode)
 				// TODO: error handling
 				l.state.Clear(&syncStatus.SafeL2)
 				continue
@@ -450,4 +446,16 @@ func (l *BatchSubmitter) l1Tip(ctx context.Context) (eth.L1BlockRef, error) {
 		return eth.L1BlockRef{}, fmt.Errorf("getting latest L1 block: %w", err)
 	}
 	return eth.InfoToL1BlockRef(eth.HeaderBlockInfo(head)), nil
+}
+
+func fetchSyncStatus(ctx context.Context, rollupNode *sources.RollupClient) (*eth.SyncStatus, error) {
+	syncStatus, err := rollupNode.SyncStatus(ctx)
+	// Ensure that we have the sync status
+	if err != nil {
+		return &eth.SyncStatus{}, fmt.Errorf("failed to get sync status: %w", err)
+	}
+	if syncStatus.HeadL1 == (eth.L1BlockRef{}) {
+		return &eth.SyncStatus{}, errors.New("empty sync status")
+	}
+	return syncStatus, nil
 }
