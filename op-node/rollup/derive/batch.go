@@ -61,6 +61,7 @@ type BatchV2Prefix struct {
 type BatchV2Txs interface {
 	Encode(w io.Writer) error
 	Decode(r *bytes.Reader) error
+	// FullTxs returns list of raw full transactions from BatchV2Txs
 	FullTxs() ([][]byte, error)
 }
 
