@@ -54,7 +54,8 @@ func (t *ShadowCompressor) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	if uint64(t.shadowBuf.Len()) > t.config.TargetFrameSize*uint64(t.config.TargetNumFrames) {
-		return 0, derive.CompressorFullErr
+		t.fullErr = derive.CompressorFullErr
+		return 0, t.fullErr
 	}
 	return t.compress.Write(p)
 }
