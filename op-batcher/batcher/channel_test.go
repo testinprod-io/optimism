@@ -2,10 +2,12 @@ package batcher
 
 import (
 	"io"
+	"math"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
 	"github.com/ethereum-optimism/optimism/op-node/eth"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-node/testlog"
 	"github.com/ethereum/go-ethereum/common"
@@ -13,14 +15,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestChannelTimeout tests that the channel manager
+func TestChannelBatchType(t *testing.T) {
+	maxTs := uint64(math.MaxUint64)
+	spanBatchNotActivated := rollup.Config{
+		SpanBatchTime: &maxTs,
+	}
+	zeroTs := uint64(0)
+	spanBatchActivated := rollup.Config{
+		SpanBatchTime: &zeroTs,
+	}
+	safeHead := eth.L2BlockRef{
+		Time: 0,
+	}
+	tests := []struct {
+		name string
+		f    func(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef)
+	}{
+		{"ChannelTimeout", ChannelTimeout},
+		{"ChannelNextTxData", ChannelNextTxData},
+		{"ChannelTxConfirmed", ChannelTxConfirmed},
+		{"ChannelTxFailed", ChannelTxFailed},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_BatchV1", func(t *testing.T) {
+			test.f(t, &spanBatchNotActivated, &safeHead)
+		})
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_BatchV2", func(t *testing.T) {
+			test.f(t, &spanBatchActivated, &safeHead)
+		})
+	}
+}
+
+// ChannelTimeout tests that the channel manager
 // correctly identifies when a pending channel is timed out.
-func TestChannelTimeout(t *testing.T) {
+func ChannelTimeout(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	// Create a new channel manager with a ChannelTimeout
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{
 		ChannelTimeout: 100,
-	})
+	}, rcfg, safeHead)
 
 	// Pending channel is nil so is cannot be timed out
 	require.Nil(t, m.currentChannel)
@@ -58,10 +96,10 @@ func TestChannelTimeout(t *testing.T) {
 	require.True(t, timeout)
 }
 
-// TestChannelNextTxData checks the nextTxData function.
-func TestChannelNextTxData(t *testing.T) {
+// ChannelNextTxData checks the nextTxData function.
+func ChannelNextTxData(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	log := testlog.Logger(t, log.LvlCrit)
-	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{})
+	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{}, rcfg, safeHead)
 
 	// Nil pending channel should return EOF
 	returnedTxData, err := m.nextTxData(nil)
@@ -100,8 +138,8 @@ func TestChannelNextTxData(t *testing.T) {
 	require.Equal(t, expectedTxData, channel.pendingTransactions[expectedChannelID])
 }
 
-// TestChannelTxConfirmed checks the [ChannelManager.TxConfirmed] function.
-func TestChannelTxConfirmed(t *testing.T) {
+// ChannelTxConfirmed checks the [ChannelManager.TxConfirmed] function.
+func ChannelTxConfirmed(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	// Create a channel manager
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{
@@ -109,7 +147,7 @@ func TestChannelTxConfirmed(t *testing.T) {
 		// channels on confirmation. This would result in [TxConfirmed]
 		// clearing confirmed transactions, and reseting the pendingChannels map
 		ChannelTimeout: 10,
-	})
+	}, rcfg, safeHead)
 
 	// Let's add a valid pending transaction to the channel manager
 	// So we can demonstrate that TxConfirmed's correctness
@@ -153,11 +191,11 @@ func TestChannelTxConfirmed(t *testing.T) {
 	require.Equal(t, blockID, m.currentChannel.confirmedTransactions[expectedChannelID])
 }
 
-// TestChannelTxFailed checks the [ChannelManager.TxFailed] function.
-func TestChannelTxFailed(t *testing.T) {
+// ChannelTxFailed checks the [ChannelManager.TxFailed] function.
+func ChannelTxFailed(t *testing.T, rcfg *rollup.Config, safeHead *eth.L2BlockRef) {
 	// Create a channel manager
 	log := testlog.Logger(t, log.LvlCrit)
-	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{})
+	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{}, rcfg, safeHead)
 
 	// Let's add a valid pending transaction to the channel
 	// manager so we can demonstrate correctness
