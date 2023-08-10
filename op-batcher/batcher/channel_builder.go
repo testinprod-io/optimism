@@ -60,6 +60,9 @@ type ChannelConfig struct {
 
 	// CompressorConfig contains the configuration for creating new compressors.
 	CompressorConfig compressor.Config
+
+	BatchType int
+	ParentRef *eth.L2BlockRef
 }
 
 // Check validates the [ChannelConfig] parameters.
@@ -129,12 +132,12 @@ type channelBuilder struct {
 
 // newChannelBuilder creates a new channel builder or returns an error if the
 // channel out could not be created.
-func newChannelBuilder(cfg ChannelConfig, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*channelBuilder, error) {
+func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder, error) {
 	c, err := cfg.CompressorConfig.NewCompressor()
 	if err != nil {
 		return nil, err
 	}
-	co, err := derive.NewChannelOut(c, batchType, rcfg, lastBlock)
+	co, err := derive.NewChannelOut(c, rcfg, cfg.BatchType, cfg.ParentRef)
 	if err != nil {
 		return nil, err
 	}

@@ -29,8 +29,8 @@ type channel struct {
 	batchType int
 }
 
-func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*channel, error) {
-	cb, err := newChannelBuilder(cfg, batchType, rcfg, lastBlock)
+func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, rcfg *rollup.Config) (*channel, error) {
+	cb, err := newChannelBuilder(cfg, rcfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating new channel: %w", err)
 	}
@@ -41,7 +41,6 @@ func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, batchT
 		channelBuilder:        cb,
 		pendingTransactions:   make(map[txID]txData),
 		confirmedTransactions: make(map[txID]eth.BlockID),
-		batchType:             batchType,
 	}, nil
 }
 

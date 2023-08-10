@@ -76,7 +76,7 @@ func (co *ChannelOut) ID() ChannelID {
 	return co.id
 }
 
-func NewChannelOut(compress Compressor, batchType int, rcfg *rollup.Config, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
+func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
 	c := &ChannelOut{
 		id:        ChannelID{}, // TODO: use GUID here instead of fully random data
 		frame:     0,
@@ -175,9 +175,7 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 	written, err := co.compress.Write(buf.Bytes())
 	if errors.Is(err, CompressorFullErr) {
 		if isSpanBatch {
-			if co.spanBatchBuf.BlockCount == 1 {
-				co.compress.Reset()
-			} else {
+			if co.spanBatchBuf.BlockCount > 1 {
 				co.compress.Reset()
 				written, _ = co.compress.ForceWrite(lastSpanBatch.Bytes())
 				return uint64(written), err
