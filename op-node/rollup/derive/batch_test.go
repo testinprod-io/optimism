@@ -1,6 +1,8 @@
 package derive
 
 import (
+	"bytes"
+	"fmt"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -44,9 +46,18 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		}
 		txs = append(txs, rawTx)
 	}
-	batchV2TxsV1, err := NewBatchV2TxsV1(txs)
+	var batchV2Txs BatchV2Txs
+	var err error
+	switch BatchV2TxsType {
+	case BatchV2TxsV1Type:
+		batchV2Txs, err = NewBatchV2TxsV1(txs)
+	case BatchV2TxsV2Type:
+		batchV2Txs, err = NewBatchV2TxsV2(txs)
+	default:
+		panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
+	}
 	if err != nil {
-		panic("NewBatchV2TxsV1:" + err.Error())
+		panic("NewBatchV2TxsV?:" + err.Error())
 	}
 	return &BatchData{
 		BatchType: BatchV2Type,
@@ -61,7 +72,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 				BlockCount:    blockCount,
 				OriginBits:    originBits,
 				BlockTxCounts: blockTxCounts,
-				Txs:           batchV2TxsV1,
+				Txs:           batchV2Txs,
 			},
 		},
 	}
@@ -157,9 +168,17 @@ func TestBatchV2Merge(t *testing.T) {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
 		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
-			txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
-			assert.True(t, int(txDataHeader) == len(txData))
+			switch BatchV2TxsType {
+			case BatchV2TxsV1Type:
+				txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
+				txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
+				assert.True(t, int(txDataHeader) == len(txData))
+			case BatchV2TxsV2Type:
+				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
+				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
+			default:
+				panic(fmt.Sprintf("invalid BatchV2TxsV2Type: %d", BatchV2TxsV2Type))
+			}
 			cnt++
 		}
 	}
@@ -168,7 +187,7 @@ func TestBatchV2Merge(t *testing.T) {
 	batchV1s[0].Transactions[0][0] = 0x33
 	var batchV2WrongTxType BatchV2
 	err = batchV2WrongTxType.MergeBatchV1s(batchV1s, uint(0), genesisTimeStamp)
-	require.ErrorContains(t, err, "failed to decode tx")
+	require.Error(t, err)
 
 	var batchV1sEmpty []BatchV1
 	var batchV2Empty BatchV2
@@ -236,9 +255,17 @@ func TestBatchV2Split(t *testing.T) {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
 		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
-			txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
-			assert.True(t, int(txDataHeader) == len(txData))
+			switch BatchV2TxsType {
+			case BatchV2TxsV1Type:
+				txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
+				txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
+				assert.True(t, int(txDataHeader) == len(txData))
+			case BatchV2TxsV2Type:
+				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
+				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
+			default:
+				panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
+			}
 			cnt++
 		}
 	}
@@ -262,7 +289,14 @@ func TestBatchV2SplitValidation(t *testing.T) {
 	require.ErrorContains(t, err, "parent hash mismatch")
 
 	// set invalid tx type to make tx marshaling fail
-	batchV2.Txs.(*BatchV2TxsV1).TxDatas[0][0] = 0x33
+	switch BatchV2TxsType {
+	case BatchV2TxsV1Type:
+		batchV2.Txs.(*BatchV2TxsV1).TxDatas[0][0] = 0x33
+	case BatchV2TxsV2Type:
+		batchV2.Txs.(*BatchV2TxsV2).TxDatas[0][0] = 0x33
+	default:
+		panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
+	}
 	_, err = batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
 }

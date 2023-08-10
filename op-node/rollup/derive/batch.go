@@ -42,6 +42,14 @@ const (
 	BatchV2Type
 )
 
+const (
+	BatchV2TxsV1Type = iota
+	BatchV2TxsV2Type
+)
+
+// adjust this for trying different tx encoding schemes
+const BatchV2TxsType = BatchV2TxsV1Type
+
 type BatchV1 struct {
 	ParentHash common.Hash  // parent L2 block hash
 	EpochNum   rollup.Epoch // aka l1 num
@@ -161,10 +169,16 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		totalBlockTxCount += blockTxCount
 	}
 	// abstract out by BatchV2Txs type
-	b.Txs = &BatchV2TxsV1{}
-	b.Txs.(*BatchV2TxsV1).TotalBlockTxCount = totalBlockTxCount
+	switch BatchV2TxsType {
+	case BatchV2TxsV1Type:
+		b.Txs = &BatchV2TxsV1{}
+		b.Txs.(*BatchV2TxsV1).TotalBlockTxCount = totalBlockTxCount
+	case BatchV2TxsV2Type:
+		b.Txs = &BatchV2TxsV2{}
+	default:
+		return fmt.Errorf("invalid BatchV2TxsV2Type: %d", BatchV2TxsV2Type)
+	}
 	b.Txs.Decode(r)
-
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
@@ -385,7 +399,16 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	}
 	b.BlockTxCounts = blockTxCounts
 	// abstract out by BatchV2Txs type
-	batchV2Txs, err := NewBatchV2TxsV1(txs)
+	var batchV2Txs BatchV2Txs
+	var err error
+	switch BatchV2TxsType {
+	case BatchV2TxsV1Type:
+		batchV2Txs, err = NewBatchV2TxsV1(txs)
+	case BatchV2TxsV2Type:
+		batchV2Txs, err = NewBatchV2TxsV2(txs)
+	default:
+		return fmt.Errorf("invalid BatchV2TxsType: %d", BatchV2TxsType)
+	}
 	if err != nil {
 		return err
 	}
