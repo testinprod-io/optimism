@@ -65,15 +65,18 @@ type BatchV2Signature struct {
 	S *uint256.Int
 }
 
+type BatchV2Txs interface {
+	Encode(w io.Writer) error
+	Decode(r *bytes.Reader) error
+	FullTxs() ([][]byte, error)
+}
+
 type BatchV2Payload struct {
 	BlockCount    uint64
 	OriginBits    *big.Int
 	BlockTxCounts []uint64
 
-	// below fields may be generalized
-	TxDataHeaders []uint64
-	TxDatas       []hexutil.Bytes
-	TxSigs        []BatchV2Signature
+	Txs BatchV2Txs
 }
 
 type BatchV2 struct {
@@ -163,51 +166,14 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	txDataHeaders := make([]uint64, totalBlockTxCount)
-	for i := 0; i < int(totalBlockTxCount); i++ {
-		txDataHeader, err := binary.ReadUvarint(r)
-		// TODO: check txDataHeader is not too large
-		if err != nil {
-			return fmt.Errorf("failed to read tx data header: %w", err)
-		}
-		txDataHeaders[i] = txDataHeader
-	}
-	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
-	for i, txDataHeader := range txDataHeaders {
-		txData := make([]byte, txDataHeader)
-		_, err = io.ReadFull(r, txData)
-		if err != nil {
-			return fmt.Errorf("failed to tx data: %w", err)
-		}
-		txDatas[i] = txData
-	}
-	txSigs := make([]BatchV2Signature, totalBlockTxCount)
-	var sigBuffer [32]byte
-	for i := 0; i < int(totalBlockTxCount); i++ {
-		var txSig BatchV2Signature
-		v, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig v: %w", err)
-		}
-		txSig.V = v
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig r: %w", err)
-		}
-		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig s: %w", err)
-		}
-		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		txSigs[i] = txSig
-	}
+
+	b.Txs = &BatchV2TxsV1{}
+	b.Txs.(*BatchV2TxsV1).TotalBlockTxCount = totalBlockTxCount
+	b.Txs.Decode(r)
+
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
-	b.TxDatas = txDatas
-	b.TxSigs = txSigs
 	return nil
 }
 
@@ -278,30 +244,8 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 			return fmt.Errorf("cannot write block tx count: %w", err)
 		}
 	}
-	for _, txDataHeader := range b.TxDataHeaders {
-		n = binary.PutUvarint(buf[:], txDataHeader)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write block tx data header: %w", err)
-		}
-	}
-	for _, txData := range b.TxDatas {
-		if _, err := w.Write(txData); err != nil {
-			return fmt.Errorf("cannot write block tx data: %w", err)
-		}
-	}
-	for _, txSig := range b.TxSigs {
-		n = binary.PutUvarint(buf[:], txSig.V)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx sig v: %w", err)
-		}
-		rBuf := txSig.R.Bytes32()
-		if _, err := w.Write(rBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig r: %w", err)
-		}
-		sBuf := txSig.S.Bytes32()
-		if _, err := w.Write(sBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig s: %w", err)
-		}
+	if err := b.Txs.Encode(w); err != nil {
+		return err
 	}
 	return nil
 }
@@ -439,9 +383,11 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	var txSigs []BatchV2Signature
+	totalBlockTxCount := uint64(0)
 	for _, batchV1 := range batchV1s {
 		blockTxCount := uint64(len(batchV1.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
+		totalBlockTxCount += blockTxCount
 		for _, rawTx := range batchV1.Transactions {
 			// below segment may be generalized
 			var tx types.Transaction
@@ -470,9 +416,13 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
-	b.TxDatas = txDatas
-	b.TxSigs = txSigs
+	var batchV2TxsV1 *BatchV2TxsV1 = &BatchV2TxsV1{
+		TotalBlockTxCount: totalBlockTxCount,
+		TxDataHeaders:     txDataHeaders,
+		TxDatas:           txDatas,
+		TxSigs:            txSigs,
+	}
+	b.Txs = batchV2TxsV1
 	return nil
 }
 
@@ -504,25 +454,14 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 			}
 		}
 	}
+	txs, err := b.Txs.FullTxs()
+	if err != nil {
+		return nil, err
+	}
 	idx := 0
 	for i := 0; i < int(b.BlockCount); i++ {
 		for txIndex := 0; txIndex < int(b.BlockTxCounts[i]); txIndex++ {
-			var batchV2Tx BatchV2Tx
-			if err := batchV2Tx.UnmarshalBinary(b.TxDatas[idx]); err != nil {
-				return nil, err
-			}
-			v := new(big.Int).SetUint64(b.TxSigs[idx].V)
-			r := b.TxSigs[idx].R.ToBig()
-			s := b.TxSigs[idx].S.ToBig()
-			tx, err := batchV2Tx.ConvertToFullTx(v, r, s)
-			if err != nil {
-				return nil, err
-			}
-			encodedTx, err := tx.MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-			batchV1s[i].Transactions = append(batchV1s[i].Transactions, encodedTx)
+			batchV1s[i].Transactions = append(batchV1s[i].Transactions, txs[idx])
 			idx++
 		}
 	}

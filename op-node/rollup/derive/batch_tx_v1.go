@@ -2,15 +2,124 @@ package derive
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 )
+
+type BatchV2TxsV1 struct {
+	TotalBlockTxCount uint64
+	TxDataHeaders     []uint64
+	TxDatas           []hexutil.Bytes
+	TxSigs            []BatchV2Signature
+}
+
+func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, txDataHeader := range btx.TxDataHeaders {
+		n := binary.PutUvarint(buf[:], txDataHeader)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write block tx data header: %w", err)
+		}
+	}
+	for _, txData := range btx.TxDatas {
+		if _, err := w.Write(txData); err != nil {
+			return fmt.Errorf("cannot write block tx data: %w", err)
+		}
+	}
+	for _, txSig := range btx.TxSigs {
+		n := binary.PutUvarint(buf[:], txSig.V)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx sig v: %w", err)
+		}
+		rBuf := txSig.R.Bytes32()
+		if _, err := w.Write(rBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig r: %w", err)
+		}
+		sBuf := txSig.S.Bytes32()
+		if _, err := w.Write(sBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig s: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
+	txDataHeaders := make([]uint64, btx.TotalBlockTxCount)
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		txDataHeader, err := binary.ReadUvarint(r)
+		// TODO: check txDataHeader is not too large
+		if err != nil {
+			return fmt.Errorf("failed to read tx data header: %w", err)
+		}
+		txDataHeaders[i] = txDataHeader
+	}
+	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
+	for i, txDataHeader := range txDataHeaders {
+		txData := make([]byte, txDataHeader)
+		_, err := io.ReadFull(r, txData)
+		if err != nil {
+			return fmt.Errorf("failed to tx data: %w", err)
+		}
+		txDatas[i] = txData
+	}
+	txSigs := make([]BatchV2Signature, btx.TotalBlockTxCount)
+	var sigBuffer [32]byte
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		var txSig BatchV2Signature
+		v, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig v: %w", err)
+		}
+		txSig.V = v
+		_, err = io.ReadFull(r, sigBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig r: %w", err)
+		}
+		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		_, err = io.ReadFull(r, sigBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig s: %w", err)
+		}
+		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		txSigs[i] = txSig
+	}
+	btx.TxDataHeaders = txDataHeaders
+	btx.TxDatas = txDatas
+	btx.TxSigs = txSigs
+	return nil
+}
+
+func (btx *BatchV2TxsV1) FullTxs() ([][]byte, error) {
+	var txs [][]byte
+	for idx := 0; idx < int(btx.TotalBlockTxCount); idx++ {
+		var batchV2Tx BatchV2Tx
+		if err := batchV2Tx.UnmarshalBinary(btx.TxDatas[idx]); err != nil {
+			return nil, err
+		}
+		v := new(big.Int).SetUint64(btx.TxSigs[idx].V)
+		r := btx.TxSigs[idx].R.ToBig()
+		s := btx.TxSigs[idx].S.ToBig()
+		tx, err := batchV2Tx.ConvertToFullTx(v, r, s)
+		if err != nil {
+			return nil, err
+		}
+		encodedTx, err := tx.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		txs = append(txs, encodedTx)
+	}
+	return txs, nil
+}
 
 type BatchV2TxData interface {
 	txType() byte // returns the type ID

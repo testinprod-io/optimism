@@ -29,17 +29,17 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		originBits.SetBit(originBits, i, bit)
 	}
 	var blockTxCounts []uint64
-	totalblockTxCounts := uint64(0)
+	totalblockTxCount := uint64(0)
 	for i := 0; i < int(blockCount); i++ {
 		blockTxCount := uint64(rng.Intn(16))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		totalblockTxCounts += blockTxCount
+		totalblockTxCount += blockTxCount
 	}
 	txDataHeaders := make([]uint64, 0)
 	txDatas := make([]hexutil.Bytes, 0)
 	txSigs := make([]BatchV2Signature, 0)
 	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
-	for i := 0; i < int(totalblockTxCounts); i++ {
+	for i := 0; i < int(totalblockTxCount); i++ {
 		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 		batchV2Tx, err := NewBatchV2Tx(*tx)
 		if err != nil {
@@ -59,6 +59,12 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		txDatas = append(txDatas, txData)
 		txSigs = append(txSigs, txSig)
 	}
+	var batchV2TxsV1 *BatchV2TxsV1 = &BatchV2TxsV1{
+		TotalBlockTxCount: totalblockTxCount,
+		TxDataHeaders:     txDataHeaders,
+		TxDatas:           txDatas,
+		TxSigs:            txSigs,
+	}
 	return &BatchData{
 		BatchType: BatchV2Type,
 		BatchV2: BatchV2{
@@ -72,9 +78,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 				BlockCount:    blockCount,
 				OriginBits:    originBits,
 				BlockTxCounts: blockTxCounts,
-				TxDataHeaders: txDataHeaders,
-				TxDatas:       txDatas,
-				TxSigs:        txSigs,
+				Txs:           batchV2TxsV1,
 			},
 		},
 	}
@@ -170,8 +174,8 @@ func TestBatchV2Merge(t *testing.T) {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
 		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.TxDataHeaders[cnt]
-			txData := batchV2.TxDatas[cnt]
+			txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
+			txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
 			assert.True(t, int(txDataHeader) == len(txData))
 			cnt++
 		}
@@ -249,8 +253,8 @@ func TestBatchV2Split(t *testing.T) {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
 		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.TxDataHeaders[cnt]
-			txData := batchV2.TxDatas[cnt]
+			txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
+			txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
 			assert.True(t, int(txDataHeader) == len(txData))
 			cnt++
 		}
@@ -275,7 +279,7 @@ func TestBatchV2SplitValidation(t *testing.T) {
 	require.ErrorContains(t, err, "parent hash mismatch")
 
 	// set invalid tx type to make tx marshaling fail
-	batchV2.TxDatas[0][0] = 0x33
+	batchV2.Txs.(*BatchV2TxsV1).TxDatas[0][0] = 0x33
 	_, err = batchV2.SplitBatchV2CheckValidation(fetchL1Block, safeL2head, l2BlockTime, genesisTimeStamp)
 	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
 }
