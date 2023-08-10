@@ -14,7 +14,7 @@ We inspected 143 channels in goerli. 47 of channels experienced a spike(32.8 %).
 
 We inspected 80 channels in mainnet. 0 of channels experienced a spike(0 %).
 
-Statement: **What caused this spike?**
+Statement: **What caused this spike? In general, what caused `CompressedReductionPercent` deviation?**
 
 ## Analysis
 
