@@ -159,7 +159,6 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 			return 0, err
 		}
 		co.rlpLength = 0
-		co.compress.Reset()
 	} else {
 		// We encode to a temporary buffer to determine the encoded length to
 		// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
@@ -175,14 +174,15 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
+	if isSpanBatch {
+		co.compress.Reset()
+	}
 	if errors.Is(err, CompressorFullErr) {
 		if isSpanBatch {
 			if co.spanBatchBuf.BlockCount > 1 {
-				co.compress.Reset()
 				written, _ = co.compress.ForceWrite(lastSpanBatch.Bytes())
 				return uint64(written), err
 			}
-			co.compress.Reset()
 			written, err = co.compress.ForceWrite(buf.Bytes())
 		} else if co.compress.Len() == 0 {
 			co.compress.Reset()
