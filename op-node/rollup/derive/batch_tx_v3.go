@@ -65,7 +65,10 @@ func (btx *BatchV2TxsV3) DecodeContractCreationBits(contractCreationBitBuffer []
 	btx.ContractCreationBits = contractCreationBits
 }
 
-func (btx *BatchV2TxsV3) ContractCreationCount() uint64 {
+func (btx *BatchV2TxsV3) ContractCreationCount() (uint64, error) {
+	if btx.ContractCreationBits == nil {
+		return 0, errors.New("contract creation bits not set")
+	}
 	var result uint64 = 0
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
 		bit := btx.ContractCreationBits.Bit(i)
@@ -73,7 +76,7 @@ func (btx *BatchV2TxsV3) ContractCreationCount() uint64 {
 			result++
 		}
 	}
-	return result
+	return result, nil
 }
 
 func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
@@ -176,7 +179,12 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 	}
 	var txTos []common.Address
 	txToBuffer := make([]byte, common.AddressLength)
-	for i := 0; i < int(btx.TotalBlockTxCount-btx.ContractCreationCount()); i++ {
+	btx.DecodeContractCreationBits(contractCreationBitBuffer)
+	contractCreationCount, err := btx.ContractCreationCount()
+	if err != nil {
+		return err
+	}
+	for i := 0; i < int(btx.TotalBlockTxCount-contractCreationCount); i++ {
 		_, err := io.ReadFull(r, txToBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to read tx to address: %w", err)
@@ -200,7 +208,6 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 		}
 		txDatas[i] = txData
 	}
-	btx.DecodeContractCreationBits(contractCreationBitBuffer)
 	btx.TxSigs = txSigs
 	btx.TxNonces = txNonces
 	btx.TxGases = txGases
@@ -289,6 +296,7 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 	}
 	return &BatchV2TxsV3{
 		TotalBlockTxCount:    totalBlockTxCount,
+		ChainID:              big.NewInt(1337), // TODO: fix hardcoded chainID
 		ContractCreationBits: contractCreationBits,
 		TxSigs:               txSigs,
 		TxNonces:             txNonces,
@@ -373,22 +381,22 @@ func (tx *BatchV2TxV3) EncodeRLP(w io.Writer) error {
 }
 
 // setDecoded sets the inner transaction after decoding.
-func (tx *BatchV2TxV3) setDecoded(inner BatchV2TxData, size uint64) {
+func (tx *BatchV2TxV3) setDecoded(inner BatchV2TxDataV3, size uint64) {
 	tx.inner = inner
 }
 
 // decodeTyped decodes a typed transaction from the canonical format.
-func (tx *BatchV2TxV3) decodeTyped(b []byte) (BatchV2TxData, error) {
+func (tx *BatchV2TxV3) decodeTyped(b []byte) (BatchV2TxDataV3, error) {
 	if len(b) <= 1 {
 		return nil, errors.New("typed transaction too short")
 	}
 	switch b[0] {
 	case types.AccessListTxType:
-		var inner BatchV2AccessListTxData
+		var inner BatchV2AccessListTxDataV3
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
 	case types.DynamicFeeTxType:
-		var inner BatchV2DynamicFeeTxData
+		var inner BatchV2DynamicFeeTxDataV3
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
 	default:
@@ -404,7 +412,7 @@ func (tx *BatchV2TxV3) DecodeRLP(s *rlp.Stream) error {
 		return err
 	case kind == rlp.List:
 		// It's a legacy transaction.
-		var inner BatchV2LegacyTxData
+		var inner BatchV2LegacyTxDataV3
 		err := s.Decode(&inner)
 		if err == nil {
 			tx.setDecoded(&inner, rlp.ListSize(size))
@@ -429,7 +437,7 @@ func (tx *BatchV2TxV3) DecodeRLP(s *rlp.Stream) error {
 func (tx *BatchV2TxV3) UnmarshalBinary(b []byte) error {
 	if len(b) > 0 && b[0] > 0x7f {
 		// It's a legacy transaction.
-		var data BatchV2LegacyTxData
+		var data BatchV2LegacyTxDataV3
 		err := rlp.DecodeBytes(b, &data)
 		if err != nil {
 			return err
