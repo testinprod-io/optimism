@@ -22,10 +22,12 @@ type BatchV2Signature struct {
 }
 
 type BatchV2TxsV1 struct {
+	// below single field must be manually set
 	TotalBlockTxCount uint64
-	TxDataHeaders     []uint64
-	TxDatas           []hexutil.Bytes
-	TxSigs            []BatchV2Signature
+
+	TxDataHeaders []uint64
+	TxDatas       []hexutil.Bytes
+	TxSigs        []BatchV2Signature
 }
 
 func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
