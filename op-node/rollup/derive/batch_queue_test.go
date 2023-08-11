@@ -172,9 +172,10 @@ func TestBatchQueueEager(t *testing.T) {
 	for i := 0; i < len(batches); i++ {
 		b, e := bq.NextBatch(context.Background(), safeHead)
 		require.ErrorIs(t, e, errors[i])
-		require.Equal(t, batches[i], b)
-
-		if b != nil {
+		if b == nil {
+			require.Nil(t, batches[i])
+		} else {
+			require.Equal(t, batches[i].BatchV1, *b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -221,9 +222,10 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 	for i := 0; i < len(batches); i++ {
 		b, e := bq.NextBatch(context.Background(), safeHead)
 		require.ErrorIs(t, e, errors[i])
-		require.Equal(t, batches[i], b)
-
-		if b != nil {
+		if b == nil {
+			require.Nil(t, batches[i])
+		} else {
+			require.Equal(t, batches[i].BatchV1, *b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -331,7 +333,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
 	require.Equal(t, b.Timestamp, uint64(12))
-	require.Empty(t, b.BatchV1.Transactions)
+	require.Empty(t, b.Transactions)
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2
@@ -341,7 +343,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
 	require.Equal(t, b.Timestamp, uint64(14))
-	require.Empty(t, b.BatchV1.Transactions)
+	require.Empty(t, b.Transactions)
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2
@@ -350,7 +352,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	// Check for the inputted batch at t = 16
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
-	require.Equal(t, b, batches[0])
+	require.Equal(t, b, &batches[0].BatchV1)
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2
@@ -367,6 +369,6 @@ func TestBatchQueueMissing(t *testing.T) {
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
 	require.Equal(t, b.Timestamp, uint64(18))
-	require.Empty(t, b.BatchV1.Transactions)
+	require.Empty(t, b.Transactions)
 	require.Equal(t, rollup.Epoch(1), b.EpochNum)
 }

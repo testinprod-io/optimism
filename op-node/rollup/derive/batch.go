@@ -95,11 +95,89 @@ type BatchData struct {
 	// batches may contain additional data with new upgrades
 }
 
+// EncodeRLP implements rlp.Encoder
+func (b *BatchData) EncodeRLP(w io.Writer) error {
+	buf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(buf)
+	buf.Reset()
+	if err := b.encodeTyped(buf); err != nil {
+		return err
+	}
+	return rlp.Encode(w, buf.Bytes())
+}
+
+// MarshalBinary returns the canonical encoding of the batch.
+func (b *BatchData) MarshalBinary() ([]byte, error) {
+	var buf bytes.Buffer
+	err := b.encodeTyped(&buf)
+	return buf.Bytes(), err
+}
+
+func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
+	switch b.BatchType {
+	case BatchV1Type:
+		buf.WriteByte(BatchV1Type)
+		return rlp.Encode(buf, &b.BatchV1)
+	case BatchV2Type:
+		buf.WriteByte(BatchV2Type)
+		return b.BatchV2.Encode(buf)
+	default:
+		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
+	}
+}
+
+// DecodeRLP implements rlp.Decoder
+func (b *BatchData) DecodeRLP(s *rlp.Stream) error {
+	if b == nil {
+		return errors.New("cannot decode into nil BatchData")
+	}
+	v, err := s.Bytes()
+	if err != nil {
+		return err
+	}
+	return b.decodeTyped(v)
+}
+
+// UnmarshalBinary decodes the canonical encoding of batch.
+func (b *BatchData) UnmarshalBinary(data []byte) error {
+	if b == nil {
+		return errors.New("cannot decode into nil BatchData")
+	}
+	return b.decodeTyped(data)
+}
+
+func (b *BatchData) decodeTyped(data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("batch too short")
+	}
+	switch data[0] {
+	case BatchV1Type:
+		b.BatchType = BatchV1Type
+		return rlp.DecodeBytes(data[1:], &b.BatchV1)
+	case BatchV2Type:
+		b.BatchType = BatchV2Type
+		return b.BatchV2.DecodeBytes(data[1:])
+	default:
+		return fmt.Errorf("unrecognized batch type: %d", data[0])
+	}
+}
+
+func InitBatchDataV1(batchV1 BatchV1) *BatchData {
+	return &BatchData{
+		BatchType: BatchV1Type,
+		BatchV1:   batchV1,
+	}
+}
+
 func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 	return &BatchData{
 		BatchType: BatchV2Type,
 		BatchV2:   batchV2,
 	}
+}
+
+func (b *BatchV1) Epoch() eth.BlockID {
+	return eth.BlockID{Hash: b.EpochHash, Number: uint64(b.EpochNum)}
 }
 
 // DecodePrefix parses data into b.BatchV2Prefix
@@ -335,84 +413,6 @@ func (b *BatchV2) EncodeBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (b *BatchV1) Epoch() eth.BlockID {
-	return eth.BlockID{Hash: b.EpochHash, Number: uint64(b.EpochNum)}
-}
-
-func InitBatchDataV1(batchV1 BatchV1) *BatchData {
-	return &BatchData{
-		BatchType: BatchV1Type,
-		BatchV1:   batchV1,
-	}
-}
-
-// EncodeRLP implements rlp.Encoder
-func (b *BatchData) EncodeRLP(w io.Writer) error {
-	buf := encodeBufferPool.Get().(*bytes.Buffer)
-	defer encodeBufferPool.Put(buf)
-	buf.Reset()
-	if err := b.encodeTyped(buf); err != nil {
-		return err
-	}
-	return rlp.Encode(w, buf.Bytes())
-}
-
-// MarshalBinary returns the canonical encoding of the batch.
-func (b *BatchData) MarshalBinary() ([]byte, error) {
-	var buf bytes.Buffer
-	err := b.encodeTyped(&buf)
-	return buf.Bytes(), err
-}
-
-func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
-	switch b.BatchType {
-	case BatchV1Type:
-		buf.WriteByte(BatchV1Type)
-		return rlp.Encode(buf, &b.BatchV1)
-	case BatchV2Type:
-		buf.WriteByte(BatchV2Type)
-		return b.BatchV2.Encode(buf)
-	default:
-		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
-	}
-}
-
-// DecodeRLP implements rlp.Decoder
-func (b *BatchData) DecodeRLP(s *rlp.Stream) error {
-	if b == nil {
-		return errors.New("cannot decode into nil BatchData")
-	}
-	v, err := s.Bytes()
-	if err != nil {
-		return err
-	}
-	return b.decodeTyped(v)
-}
-
-// UnmarshalBinary decodes the canonical encoding of batch.
-func (b *BatchData) UnmarshalBinary(data []byte) error {
-	if b == nil {
-		return errors.New("cannot decode into nil BatchData")
-	}
-	return b.decodeTyped(data)
-}
-
-func (b *BatchData) decodeTyped(data []byte) error {
-	if len(data) == 0 {
-		return fmt.Errorf("batch too short")
-	}
-	switch data[0] {
-	case BatchV1Type:
-		b.BatchType = BatchV1Type
-		return rlp.DecodeBytes(data[1:], &b.BatchV1)
-	case BatchV2Type:
-		b.BatchType = BatchV2Type
-		return b.BatchV2.DecodeBytes(data[1:])
-	default:
-		return fmt.Errorf("unrecognized batch type: %d", data[0])
-	}
-}
-
 // MergeBatchV1s merges BatchV1 List and initialize single BatchV2
 func (b *BatchV2) MergeBatchV1s(batchV1s []*BatchV1, originChangedBit uint, genesisTimestamp uint64) error {
 	if len(batchV1s) == 0 {
@@ -506,12 +506,13 @@ func (b *BatchV2) SplitBatchV2(l1Origins []eth.L1BlockRef) ([]*BatchV1, error) {
 		return nil, fmt.Errorf("cannot find L1 origin")
 	}
 	for i := 0; i < int(b.BlockCount); i++ {
-		batchV1s[i].Timestamp = b.BlockTimestamps[i]
-		batchV1s[i].EpochNum = rollup.Epoch(b.BlockOriginNums[i])
+		batchV1 := BatchV1{}
+		batchV1.Timestamp = b.BlockTimestamps[i]
+		batchV1.EpochNum = rollup.Epoch(b.BlockOriginNums[i])
 		if b.OriginBits.Bit(i) == 1 && i > 0 {
 			originIdx += 1
 		}
-		batchV1s[i].EpochHash = l1Origins[originIdx].Hash
+		batchV1.EpochHash = l1Origins[originIdx].Hash
 
 		for txIndex := 0; txIndex < int(b.BlockTxCounts[i]); txIndex++ {
 			var batchV2Tx BatchV2Tx
@@ -529,31 +530,32 @@ func (b *BatchV2) SplitBatchV2(l1Origins []eth.L1BlockRef) ([]*BatchV1, error) {
 			if err != nil {
 				return nil, err
 			}
-			batchV1s[i].Transactions = append(batchV1s[i].Transactions, encodedTx)
+			batchV1.Transactions = append(batchV1.Transactions, encodedTx)
 			txIdx++
 		}
+		batchV1s[i] = &batchV1
 	}
 	return batchV1s, nil
 }
 
 // SplitBatchV2CheckValidation splits single BatchV2 and initialize BatchV1 lists and validates ParentCheck and L1OriginCheck
 // Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
-//func (b *BatchV2) SplitBatchV2CheckValidation(fetchL1Block func(uint64) (*types.Block, error), safeL2Head eth.L2BlockRef, blockTime, genesisTimestamp uint64) ([]BatchV1, error) {
-//	batchV1s, err := b.SplitBatchV2(fetchL1Block, blockTime, genesisTimestamp)
-//	if err != nil {
-//		return nil, err
-//	}
-//	// set only the first batchV1's parent hash
-//	batchV1s[0].ParentHash = safeL2Head.Hash
-//	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
-//		return nil, errors.New("parent hash mismatch")
-//	}
-//	l1OriginBlockHash := batchV1s[len(batchV1s)-1].EpochHash
-//	if !bytes.Equal(l1OriginBlockHash[:20], b.L1OriginCheck) {
-//		return nil, errors.New("l1 origin hash mismatch")
-//	}
-//	return batchV1s, nil
-//}
+func (b *BatchV2) SplitBatchV2CheckValidation(l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef) ([]*BatchV1, error) {
+	batchV1s, err := b.SplitBatchV2(l1Origins)
+	if err != nil {
+		return nil, err
+	}
+	// set only the first batchV1's parent hash
+	batchV1s[0].ParentHash = safeL2Head.Hash
+	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
+		return nil, errors.New("parent hash mismatch")
+	}
+	l1OriginBlockHash := batchV1s[len(batchV1s)-1].EpochHash
+	if !bytes.Equal(l1OriginBlockHash[:20], b.L1OriginCheck) {
+		return nil, errors.New("l1 origin hash mismatch")
+	}
+	return batchV1s, nil
+}
 
 func (b *BatchV2) DeriveBatchV2Fields(blockTime, genesisTimestamp uint64) {
 	b.BatchTimestamp = b.RelTimestamp + genesisTimestamp
