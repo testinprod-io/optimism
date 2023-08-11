@@ -45,10 +45,11 @@ const (
 const (
 	BatchV2TxsV1Type = iota
 	BatchV2TxsV2Type
+	BatchV2TxsV3Type
 )
 
 // adjust this for trying different tx encoding schemes
-const BatchV2TxsType = BatchV2TxsV1Type
+var BatchV2TxsType = BatchV2TxsV3Type
 
 type BatchV1 struct {
 	ParentHash common.Hash  // parent L2 block hash
