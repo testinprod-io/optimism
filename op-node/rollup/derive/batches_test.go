@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 
@@ -28,6 +29,7 @@ var HashA = common.Hash{0x0a}
 var HashB = common.Hash{0x0b}
 
 func TestValidBatch(t *testing.T) {
+	maxTs := uint64(math.MaxUint64)
 	conf := rollup.Config{
 		Genesis: rollup.Genesis{
 			L2Time: 31, // a genesis time that itself does not align to make it more interesting
@@ -35,6 +37,7 @@ func TestValidBatch(t *testing.T) {
 		BlockTime:         2,
 		SeqWindowSize:     4,
 		MaxSequencerDrift: 6,
+		SpanBatchTime:     &maxTs,
 		// other config fields are ignored and can be left empty.
 	}
 

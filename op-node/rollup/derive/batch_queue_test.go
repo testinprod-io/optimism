@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"math"
 	"math/rand"
 	"testing"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/testlog"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 )
+
+var maxTs = uint64(math.MaxUint64)
 
 type fakeBatchQueueInput struct {
 	i       int
@@ -94,6 +97,7 @@ func TestBatchQueueNewOrigin(t *testing.T) {
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
+		SpanBatchTime:     &maxTs,
 	}
 
 	input := &fakeBatchQueueInput{
@@ -153,6 +157,7 @@ func TestBatchQueueEager(t *testing.T) {
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     30,
+		SpanBatchTime:     &maxTs,
 	}
 
 	batches := []*BatchData{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), b(24, l1[1]), nil}
@@ -204,6 +209,7 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
+		SpanBatchTime:     &maxTs,
 	}
 
 	batches := []*BatchData{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
@@ -296,6 +302,7 @@ func TestBatchQueueMissing(t *testing.T) {
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
+		SpanBatchTime:     &maxTs,
 	}
 
 	// The batches at 18 and 20 are skipped to stop 22 from being eagerly processed.

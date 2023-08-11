@@ -34,8 +34,12 @@ func (s *nonCompressor) ForceWrite(p []byte) (int, error) {
 	return 0, nil
 }
 
+var spanBatchNotActivatedCfg = rollup.Config{
+	SpanBatchTime: &maxTs,
+}
+
 func TestChannelOutAddBlock(t *testing.T) {
-	cout, err := NewChannelOut(&nonCompressor{}, &rollup.Config{}, BatchV1Type, &eth.L2BlockRef{})
+	cout, err := NewChannelOut(&nonCompressor{}, &spanBatchNotActivatedCfg, BatchV1Type, &eth.L2BlockRef{})
 	require.NoError(t, err)
 
 	t.Run("returns err if first tx is not an l1info tx", func(t *testing.T) {
@@ -56,7 +60,7 @@ func TestChannelOutAddBlock(t *testing.T) {
 // max size that is below the fixed frame size overhead of 23, will return
 // an error.
 func TestOutputFrameSmallMaxSize(t *testing.T) {
-	cout, err := NewChannelOut(&nonCompressor{}, &rollup.Config{}, BatchV1Type, &eth.L2BlockRef{})
+	cout, err := NewChannelOut(&nonCompressor{}, &spanBatchNotActivatedCfg, BatchV1Type, &eth.L2BlockRef{})
 	require.NoError(t, err)
 
 	// Call OutputFrame with the range of small max size values that err
