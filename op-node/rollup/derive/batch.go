@@ -176,8 +176,13 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		b.Txs.(*BatchV2TxsV1).TotalBlockTxCount = totalBlockTxCount
 	case BatchV2TxsV2Type:
 		b.Txs = &BatchV2TxsV2{}
+	case BatchV2TxsV3Type:
+		b.Txs = &BatchV2TxsV3{}
+		b.Txs.(*BatchV2TxsV3).TotalBlockTxCount = totalBlockTxCount
+		// TODO: fix hardcoded chainID
+		b.Txs.(*BatchV2TxsV3).ChainID = big.NewInt(1337)
 	default:
-		return fmt.Errorf("invalid BatchV2TxsV2Type: %d", BatchV2TxsV2Type)
+		return fmt.Errorf("invalid BatchV2TxsType: %d", BatchV2TxsV2Type)
 	}
 	b.Txs.Decode(r)
 	b.BlockCount = blockCount
@@ -407,6 +412,8 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		batchV2Txs, err = NewBatchV2TxsV1(txs)
 	case BatchV2TxsV2Type:
 		batchV2Txs, err = NewBatchV2TxsV2(txs)
+	case BatchV2TxsV3Type:
+		batchV2Txs, err = NewBatchV2TxsV3(txs)
 	default:
 		return fmt.Errorf("invalid BatchV2TxsType: %d", BatchV2TxsType)
 	}
@@ -445,6 +452,7 @@ func (b *BatchV2) SplitBatchV2(fetchL1Block func(uint64) (*types.Block, error), 
 			}
 		}
 	}
+
 	txs, err := b.Txs.FullTxs()
 	if err != nil {
 		return nil, err

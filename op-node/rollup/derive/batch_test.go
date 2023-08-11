@@ -37,7 +37,10 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		totalblockTxCount += blockTxCount
 	}
 	var txs [][]byte
-	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
+	// TODO: fix hardcoded chainID
+	// chainID := big.NewInt(rng.Int63n(1000))
+	chainID := big.NewInt(1337)
+	signer := types.NewLondonSigner(chainID)
 	for i := 0; i < int(totalblockTxCount); i++ {
 		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 		rawTx, err := tx.MarshalBinary()
@@ -53,6 +56,8 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		batchV2Txs, err = NewBatchV2TxsV1(txs)
 	case BatchV2TxsV2Type:
 		batchV2Txs, err = NewBatchV2TxsV2(txs)
+	case BatchV2TxsV3Type:
+		batchV2Txs, err = NewBatchV2TxsV3(txs)
 	default:
 		panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
 	}
@@ -176,8 +181,15 @@ func TestBatchV2Merge(t *testing.T) {
 			case BatchV2TxsV2Type:
 				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
 				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
+			case BatchV2TxsV3Type:
+				txDataHeader := batchV2.Txs.(*BatchV2TxsV3).TxDataHeaders[cnt]
+				txData := batchV2.Txs.(*BatchV2TxsV3).TxDatas[cnt]
+				assert.True(t, int(txDataHeader) == len(txData))
+				for _, txTo := range batchV2.Txs.(*BatchV2TxsV3).TxTos {
+					assert.True(t, len(txTo) == common.AddressLength)
+				}
 			default:
-				panic(fmt.Sprintf("invalid BatchV2TxsV2Type: %d", BatchV2TxsV2Type))
+				panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsV2Type))
 			}
 			cnt++
 		}
@@ -263,6 +275,13 @@ func TestBatchV2Split(t *testing.T) {
 			case BatchV2TxsV2Type:
 				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
 				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
+			case BatchV2TxsV3Type:
+				txDataHeader := batchV2.Txs.(*BatchV2TxsV3).TxDataHeaders[cnt]
+				txData := batchV2.Txs.(*BatchV2TxsV3).TxDatas[cnt]
+				assert.True(t, int(txDataHeader) == len(txData))
+				for _, txTo := range batchV2.Txs.(*BatchV2TxsV3).TxTos {
+					assert.True(t, len(txTo) == common.AddressLength)
+				}
 			default:
 				panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
 			}
@@ -294,6 +313,8 @@ func TestBatchV2SplitValidation(t *testing.T) {
 		batchV2.Txs.(*BatchV2TxsV1).TxDatas[0][0] = 0x33
 	case BatchV2TxsV2Type:
 		batchV2.Txs.(*BatchV2TxsV2).TxDatas[0][0] = 0x33
+	case BatchV2TxsV3Type:
+		batchV2.Txs.(*BatchV2TxsV3).TxDatas[0][0] = 0x33
 	default:
 		panic(fmt.Sprintf("invalid BatchV2TxsType: %d", BatchV2TxsType))
 	}
