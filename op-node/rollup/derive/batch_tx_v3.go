@@ -200,11 +200,11 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 		txDataHeaders[i] = txDataHeader
 	}
 	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
-	for i, txDataHeader := range txDataHeaders {
-		txData := make([]byte, txDataHeader)
-		_, err := io.ReadFull(r, txData)
+	// Do not need txDataHeader because RLP byte stream already includes length info
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		txData, err := ReadTxData(r)
 		if err != nil {
-			return fmt.Errorf("failed to tx data: %w", err)
+			return err
 		}
 		txDatas[i] = txData
 	}
