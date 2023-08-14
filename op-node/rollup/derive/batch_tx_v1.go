@@ -60,6 +60,45 @@ func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
 	return nil
 }
 
+func decodeTxData(r *bytes.Reader) ([]byte, error) {
+	var txData []byte
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+	}
+	b, err := r.ReadByte()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tx initial byte: %w", err)
+	}
+	if int(b) <= 0x7F {
+		// EIP-2718: non legacy tx so write tx type
+		txType := byte(b)
+		txData = append(txData, txType)
+	} else {
+		// legacy tx: seek back single byte to read prefix again
+		_, err = r.Seek(offset, io.SeekStart)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+		}
+	}
+	// TODO: set maximum inputLimit
+	s := rlp.NewStream(r, 0)
+	var txPayload []byte
+	kind, _, err := s.Kind()
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("failed to read tx RLP prefix: %w", err)
+	case kind == rlp.List:
+		if txPayload, err = s.Raw(); err != nil {
+			return nil, fmt.Errorf("failed to read tx RLP payload: %w", err)
+		}
+	default:
+		return nil, errors.New("tx RLP prefix type must be list")
+	}
+	txData = append(txData, txPayload...)
+	return txData, nil
+}
+
 func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 	txDataHeaders := make([]uint64, btx.TotalBlockTxCount)
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
@@ -74,41 +113,10 @@ func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
 	// manual RLP decoding
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		var txData []byte
-		offset, err := r.Seek(0, io.SeekCurrent)
+		txData, err := decodeTxData(r)
 		if err != nil {
-			return fmt.Errorf("failed to seek tx reader: %w", err)
+			return err
 		}
-		b, err := r.ReadByte()
-		if err != nil {
-			return fmt.Errorf("failed to read tx initial byte: %w", err)
-		}
-		if int(b) <= 0x7F {
-			// EIP-2718: non legacy tx so write tx type
-			txType := byte(b)
-			txData = append(txData, txType)
-		} else {
-			// legacy tx: seek back single byte to read prefix again
-			_, err = r.Seek(offset, io.SeekStart)
-			if err != nil {
-				return fmt.Errorf("failed to seek tx reader: %w", err)
-			}
-		}
-		// TODO: set maximum inputLimit
-		s := rlp.NewStream(r, 0)
-		var txPayload []byte
-		kind, _, err := s.Kind()
-		switch {
-		case err != nil:
-			return fmt.Errorf("failed to read tx RLP prefix: %w", err)
-		case kind == rlp.List:
-			if txPayload, err = s.Raw(); err != nil {
-				return fmt.Errorf("failed to read tx RLP payload: %w", err)
-			}
-		default:
-			return errors.New("tx RLP prefix type must be list")
-		}
-		txData = append(txData, txPayload...)
 		txDatas[i] = txData
 	}
 
