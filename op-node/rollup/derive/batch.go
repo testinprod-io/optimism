@@ -136,6 +136,46 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 	b.OriginBits = originBits
 }
 
+// ReadTxData reads raw RLP tx data from reader
+func ReadTxData(r *bytes.Reader) ([]byte, error) {
+	var txData []byte
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+	}
+	b, err := r.ReadByte()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tx initial byte: %w", err)
+	}
+	if int(b) <= 0x7F {
+		// EIP-2718: non legacy tx so write tx type
+		txType := byte(b)
+		txData = append(txData, txType)
+	} else {
+		// legacy tx: seek back single byte to read prefix again
+		_, err = r.Seek(offset, io.SeekStart)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+		}
+	}
+	// TODO: set maximum inputLimit
+	s := rlp.NewStream(r, 0)
+	var txPayload []byte
+	kind, _, err := s.Kind()
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("failed to read tx RLP prefix: %w", err)
+	case kind == rlp.List:
+		if txPayload, err = s.Raw(); err != nil {
+			return nil, fmt.Errorf("failed to read tx RLP payload: %w", err)
+		}
+	default:
+		return nil, errors.New("tx RLP prefix type must be list")
+	}
+	txData = append(txData, txPayload...)
+	return txData, nil
+}
+
 // DecodePayload parses data into b.BatchV2Payload
 func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
@@ -172,12 +212,12 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		}
 		txDataHeaders[i] = txDataHeader
 	}
+	// Do not need txDataHeader because RLP byte stream already includes length info
 	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
-	for i, txDataHeader := range txDataHeaders {
-		txData := make([]byte, txDataHeader)
-		_, err = io.ReadFull(r, txData)
+	for i := 0; i < int(totalBlockTxCount); i++ {
+		txData, err := ReadTxData(r)
 		if err != nil {
-			return fmt.Errorf("failed to tx data: %w", err)
+			return err
 		}
 		txDatas[i] = txData
 	}
