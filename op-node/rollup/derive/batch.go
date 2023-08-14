@@ -71,9 +71,8 @@ type BatchV2Payload struct {
 	BlockTxCounts []uint64
 
 	// below fields may be generalized
-	TxDataHeaders []uint64
-	TxDatas       []hexutil.Bytes
-	TxSigs        []BatchV2Signature
+	TxDatas []hexutil.Bytes
+	TxSigs  []BatchV2Signature
 }
 
 type BatchV2 struct {
@@ -203,17 +202,8 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	txDataHeaders := make([]uint64, totalBlockTxCount)
-	for i := 0; i < int(totalBlockTxCount); i++ {
-		txDataHeader, err := binary.ReadUvarint(r)
-		// TODO: check txDataHeader is not too large
-		if err != nil {
-			return fmt.Errorf("failed to read tx data header: %w", err)
-		}
-		txDataHeaders[i] = txDataHeader
-	}
 	// Do not need txDataHeader because RLP byte stream already includes length info
-	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
+	txDatas := make([]hexutil.Bytes, totalBlockTxCount)
 	for i := 0; i < int(totalBlockTxCount); i++ {
 		txData, err := ReadTxData(r)
 		if err != nil {
@@ -245,7 +235,6 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
 	return nil
@@ -316,12 +305,6 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		n = binary.PutUvarint(buf[:], blockTxCount)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx count: %w", err)
-		}
-	}
-	for _, txDataHeader := range b.TxDataHeaders {
-		n = binary.PutUvarint(buf[:], txDataHeader)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write block tx data header: %w", err)
 		}
 	}
 	for _, txData := range b.TxDatas {
@@ -476,7 +459,6 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		b.OriginBits.SetBit(b.OriginBits, i, bit)
 	}
 	var blockTxCounts []uint64
-	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	var txSigs []BatchV2Signature
 	for _, batchV1 := range batchV1s {
@@ -504,13 +486,10 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 			if err != nil {
 				return nil
 			}
-			txDataHeader := uint64(len(txData))
-			txDataHeaders = append(txDataHeaders, txDataHeader)
 			txDatas = append(txDatas, txData)
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
 	return nil
