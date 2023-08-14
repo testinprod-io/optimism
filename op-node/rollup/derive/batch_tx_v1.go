@@ -70,15 +70,48 @@ func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 		}
 		txDataHeaders[i] = txDataHeader
 	}
+
 	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
-	for i, txDataHeader := range txDataHeaders {
-		txData := make([]byte, txDataHeader)
-		_, err := io.ReadFull(r, txData)
+	// manual RLP decoding
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		var txData []byte
+		offset, err := r.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return fmt.Errorf("failed to tx data: %w", err)
+			return fmt.Errorf("failed to seek tx reader: %w", err)
 		}
+		b, err := r.ReadByte()
+		if err != nil {
+			return fmt.Errorf("failed to read tx initial byte: %w", err)
+		}
+		if int(b) <= 0x7F {
+			// EIP-2718: non legacy tx so write tx type
+			txType := byte(b)
+			txData = append(txData, txType)
+		} else {
+			// legacy tx: seek back single byte to read prefix again
+			_, err = r.Seek(offset, io.SeekStart)
+			if err != nil {
+				return fmt.Errorf("failed to seek tx reader: %w", err)
+			}
+		}
+		// TODO: set maximum inputLimit
+		s := rlp.NewStream(r, 0)
+		var txPayload []byte
+		kind, _, err := s.Kind()
+		switch {
+		case err != nil:
+			return fmt.Errorf("failed to read tx RLP prefix: %w", err)
+		case kind == rlp.List:
+			if txPayload, err = s.Raw(); err != nil {
+				return fmt.Errorf("failed to read tx RLP payload: %w", err)
+			}
+		default:
+			return errors.New("tx RLP prefix type must be list")
+		}
+		txData = append(txData, txPayload...)
 		txDatas[i] = txData
 	}
+
 	txSigs := make([]BatchV2Signature, btx.TotalBlockTxCount)
 	var sigBuffer [32]byte
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
@@ -151,7 +184,12 @@ func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		txData, err := batchV2TxV1.MarshalBinary()
+
+		// fmt.Println(fmt.Sprintf("%x", len(txData)))
+		// fmt.Println(hex.EncodeToString(txData))
+
 		if err != nil {
 			return nil, err
 		}
