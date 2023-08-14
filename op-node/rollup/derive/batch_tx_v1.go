@@ -60,8 +60,8 @@ func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
 	return nil
 }
 
-// decodeTxData reads raw RLP tx data from reader
-func decodeTxData(r *bytes.Reader) ([]byte, error) {
+// DecodeTxData reads raw RLP tx data from reader
+func DecodeTxData(r *bytes.Reader) ([]byte, error) {
 	var txData []byte
 	offset, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -111,9 +111,10 @@ func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 		txDataHeaders[i] = txDataHeader
 	}
 
+	// Do not need txDataHeader because RLP byte stream already includes length info
 	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txData, err := decodeTxData(r)
+		txData, err := DecodeTxData(r)
 		if err != nil {
 			return err
 		}
