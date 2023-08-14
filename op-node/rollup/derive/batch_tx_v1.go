@@ -193,12 +193,7 @@ func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		txData, err := batchV2TxV1.MarshalBinary()
-
-		// fmt.Println(fmt.Sprintf("%x", len(txData)))
-		// fmt.Println(hex.EncodeToString(txData))
-
 		if err != nil {
 			return nil, err
 		}
