@@ -175,16 +175,11 @@ func TestBatchV2Merge(t *testing.T) {
 		for txIdx := 0; txIdx < txCount; txIdx++ {
 			switch BatchV2TxsType {
 			case BatchV2TxsV1Type:
-				txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
-				txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
-				assert.True(t, int(txDataHeader) == len(txData))
+				// nothing to validate
 			case BatchV2TxsV2Type:
 				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
 				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
 			case BatchV2TxsV3Type:
-				txDataHeader := batchV2.Txs.(*BatchV2TxsV3).TxDataHeaders[cnt]
-				txData := batchV2.Txs.(*BatchV2TxsV3).TxDatas[cnt]
-				assert.True(t, int(txDataHeader) == len(txData))
 				for _, txTo := range batchV2.Txs.(*BatchV2TxsV3).TxTos {
 					assert.True(t, len(txTo) == common.AddressLength)
 				}
@@ -269,16 +264,11 @@ func TestBatchV2Split(t *testing.T) {
 		for txIdx := 0; txIdx < txCount; txIdx++ {
 			switch BatchV2TxsType {
 			case BatchV2TxsV1Type:
-				txDataHeader := batchV2.Txs.(*BatchV2TxsV1).TxDataHeaders[cnt]
-				txData := batchV2.Txs.(*BatchV2TxsV1).TxDatas[cnt]
-				assert.True(t, int(txDataHeader) == len(txData))
+				// nothing to validate
 			case BatchV2TxsV2Type:
 				rawTx := batchV2.Txs.(*BatchV2TxsV2).TxDatas[cnt]
 				assert.True(t, bytes.Equal(rawTx, batchV1s[i].Transactions[txIdx]))
 			case BatchV2TxsV3Type:
-				txDataHeader := batchV2.Txs.(*BatchV2TxsV3).TxDataHeaders[cnt]
-				txData := batchV2.Txs.(*BatchV2TxsV3).TxDatas[cnt]
-				assert.True(t, int(txDataHeader) == len(txData))
 				for _, txTo := range batchV2.Txs.(*BatchV2TxsV3).TxTos {
 					assert.True(t, len(txTo) == common.AddressLength)
 				}

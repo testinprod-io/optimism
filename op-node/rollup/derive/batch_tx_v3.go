@@ -25,7 +25,6 @@ type BatchV2TxsV3 struct {
 	TxNonces             []uint64
 	TxGases              []uint64
 	TxTos                []common.Address
-	TxDataHeaders        []uint64
 	TxDatas              []hexutil.Bytes
 }
 
@@ -116,12 +115,6 @@ func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
 			return fmt.Errorf("cannot write tx to address: %w", err)
 		}
 	}
-	for _, txDataHeader := range btx.TxDataHeaders {
-		n := binary.PutUvarint(buf[:], txDataHeader)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx data header: %w", err)
-		}
-	}
 	for _, txData := range btx.TxDatas {
 		if _, err := w.Write(txData); err != nil {
 			return fmt.Errorf("cannot write tx data: %w", err)
@@ -191,15 +184,7 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 		}
 		txTos = append(txTos, common.BytesToAddress(txToBuffer))
 	}
-	txDataHeaders := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txDataHeader, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read tx data header: %w", err)
-		}
-		txDataHeaders[i] = txDataHeader
-	}
-	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
+	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
 	// Do not need txDataHeader because RLP byte stream already includes length info
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
 		txData, err := ReadTxData(r)
@@ -212,7 +197,6 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 	btx.TxNonces = txNonces
 	btx.TxGases = txGases
 	btx.TxTos = txTos
-	btx.TxDataHeaders = txDataHeaders
 	btx.TxDatas = txDatas
 	return nil
 }
@@ -302,7 +286,6 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 		TxNonces:             txNonces,
 		TxGases:              txGases,
 		TxTos:                txTos,
-		TxDataHeaders:        txDataHeaders,
 		TxDatas:              txDatas,
 	}, nil
 }

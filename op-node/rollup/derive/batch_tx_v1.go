@@ -25,19 +25,12 @@ type BatchV2TxsV1 struct {
 	// below single field must be manually set
 	TotalBlockTxCount uint64
 
-	TxDataHeaders []uint64
 	TxDatas       []hexutil.Bytes
 	TxSigs        []BatchV2Signature
 }
 
 func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
-	for _, txDataHeader := range btx.TxDataHeaders {
-		n := binary.PutUvarint(buf[:], txDataHeader)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write block tx data header: %w", err)
-		}
-	}
 	for _, txData := range btx.TxDatas {
 		if _, err := w.Write(txData); err != nil {
 			return fmt.Errorf("cannot write block tx data: %w", err)
@@ -101,18 +94,8 @@ func ReadTxData(r *bytes.Reader) ([]byte, error) {
 }
 
 func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
-	txDataHeaders := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txDataHeader, err := binary.ReadUvarint(r)
-		// TODO: check txDataHeader is not too large
-		if err != nil {
-			return fmt.Errorf("failed to read tx data header: %w", err)
-		}
-		txDataHeaders[i] = txDataHeader
-	}
-
 	// Do not need txDataHeader because RLP byte stream already includes length info
-	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
+	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
 		txData, err := ReadTxData(r)
 		if err != nil {
@@ -142,7 +125,6 @@ func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
 		txSigs[i] = txSig
 	}
-	btx.TxDataHeaders = txDataHeaders
 	btx.TxDatas = txDatas
 	btx.TxSigs = txSigs
 	return nil
@@ -203,7 +185,6 @@ func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
 	}
 	return &BatchV2TxsV1{
 		TotalBlockTxCount: totalBlockTxCount,
-		TxDataHeaders:     txDataHeaders,
 		TxDatas:           txDatas,
 		TxSigs:            txSigs,
 	}, nil
