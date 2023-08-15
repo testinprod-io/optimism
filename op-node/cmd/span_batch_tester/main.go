@@ -157,12 +157,30 @@ func main() {
 					Value: "/tmp/span_batch_tester/result",
 					Usage: "Directory for the analysis result",
 				},
+				&cli.UintFlag{
+					Name:     "tx-type",
+					Required: true,
+					Usage:    "Span batch transaction encoding type",
+				},
+				&cli.IntFlag{
+					Name:     "chain-id",
+					Required: true,
+					Usage:    "L2 chain id",
+					Value:    10,
+				},
 			},
 			Action: func(cliCtx *cli.Context) error {
+				chainID := big.NewInt(cliCtx.Int64("chain-id"))
+				txType := cliCtx.Uint("tx-type")
+				if txType > derive.BatchV2TxsV3Type {
+					log.Fatal(fmt.Errorf("invalid tx type: %d", txType))
+				}
 				config := analyze.Config{
 					InChannelDirectory:   cliCtx.String("in-channel"),
 					InSpanBatchDirectory: cliCtx.String("in-span-batch"),
 					OutDirectory:         cliCtx.String("out"),
+					ChainID:              chainID,
+					TxType:               txType,
 				}
 				analyze.Analyze(config)
 				return nil

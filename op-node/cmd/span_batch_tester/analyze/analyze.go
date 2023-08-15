@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -21,6 +23,8 @@ type Config struct {
 	InChannelDirectory   string
 	InSpanBatchDirectory string
 	OutDirectory         string
+	TxType               uint
+	ChainID              *big.Int
 }
 
 type Result struct {
@@ -198,6 +202,10 @@ func writeResult(r Result, filename string) error {
 }
 
 func Analyze(config Config) {
+	// update global varibles. Weird but works
+	derive.BatchV2TxsType = int(config.TxType)
+	derive.ChainID = config.ChainID
+
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
