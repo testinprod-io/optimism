@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 	"path"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -61,31 +61,23 @@ func LoadChannelFile(file string) reassemble.ChannelWithMetadata {
 	return chm
 }
 
-// GetL2StartNum returns L2 block start number per channel
-func GetL2StartNum(client *ethclient.Client, chm reassemble.ChannelWithMetadata) (uint64, error) {
+// GetL2StartParentBlock returns parent L2 block of first L2 block per channel
+func GetL2StartParentBlock(client *ethclient.Client, chm reassemble.ChannelWithMetadata) (*types.Block, error) {
 	if len(chm.Batches) == 0 {
-		return 0, errors.New("channel is empty")
+		return nil, errors.New("channel is empty")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	startParent, err := client.BlockByHash(ctx, chm.Batches[0].ParentHash)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	startNum := startParent.NumberU64() + 1
-	return startNum, nil
+	return startParent, nil
 }
 
 // GetOriginChangedBit returns bit indicating L1Origin has changed for given l2 block number compared to its parent
-func GetOriginChangedBit(client *ethclient.Client, l2BlockNum uint64, l1OriginHash common.Hash) (uint, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	parentBlock, err := client.BlockByNumber(ctx, new(big.Int).SetUint64(l2BlockNum-1))
-	if err != nil {
-		return 0, err
-	}
-	batch, _, err := derive.BlockToBatch(parentBlock)
+func GetOriginChangedBit(startParent *types.Block, l1OriginHash common.Hash) (uint, error) {
+	batch, _, err := derive.BlockToBatch(startParent)
 	if err != nil {
 		return 0, err
 	}
@@ -97,12 +89,13 @@ func GetOriginChangedBit(client *ethclient.Client, l2BlockNum uint64, l1OriginHa
 
 // ConvertChannel initialize BatchV2 using BatchV1s per channel
 func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) SpanBatchWithMetadata {
-	startNum, err := GetL2StartNum(client, chm)
+	startParent, err := GetL2StartParentBlock(client, chm)
 	if err != nil {
 		log.Fatal(err)
 	}
+	startNum := startParent.NumberU64() + 1
 	l1OriginHash := chm.Batches[0].EpochHash
-	originChangedBit, err := GetOriginChangedBit(client, startNum, l1OriginHash)
+	originChangedBit, err := GetOriginChangedBit(startParent, l1OriginHash)
 	if err != nil {
 		log.Fatal(err)
 	}
