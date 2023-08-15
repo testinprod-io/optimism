@@ -122,7 +122,6 @@ func main() {
 				if txType > derive.BatchV2TxsV3Type {
 					log.Fatal(fmt.Errorf("invalid tx type: %d", txType))
 				}
-				derive.BatchV2TxsType = derive.BatchV2TxsV2Type
 				client, err := ethclient.Dial(cliCtx.String("l2"))
 				if err != nil {
 					log.Fatal(err)
