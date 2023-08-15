@@ -132,6 +132,10 @@ func writeBatch(bm SpanBatchWithMetadata, filename string) error {
 }
 
 func Convert(client *ethclient.Client, config Config) {
+	// update global varibles. Weird but works
+	derive.BatchV2TxsType = int(config.TxType)
+	derive.ChainID = config.ChainID
+
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
