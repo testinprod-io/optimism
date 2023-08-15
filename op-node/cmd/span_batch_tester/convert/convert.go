@@ -23,7 +23,7 @@ type Config struct {
 	InDirectory      string
 	OutDirectory     string
 	GenesisTimestamp uint64
-	TxType           int
+	TxType           uint
 	ChainID          *big.Int
 }
 

@@ -118,13 +118,11 @@ func main() {
 			},
 			Action: func(cliCtx *cli.Context) error {
 				chainID := big.NewInt(cliCtx.Int64("chain-id"))
-				txType := cliCtx.Int("chain-id")
+				txType := cliCtx.Uint("chain-id")
 				if txType > derive.BatchV2TxsV3Type {
 					log.Fatal(fmt.Errorf("invalid tx type: %d", txType))
 				}
-				fmt.Println(derive.BatchV2TxsType)
 				derive.BatchV2TxsType = derive.BatchV2TxsV2Type
-				fmt.Println(derive.BatchV2TxsType)
 				client, err := ethclient.Dial(cliCtx.String("l2"))
 				if err != nil {
 					log.Fatal(err)
