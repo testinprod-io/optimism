@@ -155,7 +155,6 @@ func (btx *BatchV2TxsV1) FullTxs() ([][]byte, error) {
 
 func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
 	totalBlockTxCount := uint64(len(txs))
-	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	var txSigs []BatchV2Signature
 	for idx := 0; idx < int(totalBlockTxCount); idx++ {
@@ -179,8 +178,6 @@ func NewBatchV2TxsV1(txs [][]byte) (*BatchV2TxsV1, error) {
 		if err != nil {
 			return nil, err
 		}
-		txDataHeader := uint64(len(txData))
-		txDataHeaders = append(txDataHeaders, txDataHeader)
 		txDatas = append(txDatas, txData)
 	}
 	return &BatchV2TxsV1{

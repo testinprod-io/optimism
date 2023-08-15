@@ -242,7 +242,6 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 	var txTos []common.Address
 	var txNonces []uint64
 	var txGases []uint64
-	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	contractCreationBits := new(big.Int)
 	for idx := 0; idx < int(totalBlockTxCount); idx++ {
@@ -274,8 +273,6 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 		if err != nil {
 			return nil, err
 		}
-		txDataHeader := uint64(len(txData))
-		txDataHeaders = append(txDataHeaders, txDataHeader)
 		txDatas = append(txDatas, txData)
 	}
 	return &BatchV2TxsV3{
