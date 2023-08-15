@@ -39,8 +39,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 	var txs [][]byte
 	// TODO: fix hardcoded chainID
 	// chainID := big.NewInt(rng.Int63n(1000))
-	chainID := big.NewInt(1337)
-	signer := types.NewLondonSigner(chainID)
+	signer := types.NewLondonSigner(ChainID)
 	for i := 0; i < int(totalblockTxCount); i++ {
 		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 		rawTx, err := tx.MarshalBinary()

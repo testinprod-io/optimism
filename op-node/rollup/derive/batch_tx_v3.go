@@ -280,7 +280,7 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 	}
 	return &BatchV2TxsV3{
 		TotalBlockTxCount:    totalBlockTxCount,
-		ChainID:              big.NewInt(1337), // TODO: fix hardcoded chainID
+		ChainID:              ChainID, // TODO: fix hardcoded chainID
 		ContractCreationBits: contractCreationBits,
 		TxSigs:               txSigs,
 		TxNonces:             txNonces,

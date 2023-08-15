@@ -51,6 +51,9 @@ const (
 // adjust this for trying different tx encoding schemes
 var BatchV2TxsType = BatchV2TxsV3Type
 
+// TODO: fix hardcoded chainID
+var ChainID = big.NewInt(1337)
+
 type BatchV1 struct {
 	ParentHash common.Hash  // parent L2 block hash
 	EpochNum   rollup.Epoch // aka l1 num
@@ -180,7 +183,7 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		b.Txs = &BatchV2TxsV3{}
 		b.Txs.(*BatchV2TxsV3).TotalBlockTxCount = totalBlockTxCount
 		// TODO: fix hardcoded chainID
-		b.Txs.(*BatchV2TxsV3).ChainID = big.NewInt(1337)
+		b.Txs.(*BatchV2TxsV3).ChainID = ChainID
 	default:
 		return fmt.Errorf("invalid BatchV2TxsType: %d", BatchV2TxsV2Type)
 	}
