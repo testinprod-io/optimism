@@ -118,7 +118,7 @@ func main() {
 			},
 			Action: func(cliCtx *cli.Context) error {
 				chainID := big.NewInt(cliCtx.Int64("chain-id"))
-				txType := cliCtx.Uint("chain-id")
+				txType := cliCtx.Uint("tx-type")
 				if txType > derive.BatchV2TxsV3Type {
 					log.Fatal(fmt.Errorf("invalid tx type: %d", txType))
 				}
