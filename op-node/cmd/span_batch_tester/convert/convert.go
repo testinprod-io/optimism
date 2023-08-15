@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path"
 	"time"
@@ -22,6 +23,8 @@ type Config struct {
 	InDirectory      string
 	OutDirectory     string
 	GenesisTimestamp uint64
+	TxType           int
+	ChainID          *big.Int
 }
 
 type SpanBatchWithMetadata struct {

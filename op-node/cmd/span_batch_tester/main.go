@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -102,8 +104,27 @@ func main() {
 					Value: "/tmp/span_batch_tester/span_batch_cache",
 					Usage: "Cache directory for the converted batch",
 				},
+				&cli.UintFlag{
+					Name:     "tx-type",
+					Required: true,
+					Usage:    "Span batch transaction encoding type",
+				},
+				&cli.IntFlag{
+					Name:     "chain-id",
+					Required: true,
+					Usage:    "L2 chain id",
+					Value:    10,
+				},
 			},
 			Action: func(cliCtx *cli.Context) error {
+				chainID := big.NewInt(cliCtx.Int64("chain-id"))
+				txType := cliCtx.Int("chain-id")
+				if txType > derive.BatchV2TxsV3Type {
+					log.Fatal(fmt.Errorf("invalid tx type: %d", txType))
+				}
+				fmt.Println(derive.BatchV2TxsType)
+				derive.BatchV2TxsType = derive.BatchV2TxsV2Type
+				fmt.Println(derive.BatchV2TxsType)
 				client, err := ethclient.Dial(cliCtx.String("l2"))
 				if err != nil {
 					log.Fatal(err)
@@ -112,6 +133,8 @@ func main() {
 					InDirectory:      cliCtx.String("in"),
 					OutDirectory:     cliCtx.String("out"),
 					GenesisTimestamp: cliCtx.Uint64("genesis-timestamp"),
+					ChainID:          chainID,
+					TxType:           txType,
 				}
 				convert.Convert(client, config)
 				return nil
