@@ -3,6 +3,7 @@ package derive
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -88,6 +89,67 @@ type BatchV2Payload struct {
 type BatchV2 struct {
 	BatchV2Prefix
 	BatchV2Payload
+}
+
+// custom implementation of unmarshaling json because Txs field is an interface
+func (b *BatchV2) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &b.BatchV2Prefix); err != nil {
+		return err
+	}
+	type BatchV2PayloadWithoutTxs struct {
+		BlockCount    uint64
+		OriginBits    *big.Int
+		BlockTxCounts []uint64
+	}
+	var payload BatchV2PayloadWithoutTxs
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	b.BlockCount = payload.BlockCount
+	b.OriginBits = payload.OriginBits
+	b.BlockTxCounts = payload.BlockTxCounts
+	// manually fill in Tx field
+	totalBlockTxCount := uint64(0)
+	for _, blockTxCount := range b.BlockTxCounts {
+		totalBlockTxCount += blockTxCount
+	}
+	// super hacky but do not know the better way
+	switch BatchV2TxsType {
+	case BatchV2TxsV1Type:
+		type BatchV2PayloadTxs struct {
+			Txs BatchV2TxsV1
+		}
+		var txWrapper BatchV2PayloadTxs
+		if err := json.Unmarshal(data, &txWrapper); err != nil {
+			return err
+		}
+		txWrapper.Txs.TotalBlockTxCount = totalBlockTxCount
+		b.Txs = &txWrapper.Txs
+	case BatchV2TxsV2Type:
+		type BatchV2PayloadTxs struct {
+			Txs BatchV2TxsV2
+		}
+		var txWrapper BatchV2PayloadTxs
+		if err := json.Unmarshal(data, &txWrapper); err != nil {
+			return err
+		}
+		b.Txs = &txWrapper.Txs
+	case BatchV2TxsV3Type:
+		type BatchV2PayloadTxs struct {
+			Txs BatchV2TxsV3
+		}
+		var txWrapper BatchV2PayloadTxs
+		if err := json.Unmarshal(data, &txWrapper); err != nil {
+			return err
+		}
+		txWrapper.Txs.TotalBlockTxCount = totalBlockTxCount
+		// TODO: fix hardcoded chainID
+		txWrapper.Txs.ChainID = ChainID
+		b.Txs = &txWrapper.Txs
+	default:
+		return fmt.Errorf("invalid BatchV2TxsType: %d", BatchV2TxsV2Type)
+	}
+	return nil
 }
 
 type BatchData struct {
