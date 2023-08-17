@@ -47,10 +47,10 @@ Where:
     - `1`: ([EIP-2930]): `gasLimit`
     - `2`: ([EIP-1559]): `gas_limit`
   - `tx_tos`: concatenated list of `to` field. `to` field in contract creation transaction will be `nil` and ignored.
-  - `tx_datas`: concatenated list of variable length rlp encoded data
+  - `tx_datas`: concatenated list of variable length rlp encoded data follwing [EIP-2718] encoded format using `TransactionType`.
     - `legacy`: `rlp_encode(value, gasPrice, data)`
-    - `1`: ([EIP-2930]): `rlp_encode(value, gasPrice, data, accessList)`
-    - `2`: ([EIP-1559]): `rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)`
+    - `1`: ([EIP-2930]): `0x01 ++ rlp_encode(value, gasPrice, data, accessList)`
+    - `2`: ([EIP-1559]): `0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)`
 
 [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 
