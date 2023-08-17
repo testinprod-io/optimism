@@ -29,7 +29,7 @@ Where:
   - `l1_origin_check`: to ensure the intended L1 origins of this span of
         L2 blocks are consistent with the L1 chain, the blockhash of the last L1 origin is referenced.
         The hash is truncated to 20 bytes for efficiency, i.e. `span_end.l1_origin.hash[:20]`.
-- `payload = block_count ++ block_tx_counts ++ txs`:
+- `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs`:
   - `block_count`: `uvarint` number of L2 blocks.
   - `origin_bits`: bitlist of `block_count` bits, right-padded to a multiple of 8 bits:
     1 bit per L2 block, indicating if the L1 origin changed this L2 block.
