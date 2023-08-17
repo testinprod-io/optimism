@@ -71,9 +71,8 @@ type BatchV2Payload struct {
 	BlockTxCounts []uint64
 
 	// below fields may be generalized
-	TxDataHeaders []uint64
-	TxDatas       []hexutil.Bytes
-	TxSigs        []BatchV2Signature
+	TxDatas []hexutil.Bytes
+	TxSigs  []BatchV2Signature
 }
 
 type BatchV2 struct {
@@ -136,6 +135,46 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 	b.OriginBits = originBits
 }
 
+// ReadTxData reads raw RLP tx data from reader
+func ReadTxData(r *bytes.Reader) ([]byte, error) {
+	var txData []byte
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+	}
+	b, err := r.ReadByte()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tx initial byte: %w", err)
+	}
+	if int(b) <= 0x7F {
+		// EIP-2718: non legacy tx so write tx type
+		txType := byte(b)
+		txData = append(txData, txType)
+	} else {
+		// legacy tx: seek back single byte to read prefix again
+		_, err = r.Seek(offset, io.SeekStart)
+		if err != nil {
+			return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+		}
+	}
+	// TODO: set maximum inputLimit
+	s := rlp.NewStream(r, 0)
+	var txPayload []byte
+	kind, _, err := s.Kind()
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("failed to read tx RLP prefix: %w", err)
+	case kind == rlp.List:
+		if txPayload, err = s.Raw(); err != nil {
+			return nil, fmt.Errorf("failed to read tx RLP payload: %w", err)
+		}
+	default:
+		return nil, errors.New("tx RLP prefix type must be list")
+	}
+	txData = append(txData, txPayload...)
+	return txData, nil
+}
+
 // DecodePayload parses data into b.BatchV2Payload
 func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
@@ -163,21 +202,12 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	txDataHeaders := make([]uint64, totalBlockTxCount)
+	// Do not need txDataHeader because RLP byte stream already includes length info
+	txDatas := make([]hexutil.Bytes, totalBlockTxCount)
 	for i := 0; i < int(totalBlockTxCount); i++ {
-		txDataHeader, err := binary.ReadUvarint(r)
-		// TODO: check txDataHeader is not too large
+		txData, err := ReadTxData(r)
 		if err != nil {
-			return fmt.Errorf("failed to read tx data header: %w", err)
-		}
-		txDataHeaders[i] = txDataHeader
-	}
-	txDatas := make([]hexutil.Bytes, len(txDataHeaders))
-	for i, txDataHeader := range txDataHeaders {
-		txData := make([]byte, txDataHeader)
-		_, err = io.ReadFull(r, txData)
-		if err != nil {
-			return fmt.Errorf("failed to tx data: %w", err)
+			return err
 		}
 		txDatas[i] = txData
 	}
@@ -205,7 +235,6 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
 	return nil
@@ -276,12 +305,6 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		n = binary.PutUvarint(buf[:], blockTxCount)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write block tx count: %w", err)
-		}
-	}
-	for _, txDataHeader := range b.TxDataHeaders {
-		n = binary.PutUvarint(buf[:], txDataHeader)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write block tx data header: %w", err)
 		}
 	}
 	for _, txData := range b.TxDatas {
@@ -436,7 +459,6 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 		b.OriginBits.SetBit(b.OriginBits, i, bit)
 	}
 	var blockTxCounts []uint64
-	var txDataHeaders []uint64
 	var txDatas []hexutil.Bytes
 	var txSigs []BatchV2Signature
 	for _, batchV1 := range batchV1s {
@@ -464,13 +486,10 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 			if err != nil {
 				return nil
 			}
-			txDataHeader := uint64(len(txData))
-			txDataHeaders = append(txDataHeaders, txDataHeader)
 			txDatas = append(txDatas, txData)
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
-	b.TxDataHeaders = txDataHeaders
 	b.TxDatas = txDatas
 	b.TxSigs = txSigs
 	return nil
