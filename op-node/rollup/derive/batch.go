@@ -623,8 +623,6 @@ func (b *BatchV2) AppendBatchV1(batchV1 *BatchV1) error {
 		if err != nil {
 			return err
 		}
-		txDataHeader := uint64(len(txData))
-		b.TxDataHeaders = append(b.TxDataHeaders, txDataHeader)
 		b.TxDatas = append(b.TxDatas, txData)
 	}
 	b.BlockTimestamps = append(b.BlockTimestamps, batchV1.Timestamp)
