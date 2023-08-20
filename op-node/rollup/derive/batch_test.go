@@ -35,7 +35,6 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		blockTxCounts = append(blockTxCounts, blockTxCount)
 		totalblockTxCounts += blockTxCount
 	}
-	txDataHeaders := make([]uint64, 0)
 	txDatas := make([]hexutil.Bytes, 0)
 	txSigs := make([]BatchV2Signature, 0)
 	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
@@ -49,13 +48,11 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 		if err != nil {
 			panic("MarshalBinary:" + err.Error())
 		}
-		txDataHeader := uint64(len(txData))
 		txSig := BatchV2Signature{
 			V: rng.Uint64(),
 			R: new(uint256.Int).SetBytes32(testutils.RandomData(rng, 32)),
 			S: new(uint256.Int).SetBytes32(testutils.RandomData(rng, 32)),
 		}
-		txDataHeaders = append(txDataHeaders, txDataHeader)
 		txDatas = append(txDatas, txData)
 		txSigs = append(txSigs, txSig)
 	}
@@ -72,7 +69,6 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 				BlockCount:    blockCount,
 				OriginBits:    originBits,
 				BlockTxCounts: blockTxCounts,
-				TxDataHeaders: txDataHeaders,
 				TxDatas:       txDatas,
 				TxSigs:        txSigs,
 			},
@@ -165,16 +161,9 @@ func TestBatchV2Merge(t *testing.T) {
 			assert.True(t, batchV1s[i].EpochNum == batchV1s[i-1].EpochNum+1)
 		}
 	}
-	cnt := 0
 	for i := 0; i < len(batchV1s); i++ {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
-		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.TxDataHeaders[cnt]
-			txData := batchV2.TxDatas[cnt]
-			assert.True(t, int(txDataHeader) == len(txData))
-			cnt++
-		}
 	}
 
 	// set invalid tx type to make tx unmarshaling fail
@@ -242,16 +231,9 @@ func TestBatchV2Split(t *testing.T) {
 		assert.True(t, batchV1s[i].EpochNum == l1OriginBlockNumber)
 	}
 
-	cnt := 0
 	for i := 0; i < len(batchV1s); i++ {
 		txCount := len(batchV1s[i].Transactions)
 		assert.True(t, txCount == int(batchV2.BlockTxCounts[i]))
-		for txIdx := 0; txIdx < txCount; txIdx++ {
-			txDataHeader := batchV2.TxDataHeaders[cnt]
-			txData := batchV2.TxDatas[cnt]
-			assert.True(t, int(txDataHeader) == len(txData))
-			cnt++
-		}
 	}
 }
 
