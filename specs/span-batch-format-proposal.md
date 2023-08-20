@@ -82,4 +82,4 @@ Our goal is to find the sweet spot on code complexity - span batch size tradeoff
 
 For legacy type transactions, `v = 2 * ChainID + y_parity`. For other types of transactions, `v = y_parity`. We may only store `y_parity`, which is single bit per L2 transction.
 
-This optimization will benefit more when ratio between number of legacy type transactions over number of transactions excluding deposit tx is higher.
+This optimization will benefit more when ratio between number of legacy type transactions over number of transactions excluding deposit tx is higher. Deposit transactions are excluded in batches and are never written at L1 so excluded while analyzing.
