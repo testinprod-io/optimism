@@ -37,8 +37,8 @@ Where:
   - `txs`: L2 transactions which is reorganized and encoded as below.
 - `txs = contract_creation_bits ++ tx_sigs ++ tx_nonces ++ tx_gases ++ tx_tos ++ tx_datas`
   - `contract_creation_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating if transaction is a contract creation transaction.
+  - `y_parity_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating the y parity value when recovering transaction sender address.
   - `tx_sigs`: concatenated list of transaction signatures
-    - `v`, or `y_parity`, is encoded as `uvarint` (some legacy transactions combine the chain ID)
     - `r` is encoded as big-endian `uint256`
     - `s` is encoded as big-endian `uint256`
   - `tx_nonces`: concatenated list of `uvarint` of `nonce` field.
@@ -77,3 +77,9 @@ Every transaction has chain id. We do not need to include chain id in span batch
 Further size optimization can be done by customly packing variable length fields, such as `access_list`. However doing this will introduce much more code complexity, comparing to benefitting by size reduction.
 
 Our goal is to find the sweet spot on code complexity - span batch size tradeoff. I decided that using RLP for all variable length fields will be the best option, not risking codebase with gnarly custom encoding/decoding implementations.
+
+#### Store `y_parity` instead of `v`
+
+For legacy type transactions, `v = 2 * ChainID + y_parity`. For other types of transactions, `v = y_parity`. We may only store `y_parity`, which is single bit per L2 transction.
+
+This optimization will benefit more when ratio between number of legacy type transactions over number of transactions excluding deposit tx is higher.
