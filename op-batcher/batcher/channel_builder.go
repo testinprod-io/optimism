@@ -16,7 +16,6 @@ import (
 
 var (
 	ErrInvalidChannelTimeout = errors.New("channel timeout is less than the safety margin")
-	ErrMaxFrameIndex         = errors.New("max frame index reached (uint16)")
 	ErrMaxDurationReached    = errors.New("max channel duration reached")
 	ErrChannelTimeoutClose   = errors.New("close to channel timeout")
 	ErrSeqWindowClose        = errors.New("close to sequencer window timeout")
@@ -137,7 +136,7 @@ func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder,
 	if err != nil {
 		return nil, err
 	}
-	co, err := derive.NewChannelOut(c, rcfg, cfg.BatchType, cfg.ParentRef)
+	co, err := derive.NewChannelOut(c, rcfg, cfg.BatchType, cfg.ParentRef, cfg.MaxFrameSize)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +203,7 @@ func (c *channelBuilder) AddBlock(block *types.Block) (derive.L1BlockInfo, error
 		return l1info, fmt.Errorf("converting block to batch: %w", err)
 	}
 
-	if _, err = c.co.AddBatch(batch); errors.Is(err, derive.ErrTooManyRLPBytes) || errors.Is(err, derive.CompressorFullErr) {
+	if _, err = c.co.AddBatch(batch); errors.Is(err, derive.ErrTooManyRLPBytes) || errors.Is(err, derive.CompressorFullErr) || errors.Is(err, derive.ErrMaxFrameIndex) {
 		c.setFullErr(err)
 		return l1info, c.FullErr()
 	} else if err != nil {
@@ -381,7 +380,7 @@ func (c *channelBuilder) outputFrame() error {
 	// now. Note that in order to properly catch this, we'd need to call Flush
 	// after every block addition to estimate how many more frames are coming.
 	if fn == math.MaxUint16 {
-		c.setFullErr(ErrMaxFrameIndex)
+		c.setFullErr(derive.ErrMaxFrameIndex)
 	}
 
 	frame := frameData{

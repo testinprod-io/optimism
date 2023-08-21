@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"math"
 	"math/big"
 	"math/rand"
@@ -419,7 +420,6 @@ func TestChannelBuilderBatchType(t *testing.T) {
 	}{
 		{"ChannelBuilder_NextFrame", ChannelBuilder_NextFrame},
 		{"ChannelBuilder_OutputWrongFramePanic", ChannelBuilder_OutputWrongFramePanic},
-		{"ChannelBuilder_OutputFramesWorks", ChannelBuilder_OutputFramesWorks},
 		{"ChannelBuilder_MaxRLPBytesPerChannel", ChannelBuilder_MaxRLPBytesPerChannel},
 		{"ChannelBuilder_OutputFramesMaxFrameIndex", ChannelBuilder_OutputFramesMaxFrameIndex},
 		{"ChannelBuilder_AddBlock", ChannelBuilder_AddBlock},
@@ -500,7 +500,7 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	// to construct a single frame
 	c, err := channelConfig.CompressorConfig.NewCompressor()
 	require.NoError(t, err)
-	co, err := derive.NewChannelOut(c, &rollup.Config{}, derive.BatchV1Type, &eth.L2BlockRef{})
+	co, err := derive.NewChannelOut(c, &rollup.Config{}, derive.BatchV1Type, &eth.L2BlockRef{}, channelConfig.MaxFrameSize)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	fn, err := co.OutputFrame(&buf, channelConfig.MaxFrameSize)
@@ -520,14 +520,14 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	})
 }
 
-// ChannelBuilder_OutputFramesWorks tests the [ChannelBuilder] OutputFrames is successful.
-func ChannelBuilder_OutputFramesWorks(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestChannelBuilder_OutputFramesWorks tests the [ChannelBuilder] OutputFrames is successful.
+func TestChannelBuilder_OutputFramesWorks(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
-	channelConfig.BatchType = batchType
+	channelConfig.BatchType = derive.BatchV1Type
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &spanBatchNotActivated)
 	require.NoError(t, err)
 	require.False(t, cb.IsFull())
 	require.Equal(t, 0, cb.PendingFrames())
@@ -598,6 +598,8 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg 
 	require.NoError(t, err)
 	require.False(t, cb.IsFull())
 	require.Equal(t, 0, cb.PendingFrames())
+	rng := rand.New(rand.NewSource(123))
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 	for {
 		lBlock := types.NewBlock(&types.Header{
 			BaseFee:    common.Big0,
@@ -605,7 +607,7 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg 
 			Number:     common.Big0,
 		}, nil, nil, nil, trie.NewStackTrie(nil))
 		l1InfoTx, _ := derive.L1InfoDeposit(0, eth.BlockToInfo(lBlock), eth.SystemConfig{}, false)
-		txs := []*types.Transaction{types.NewTx(l1InfoTx)}
+		txs := []*types.Transaction{types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)}
 		a := types.NewBlock(&types.Header{
 			Number: big.NewInt(0),
 		}, txs, nil, nil, trie.NewStackTrie(nil))
@@ -613,7 +615,7 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg 
 		require.NoError(t, cb.co.Flush())
 		if cb.IsFull() {
 			fullErr := cb.FullErr()
-			require.ErrorIs(t, fullErr, ErrMaxFrameIndex)
+			require.ErrorIs(t, fullErr, derive.ErrMaxFrameIndex)
 			break
 		}
 		require.NoError(t, err)
@@ -691,9 +693,11 @@ func ChannelBuilder_Reset(t *testing.T, batchType int, rcfg *rollup.Config) {
 
 	// Check the fields reset in the Reset function
 	require.Equal(t, 2, len(cb.blocks))
-	require.Greater(t, len(cb.frames), 1)
 	require.Equal(t, timeout, cb.timeout)
 	require.NoError(t, cb.fullErr)
+	if batchType == derive.BatchV1Type {
+		require.Greater(t, len(cb.frames), 1)
+	}
 
 	// Reset the channel builder
 	require.NoError(t, cb.Reset())

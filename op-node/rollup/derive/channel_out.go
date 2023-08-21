@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum-optimism/optimism/op-node/eth"
-	"io"
-
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"io"
+	"math"
 )
 
 var ErrMaxFrameSizeTooSmall = errors.New("maxSize is too small to fit the fixed frame overhead")
@@ -26,6 +26,7 @@ var ErrTooManyRLPBytes = errors.New("batch would cause RLP bytes to go over limi
 const FrameV0OverHeadSize = 23
 
 var CompressorFullErr = errors.New("compressor is full")
+var ErrMaxFrameIndex = errors.New("max frame index reached (uint16)")
 
 type Compressor interface {
 	// Writer is used to write uncompressed data which will be compressed. Should return
@@ -70,13 +71,15 @@ type ChannelOut struct {
 	spanBatchBuf *BatchV2
 
 	lastBlock *eth.L2BlockRef
+
+	maxFrameSize uint64
 }
 
 func (co *ChannelOut) ID() ChannelID {
 	return co.id
 }
 
-func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
+func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef, maxFrameSize uint64) (*ChannelOut, error) {
 	c := &ChannelOut{
 		id:           ChannelID{}, // TODO: use GUID here instead of fully random data
 		frame:        0,
@@ -86,6 +89,7 @@ func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, last
 		rcfg:         rcfg,
 		lastBlock:    lastBlock,
 		spanBatchBuf: &BatchV2{},
+		maxFrameSize: maxFrameSize,
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -175,6 +179,11 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
 	if isSpanBatch {
+		co.compress.Flush()
+		frameCount := co.estimateFrameCount()
+		if frameCount >= math.MaxUint16 {
+			return uint64(written), ErrMaxFrameIndex
+		}
 		co.compress.Reset()
 	}
 	if errors.Is(err, CompressorFullErr) {
@@ -220,6 +229,11 @@ func (co *ChannelOut) Close() error {
 	}
 	co.closed = true
 	return co.compress.Close()
+}
+
+func (co *ChannelOut) estimateFrameCount() int {
+	maxDataSize := co.maxFrameSize - FrameV0OverHeadSize
+	return co.compress.Len() / int(maxDataSize)
 }
 
 // OutputFrame writes a frame to w with a given max size and returns the frame
