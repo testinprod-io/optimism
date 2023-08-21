@@ -25,8 +25,8 @@ type BatchV2TxsV1 struct {
 	// below single field must be manually set
 	TotalBlockTxCount uint64
 
-	TxDatas       []hexutil.Bytes
-	TxSigs        []BatchV2Signature
+	TxDatas []hexutil.Bytes
+	TxSigs  []BatchV2Signature
 }
 
 func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
@@ -54,25 +54,26 @@ func (btx *BatchV2TxsV1) Encode(w io.Writer) error {
 }
 
 // ReadTxData reads raw RLP tx data from reader
-func ReadTxData(r *bytes.Reader) ([]byte, error) {
+func ReadTxData(r *bytes.Reader) ([]byte, int, error) {
 	var txData []byte
 	offset, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+		return nil, 0, fmt.Errorf("failed to seek tx reader: %w", err)
 	}
 	b, err := r.ReadByte()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read tx initial byte: %w", err)
+		return nil, 0, fmt.Errorf("failed to read tx initial byte: %w", err)
 	}
+	txType := byte(0)
 	if int(b) <= 0x7F {
 		// EIP-2718: non legacy tx so write tx type
-		txType := byte(b)
+		txType = byte(b)
 		txData = append(txData, txType)
 	} else {
 		// legacy tx: seek back single byte to read prefix again
 		_, err = r.Seek(offset, io.SeekStart)
 		if err != nil {
-			return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+			return nil, 0, fmt.Errorf("failed to seek tx reader: %w", err)
 		}
 	}
 	// TODO: set maximum inputLimit
@@ -81,23 +82,23 @@ func ReadTxData(r *bytes.Reader) ([]byte, error) {
 	kind, _, err := s.Kind()
 	switch {
 	case err != nil:
-		return nil, fmt.Errorf("failed to read tx RLP prefix: %w", err)
+		return nil, 0, fmt.Errorf("failed to read tx RLP prefix: %w", err)
 	case kind == rlp.List:
 		if txPayload, err = s.Raw(); err != nil {
-			return nil, fmt.Errorf("failed to read tx RLP payload: %w", err)
+			return nil, 0, fmt.Errorf("failed to read tx RLP payload: %w", err)
 		}
 	default:
-		return nil, errors.New("tx RLP prefix type must be list")
+		return nil, 0, errors.New("tx RLP prefix type must be list")
 	}
 	txData = append(txData, txPayload...)
-	return txData, nil
+	return txData, int(txType), nil
 }
 
 func (btx *BatchV2TxsV1) Decode(r *bytes.Reader) error {
 	// Do not need txDataHeader because RLP byte stream already includes length info
 	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txData, err := ReadTxData(r)
+		txData, _, err := ReadTxData(r)
 		if err != nil {
 			return err
 		}
