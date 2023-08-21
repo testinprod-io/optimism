@@ -303,6 +303,23 @@ func (btx BatchV2TxsV3) FullTxs() ([][]byte, error) {
 	return txs, nil
 }
 
+func ConvertVToYParity(v uint64, txType int) uint {
+	var yParityBit uint
+	switch txType {
+	case types.LegacyTxType:
+		// EIP155: v = 2 * chainID + 35 + yParity
+		// v - 35 = yParity (mod 2)
+		yParityBit = uint((v - 35) & 1)
+	case types.AccessListTxType:
+		yParityBit = uint(v)
+	case types.DynamicFeeTxType:
+		yParityBit = uint(v)
+	default:
+		panic(fmt.Sprintf("invalid tx type: %d", txType))
+	}
+	return yParityBit
+}
+
 func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 	totalBlockTxCount := uint64(len(txs))
 	var txSigs []BatchV2Signature
@@ -331,19 +348,7 @@ func NewBatchV2TxsV3(txs [][]byte) (*BatchV2TxsV3, error) {
 			contractCreationBit = uint(0)
 		}
 		contractCreationBits.SetBit(contractCreationBits, idx, contractCreationBit)
-		var yParityBit uint
-		switch tx.Type() {
-		case types.LegacyTxType:
-			// EIP155: v = 2 * chainID + 35 + yParity
-			// v - 35 = yParity (mod 2)
-			yParityBit = uint((txSig.V - 35) & 1)
-		case types.AccessListTxType:
-			yParityBit = uint(txSig.V)
-		case types.DynamicFeeTxType:
-			yParityBit = uint(txSig.V)
-		default:
-			panic(fmt.Sprintf("invalid tx type: %d", tx.Type()))
-		}
+		yParityBit := ConvertVToYParity(txSig.V, int(tx.Type()))
 		yParityBits.SetBit(yParityBits, idx, yParityBit)
 		txNonces = append(txNonces, tx.Nonce())
 		txGases = append(txGases, tx.Gas())
