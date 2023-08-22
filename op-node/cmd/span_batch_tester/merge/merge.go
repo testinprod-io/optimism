@@ -38,6 +38,8 @@ type Result struct {
 	SpanBatchPrefixSize  int
 	SpanBatchPayloadSize int
 
+	UncompressedSizeReductionPercent float64
+
 	L2TxCount int
 
 	L2StartNum   uint64
@@ -122,6 +124,20 @@ func (r *Result) AnalyzeBatchV2(batchV2 *derive.BatchV2) error {
 	return nil
 }
 
+func (r *Result) AnalyzeBatch(config Config, batchV2 *derive.BatchV2, batchV1s *[]derive.BatchV1, i int, prevUncompressedSize int) error {
+	if err := r.AnalyzeBatchV1s(batchV1s, i, prevUncompressedSize); err != nil {
+		return err
+	}
+	if err := r.AnalyzeBatchV2(batchV2); err != nil {
+		return err
+	}
+	r.UncompressedSizeReductionPercent = 100 * (1.0 - float64(r.SpanBatchUncompressedSize)/float64(r.BatchV1sUncompressedSize))
+	r.L2StartNum = config.Start
+	r.L2EndNum = config.Start + uint64(i)
+	r.L2BlockCount = uint64(i + 1)
+	return nil
+}
+
 func Merge(client *ethclient.Client, config Config) error {
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		return err
@@ -150,12 +166,8 @@ func Merge(client *ethclient.Client, config Config) error {
 		}
 
 		var r Result
-		r.AnalyzeBatchV1s(&batchV1s, i, prevUncompressedSize)
+		r.AnalyzeBatch(config, &batchV2, &batchV1s, i, prevUncompressedSize)
 		prevUncompressedSize = r.BatchV1sUncompressedSize
-		r.AnalyzeBatchV2(&batchV2)
-		r.L2StartNum = config.Start
-		r.L2EndNum = config.Start + uint64(i)
-		r.L2BlockCount = uint64(i + 1)
 
 		result.Result = append(result.Result, r)
 	}
