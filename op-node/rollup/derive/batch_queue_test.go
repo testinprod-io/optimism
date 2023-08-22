@@ -23,7 +23,7 @@ var maxTs = uint64(math.MaxUint64)
 
 type fakeBatchQueueInput struct {
 	i       int
-	batches []*BatchData
+	batches []Batch
 	errors  []error
 	origin  eth.L1BlockRef
 }
@@ -32,7 +32,7 @@ func (f *fakeBatchQueueInput) Origin() eth.L1BlockRef {
 	return f.origin
 }
 
-func (f *fakeBatchQueueInput) NextBatch(ctx context.Context) (*BatchData, error) {
+func (f *fakeBatchQueueInput) NextBatch(ctx context.Context) (Batch, error) {
 	if f.i >= len(f.batches) {
 		return nil, io.EOF
 	}
@@ -48,16 +48,16 @@ func mockHash(time uint64, layer uint8) common.Hash {
 	return hash
 }
 
-func b(timestamp uint64, epoch eth.L1BlockRef) *BatchData {
+func b(timestamp uint64, epoch eth.L1BlockRef) Batch {
 	rng := rand.New(rand.NewSource(int64(timestamp)))
 	data := testutils.RandomData(rng, 20)
-	return InitBatchDataV1(SingularBatch{
+	return &SingularBatch{
 		ParentHash:   mockHash(timestamp-2, 2),
 		Timestamp:    timestamp,
 		EpochNum:     rollup.Epoch(epoch.Number),
 		EpochHash:    epoch.Hash,
 		Transactions: []hexutil.Bytes{data},
-	})
+	}
 }
 
 func L1Chain(l1Times []uint64) []eth.L1BlockRef {
@@ -101,7 +101,7 @@ func TestBatchQueueNewOrigin(t *testing.T) {
 	}
 
 	input := &fakeBatchQueueInput{
-		batches: []*BatchData{nil},
+		batches: []Batch{nil},
 		errors:  []error{io.EOF},
 		origin:  l1[0],
 	}
@@ -160,7 +160,7 @@ func TestBatchQueueEager(t *testing.T) {
 		SpanBatchTime:     &maxTs,
 	}
 
-	batches := []*BatchData{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), b(24, l1[1]), nil}
+	batches := []Batch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), b(24, l1[1]), nil}
 	errors := []error{nil, nil, nil, nil, nil, nil, nil, io.EOF}
 
 	input := &fakeBatchQueueInput{
@@ -180,7 +180,7 @@ func TestBatchQueueEager(t *testing.T) {
 		if b == nil {
 			require.Nil(t, batches[i])
 		} else {
-			require.Equal(t, batches[i].SingularBatch, *b)
+			require.Equal(t, batches[i], b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -212,7 +212,7 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 		SpanBatchTime:     &maxTs,
 	}
 
-	batches := []*BatchData{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
+	batches := []Batch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
 	errors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
 
 	input := &fakeBatchQueueInput{
@@ -231,7 +231,7 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 		if b == nil {
 			require.Nil(t, batches[i])
 		} else {
-			require.Equal(t, batches[i].SingularBatch, *b)
+			require.Equal(t, batches[i], b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -308,7 +308,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	// The batches at 18 and 20 are skipped to stop 22 from being eagerly processed.
 	// This test checks that batch timestamp 12 & 14 are created, 16 is used, and 18 is advancing the epoch.
 	// Due to the large sequencer time drift 16 is perfectly valid to have epoch 0 as origin.
-	batches := []*BatchData{b(16, l1[0]), b(22, l1[1])}
+	batches := []Batch{b(16, l1[0]), b(22, l1[1])}
 	errors := []error{nil, nil}
 
 	input := &fakeBatchQueueInput{
@@ -359,7 +359,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	// Check for the inputted batch at t = 16
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
-	require.Equal(t, b, &batches[0].SingularBatch)
+	require.Equal(t, b, batches[0].(*SingularBatch))
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2

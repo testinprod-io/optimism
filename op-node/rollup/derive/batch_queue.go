@@ -29,7 +29,7 @@ import (
 
 type NextBatchProvider interface {
 	Origin() eth.L1BlockRef
-	NextBatch(ctx context.Context) (*BatchData, error)
+	NextBatch(ctx context.Context) (Batch, error)
 }
 
 // BatchQueue contains a set of batches for every L1 block.
@@ -119,10 +119,13 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	} else if err != nil {
 		return nil, err
 	}
-	if batch.BatchType == SingularBatchType {
-		return &batch.SingularBatch, nil
-	} else if batch.BatchType == SpanBatchType {
-		nextSpan, err := batch.SplitSpanBatch(bq.l1Blocks)
+	singularBatch, ok := batch.(*SingularBatch)
+	if ok {
+		return singularBatch, nil
+	}
+	spanBatch, ok := batch.(*SpanBatch)
+	if ok {
+		nextSpan, err := spanBatch.SplitSpanBatch(bq.l1Blocks)
 		if err != nil {
 			return nil, err
 		}
@@ -147,9 +150,9 @@ func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.Syst
 	return io.EOF
 }
 
-func (bq *BatchQueue) AddBatch(batch *BatchData, l2SafeHead eth.L2BlockRef) {
+func (bq *BatchQueue) AddBatch(batch Batch, l2SafeHead eth.L2BlockRef) {
 	if len(bq.l1Blocks) == 0 {
-		panic(fmt.Errorf("cannot add batch with timestamp %d, no origin was prepared", batch.Timestamp))
+		panic(fmt.Errorf("cannot add batch with timestamp %d, no origin was prepared", batch.GetTimestamp()))
 	}
 	data := BatchWithL1InclusionBlock{
 		L1InclusionBlock: bq.origin,
@@ -159,15 +162,15 @@ func (bq *BatchQueue) AddBatch(batch *BatchData, l2SafeHead eth.L2BlockRef) {
 	if validity == BatchDrop {
 		return // if we do drop the batch, CheckBatch will log the drop reason with WARN level.
 	}
-	bq.log.Debug("Adding batch", "batch_timestamp", batch.Timestamp, "parent_hash", batch.ParentHash, "batch_epoch", batch.Epoch(), "txs", len(batch.Transactions))
-	bq.batches[batch.Timestamp] = append(bq.batches[batch.Timestamp], &data)
+	batch.GetLogContext(bq.log).Debug("Adding batch")
+	bq.batches[batch.GetTimestamp()] = append(bq.batches[batch.GetTimestamp()], &data)
 }
 
 // deriveNextBatch derives the next batch to apply on top of the current L2 safe head,
 // following the validity rules imposed on consecutive batches,
 // based on currently available buffered batch and L1 origin information.
 // If no batch can be derived yet, then (nil, io.EOF) is returned.
-func (bq *BatchQueue) deriveNextBatch(ctx context.Context, outOfData bool, l2SafeHead eth.L2BlockRef) (*BatchData, error) {
+func (bq *BatchQueue) deriveNextBatch(ctx context.Context, outOfData bool, l2SafeHead eth.L2BlockRef) (Batch, error) {
 	if len(bq.l1Blocks) == 0 {
 		return nil, NewCriticalError(errors.New("cannot derive next batch, no origin was prepared"))
 	}
@@ -196,13 +199,9 @@ batchLoop:
 		validity := CheckBatch(bq.config, bq.log.New("batch_index", i), bq.l1Blocks, l2SafeHead, batch)
 		switch validity {
 		case BatchFuture:
-			return nil, NewCriticalError(fmt.Errorf("found batch with timestamp %d marked as future batch, but expected timestamp %d", batch.Batch.Timestamp, nextTimestamp))
+			return nil, NewCriticalError(fmt.Errorf("found batch with timestamp %d marked as future batch, but expected timestamp %d", batch.Batch.GetTimestamp(), nextTimestamp))
 		case BatchDrop:
-			bq.log.Warn("dropping batch",
-				"batch_timestamp", batch.Batch.Timestamp,
-				"parent_hash", batch.Batch.ParentHash,
-				"batch_epoch", batch.Batch.Epoch(),
-				"txs", len(batch.Batch.Transactions),
+			batch.Batch.GetLogContext(bq.log).Warn("dropping batch",
 				"l2_safe_head", l2SafeHead.ID(),
 				"l2_safe_head_time", l2SafeHead.Time,
 			)
@@ -230,10 +229,10 @@ batchLoop:
 
 	if nextBatch != nil {
 		// advance epoch if necessary
-		if nextBatch.Batch.EpochNum == rollup.Epoch(epoch.Number)+1 {
+		if nextBatch.Batch.GetEpochNum() == rollup.Epoch(epoch.Number)+1 {
 			bq.l1Blocks = bq.l1Blocks[1:]
 		}
-		bq.log.Info("Found next batch", "epoch", epoch, "batch_epoch", nextBatch.Batch.EpochNum, "batch_timestamp", nextBatch.Batch.Timestamp)
+		bq.log.Info("Found next batch", "epoch", epoch, "batch_epoch", nextBatch.Batch.GetEpochNum(), "batch_timestamp", nextBatch.Batch.GetTimestamp())
 		return nextBatch.Batch, nil
 	}
 
@@ -263,13 +262,13 @@ batchLoop:
 	// batch to ensure that we at least have one batch per epoch.
 	if nextTimestamp < nextEpoch.Time || firstOfEpoch {
 		bq.log.Info("Generating next batch", "epoch", epoch, "timestamp", nextTimestamp)
-		return InitBatchDataV1(SingularBatch{
+		return &SingularBatch{
 			ParentHash:   l2SafeHead.Hash,
 			EpochNum:     rollup.Epoch(epoch.Number),
 			EpochHash:    epoch.Hash,
 			Timestamp:    nextTimestamp,
 			Transactions: nil,
-		}), nil
+		}, nil
 	}
 
 	// At this point we have auto generated every batch for the current epoch

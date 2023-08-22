@@ -19,7 +19,7 @@ type ChannelInReader struct {
 	log log.Logger
 	cfg *rollup.Config
 
-	nextBatchFn func() (*BatchData, error)
+	nextBatchFn func() (Batch, error)
 
 	prev *ChannelBank
 
@@ -63,7 +63,7 @@ func (cr *ChannelInReader) NextChannel() {
 // NextBatch pulls out the next batch from the channel if it has it.
 // It returns io.EOF when it cannot make any more progress.
 // It will return a temporary error if it needs to be called again to advance some internal state.
-func (cr *ChannelInReader) NextBatch(ctx context.Context) (*BatchData, error) {
+func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 	if cr.nextBatchFn == nil {
 		if data, err := cr.prev.NextData(ctx); err == io.EOF {
 			return nil, io.EOF
@@ -87,8 +87,9 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (*BatchData, error) {
 		cr.NextChannel()
 		return nil, NotEnoughData
 	}
-	if batch.BatchType == SpanBatchType {
-		batch.SpanBatch.DeriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
+	spanBatch, ok := batch.(*SpanBatch)
+	if ok {
+		spanBatch.DeriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
 	}
 	return batch, nil
 }

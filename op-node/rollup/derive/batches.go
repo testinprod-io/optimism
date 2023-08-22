@@ -9,7 +9,7 @@ import (
 
 type BatchWithL1InclusionBlock struct {
 	L1InclusionBlock eth.L1BlockRef
-	Batch            *BatchData
+	Batch            Batch
 }
 
 type BatchValidity uint8
@@ -26,19 +26,21 @@ const (
 )
 
 func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
-	switch batch.Batch.BatchType {
+	switch batch.Batch.GetBatchType() {
 	case SingularBatchType:
-		if cfg.IsSpanBatch(batch.Batch.Timestamp) {
+		if cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			return BatchDrop
 		}
-		return CheckSingularBatch(cfg, log, l1Blocks, l2SafeHead, batch)
+		singularBatch, _ := batch.Batch.(*SingularBatch)
+		return CheckSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
 	case SpanBatchType:
-		if !cfg.IsSpanBatch(batch.Batch.BatchTimestamp) {
+		spanBatch, _ := batch.Batch.(*SpanBatch)
+		if !cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			return BatchDrop
 		}
-		return CheckSpanBatch(cfg, log, l1Blocks, l2SafeHead, batch)
+		return CheckSpanBatch(cfg, log, l1Blocks, l2SafeHead, spanBatch, batch.L1InclusionBlock)
 	default:
-		log.Warn("unrecognized batch type: %d", batch.Batch.BatchType)
+		log.Warn("unrecognized batch type: %d", batch.Batch.GetBatchType())
 		return BatchDrop
 	}
 }
@@ -46,14 +48,9 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 // CheckBatch checks if the given batch can be applied on top of the given l2SafeHead, given the contextual L1 blocks the batch was included in.
 // The first entry of the l1Blocks should match the origin of the l2SafeHead. One or more consecutive l1Blocks should be provided.
 // In case of only a single L1 block, the decision whether a batch is valid may have to stay undecided.
-func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
+func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SingularBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
 	// add details to the log
-	log = log.New(
-		"batch_timestamp", batch.Batch.Timestamp,
-		"parent_hash", batch.Batch.ParentHash,
-		"batch_epoch", batch.Batch.Epoch(),
-		"txs", len(batch.Batch.Transactions),
-	)
+	log = batch.GetLogContext(log)
 
 	// sanity check we have consistent inputs
 	if len(l1Blocks) == 0 {
@@ -63,36 +60,36 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 	epoch := l1Blocks[0]
 
 	nextTimestamp := l2SafeHead.Time + cfg.BlockTime
-	if batch.Batch.Timestamp > nextTimestamp {
+	if batch.Timestamp > nextTimestamp {
 		log.Trace("received out-of-order batch for future processing after next batch", "next_timestamp", nextTimestamp)
 		return BatchFuture
 	}
-	if batch.Batch.Timestamp < nextTimestamp {
+	if batch.Timestamp < nextTimestamp {
 		log.Warn("dropping batch with old timestamp", "min_timestamp", nextTimestamp)
 		return BatchDrop
 	}
 
 	// dependent on above timestamp check. If the timestamp is correct, then it must build on top of the safe head.
-	if batch.Batch.ParentHash != l2SafeHead.Hash {
+	if batch.ParentHash != l2SafeHead.Hash {
 		log.Warn("ignoring batch with mismatching parent hash", "current_safe_head", l2SafeHead.Hash)
 		return BatchDrop
 	}
 
 	// Filter out batches that were included too late.
-	if uint64(batch.Batch.EpochNum)+cfg.SeqWindowSize < batch.L1InclusionBlock.Number {
+	if uint64(batch.EpochNum)+cfg.SeqWindowSize < l1InclusionBlock.Number {
 		log.Warn("batch was included too late, sequence window expired")
 		return BatchDrop
 	}
 
 	// Check the L1 origin of the batch
 	batchOrigin := epoch
-	if uint64(batch.Batch.EpochNum) < epoch.Number {
+	if uint64(batch.EpochNum) < epoch.Number {
 		log.Warn("dropped batch, epoch is too old", "minimum", epoch.ID())
 		// batch epoch too old
 		return BatchDrop
-	} else if uint64(batch.Batch.EpochNum) == epoch.Number {
+	} else if uint64(batch.EpochNum) == epoch.Number {
 		// Batch is sticking to the current epoch, continue.
-	} else if uint64(batch.Batch.EpochNum) == epoch.Number+1 {
+	} else if uint64(batch.EpochNum) == epoch.Number+1 {
 		// With only 1 l1Block we cannot look at the next L1 Origin.
 		// Note: This means that we are unable to determine validity of a batch
 		// without more information. In this case we should bail out until we have
@@ -108,19 +105,19 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 		return BatchDrop
 	}
 
-	if batch.Batch.EpochHash != batchOrigin.Hash {
+	if batch.EpochHash != batchOrigin.Hash {
 		log.Warn("batch is for different L1 chain, epoch hash does not match", "expected", batchOrigin.ID())
 		return BatchDrop
 	}
 
-	if batch.Batch.Timestamp < batchOrigin.Time {
-		log.Warn("batch timestamp is less than L1 origin timestamp", "l2_timestamp", batch.Batch.Timestamp, "l1_timestamp", batchOrigin.Time, "origin", batchOrigin.ID())
+	if batch.Timestamp < batchOrigin.Time {
+		log.Warn("batch timestamp is less than L1 origin timestamp", "l2_timestamp", batch.Timestamp, "l1_timestamp", batchOrigin.Time, "origin", batchOrigin.ID())
 		return BatchDrop
 	}
 
 	// Check if we ran out of sequencer time drift
-	if max := batchOrigin.Time + cfg.MaxSequencerDrift; batch.Batch.Timestamp > max {
-		if len(batch.Batch.Transactions) == 0 {
+	if max := batchOrigin.Time + cfg.MaxSequencerDrift; batch.Timestamp > max {
+		if len(batch.Transactions) == 0 {
 			// If the sequencer is co-operating by producing an empty batch,
 			// then allow the batch if it was the right thing to do to maintain the L2 time >= L1 time invariant.
 			// We only check batches that do not advance the epoch, to ensure epoch advancement regardless of time drift is allowed.
@@ -130,7 +127,7 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 					return BatchUndecided
 				}
 				nextOrigin := l1Blocks[1]
-				if batch.Batch.Timestamp >= nextOrigin.Time { // check if the next L1 origin could have been adopted
+				if batch.Timestamp >= nextOrigin.Time { // check if the next L1 origin could have been adopted
 					log.Info("batch exceeded sequencer time drift without adopting next origin, and next L1 origin would have been valid")
 					return BatchDrop
 				} else {
@@ -146,7 +143,7 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 	}
 
 	// We can do this check earlier, but it's a more intensive one, so we do this last.
-	for i, txBytes := range batch.Batch.Transactions {
+	for i, txBytes := range batch.Transactions {
 		if len(txBytes) == 0 {
 			log.Warn("transaction data must not be empty, but found empty tx", "tx_index", i)
 			return BatchDrop
@@ -160,6 +157,6 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 	return BatchAccept
 }
 
-func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
+func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SpanBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
 	return BatchAccept
 }

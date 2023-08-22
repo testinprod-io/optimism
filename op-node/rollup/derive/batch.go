@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"math/big"
 	"sort"
@@ -43,6 +44,15 @@ const (
 	SpanBatchType
 )
 
+type Batch interface {
+	GetBatchType() int
+	GetTimestamp() uint64
+	GetEpochNum() rollup.Epoch
+	GetLogContext(log.Logger) log.Logger
+	CheckOriginHash(common.Hash) bool
+	CheckParentHash(common.Hash) bool
+}
+
 type SingularBatch struct {
 	ParentHash common.Hash  // parent L2 block hash
 	EpochNum   rollup.Epoch // aka l1 num
@@ -50,6 +60,35 @@ type SingularBatch struct {
 	Timestamp  uint64
 	// no feeRecipient address input, all fees go to a L2 contract
 	Transactions []hexutil.Bytes
+}
+
+func (b *SingularBatch) GetBatchType() int {
+	return SingularBatchType
+}
+
+func (b *SingularBatch) GetTimestamp() uint64 {
+	return b.Timestamp
+}
+
+func (b *SingularBatch) GetEpochNum() rollup.Epoch {
+	return b.EpochNum
+}
+
+func (b *SingularBatch) GetLogContext(log log.Logger) log.Logger {
+	return log.New(
+		"batch_timestamp", b.Timestamp,
+		"parent_hash", b.ParentHash,
+		"batch_epoch", b.Epoch(),
+		"txs", len(b.Transactions),
+	)
+}
+
+func (b *SingularBatch) CheckOriginHash(hash common.Hash) bool {
+	return b.EpochHash == hash
+}
+
+func (b *SingularBatch) CheckParentHash(hash common.Hash) bool {
+	return b.ParentHash == hash
 }
 
 type SpanBatchPrefix struct {
@@ -75,7 +114,8 @@ type SpanBatchPayload struct {
 	TxSigs  []SpanBatchSignature
 }
 
-type SpanBatchDerived struct {
+type SpanBatchDerivedFields struct {
+	IsDerived       bool
 	BatchTimestamp  uint64
 	BlockTimestamps []uint64
 	BlockOriginNums []uint64
@@ -84,7 +124,44 @@ type SpanBatchDerived struct {
 type SpanBatch struct {
 	SpanBatchPrefix
 	SpanBatchPayload
-	SpanBatchDerived
+	SpanBatchDerivedFields
+}
+
+func (b *SpanBatch) GetBatchType() int {
+	return SingularBatchType
+}
+
+func (b *SpanBatch) GetTimestamp() uint64 {
+	if !b.IsDerived {
+		panic("Span batch fields are not derived yet")
+	}
+	return b.BatchTimestamp
+}
+
+func (b *SpanBatch) GetEpochNum() rollup.Epoch {
+	if !b.IsDerived {
+		panic("Span batch fields are not derived yet")
+	}
+	return rollup.Epoch(b.BlockOriginNums[0])
+}
+
+func (b *SpanBatch) GetLogContext(log log.Logger) log.Logger {
+	return log.New(
+		"batch_timestamp", b.BatchTimestamp,
+		"parent_check", b.ParentCheck,
+		"origin_check", b.L1OriginCheck,
+		"origin_number", b.L1OriginNum,
+		"epoch_number", b.GetEpochNum(),
+		"blocks", b.BlockCount,
+	)
+}
+
+func (b *SpanBatch) CheckOriginHash(hash common.Hash) bool {
+	return bytes.Equal(b.L1OriginCheck, hash.Bytes()[:20])
+}
+
+func (b *SpanBatch) CheckParentHash(hash common.Hash) bool {
+	return bytes.Equal(b.ParentCheck, hash.Bytes()[:20])
 }
 
 type BatchData struct {
@@ -158,6 +235,17 @@ func (b *BatchData) decodeTyped(data []byte) error {
 		return b.SpanBatch.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
+	}
+}
+
+func (b *BatchData) GetBatch() (Batch, error) {
+	switch b.BatchType {
+	case SingularBatchType:
+		return &b.SingularBatch, nil
+	case SpanBatchType:
+		return &b.SpanBatch, nil
+	default:
+		return nil, fmt.Errorf("unrecognized batch type: %d", b.BatchType)
 	}
 }
 
@@ -589,6 +677,7 @@ func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64) {
 			l1OriginBlockNumber--
 		}
 	}
+	b.IsDerived = true
 }
 
 func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
