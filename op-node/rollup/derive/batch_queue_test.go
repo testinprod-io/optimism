@@ -3,8 +3,10 @@ package derive
 import (
 	"context"
 	"encoding/binary"
+	"github.com/ethereum/go-ethereum/core/types"
 	"io"
 	"math"
+	"math/big"
 	"math/rand"
 	"testing"
 
@@ -19,7 +21,9 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 )
 
+var minTs = uint64(0)
 var maxTs = uint64(math.MaxUint64)
+var genesisTimestamp = uint64(10)
 
 type fakeBatchQueueInput struct {
 	i       int
@@ -48,16 +52,48 @@ func mockHash(time uint64, layer uint8) common.Hash {
 	return hash
 }
 
-func b(timestamp uint64, epoch eth.L1BlockRef) Batch {
+func b(timestamp uint64, epoch eth.L1BlockRef) *SingularBatch {
 	rng := rand.New(rand.NewSource(int64(timestamp)))
-	data := testutils.RandomData(rng, 20)
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
+	tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
+	txData, _ := tx.MarshalBinary()
 	return &SingularBatch{
 		ParentHash:   mockHash(timestamp-2, 2),
 		Timestamp:    timestamp,
 		EpochNum:     rollup.Epoch(epoch.Number),
 		EpochHash:    epoch.Hash,
-		Transactions: []hexutil.Bytes{data},
+		Transactions: []hexutil.Bytes{txData},
 	}
+}
+
+func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*SingularBatch, blockCounts []int) []Batch {
+	var spanBatches []Batch
+	idx := 0
+	for i, count := range blockCounts {
+		var span SpanBatch
+		originChangedBit := 0
+		var parentOriginNum rollup.Epoch
+		if i == 0 {
+			parentOriginNum = rollup.Epoch(parent.L1Origin.Number)
+		} else {
+			parentOriginNum = singularBatches[idx-1].EpochNum
+		}
+		if parentOriginNum != singularBatches[idx].EpochNum {
+			originChangedBit = 1
+		}
+		err := span.MergeSingularBatches(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp)
+		require.NoError(t, err)
+		spanBatches = append(spanBatches, &span)
+		idx += count
+	}
+	return spanBatches
+}
+
+func getSpanBatchTime(batchType int) *uint64 {
+	if batchType == SpanBatchType {
+		return &minTs
+	}
+	return &maxTs
 }
 
 func L1Chain(l1Times []uint64) []eth.L1BlockRef {
@@ -76,10 +112,35 @@ func L1Chain(l1Times []uint64) []eth.L1BlockRef {
 	return out
 }
 
-// TestBatchQueueNewOrigin tests that the batch queue properly saves the new origin
+func TestBatchQueue(t *testing.T) {
+	tests := []struct {
+		name string
+		f    func(t *testing.T, batchType int)
+	}{
+		{"BatchQueueNewOrigin", BatchQueueNewOrigin},
+		{"BatchQueueEager", BatchQueueEager},
+		{"BatchQueueInvalidInternalAdvance", BatchQueueInvalidInternalAdvance},
+		{"BatchQueueMissing", BatchQueueMissing},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_SingularBatch", func(t *testing.T) {
+			test.f(t, SingularBatchType)
+		})
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name+"_SpanBatch", func(t *testing.T) {
+			test.f(t, SpanBatchType)
+		})
+	}
+}
+
+// BatchQueueNewOrigin tests that the batch queue properly saves the new origin
 // when the safehead's origin is ahead of the pipeline's origin (as is after a reset).
 // This issue was fixed in https://github.com/ethereum-optimism/optimism/pull/3694
-func TestBatchQueueNewOrigin(t *testing.T) {
+func BatchQueueNewOrigin(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlCrit)
 	l1 := L1Chain([]uint64{10, 15, 20, 25})
 	safeHead := eth.L2BlockRef{
@@ -92,12 +153,12 @@ func TestBatchQueueNewOrigin(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: 10,
+			L2Time: genesisTimestamp,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
-		SpanBatchTime:     &maxTs,
+		SpanBatchTime:     getSpanBatchTime(batchType),
 	}
 
 	input := &fakeBatchQueueInput{
@@ -137,9 +198,9 @@ func TestBatchQueueNewOrigin(t *testing.T) {
 	require.Equal(t, l1[2], bq.origin)
 }
 
-// TestBatchQueueEager adds a bunch of contiguous batches and asserts that
+// BatchQueueEager adds a bunch of contiguous batches and asserts that
 // enough calls to `NextBatch` return all of those batches.
-func TestBatchQueueEager(t *testing.T) {
+func BatchQueueEager(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlCrit)
 	l1 := L1Chain([]uint64{10, 20, 30})
 	safeHead := eth.L2BlockRef{
@@ -152,20 +213,32 @@ func TestBatchQueueEager(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: 10,
+			L2Time: genesisTimestamp,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     30,
-		SpanBatchTime:     &maxTs,
+		SpanBatchTime:     getSpanBatchTime(batchType),
 	}
 
-	batches := []Batch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), b(24, l1[1]), nil}
-	errors := []error{nil, nil, nil, nil, nil, nil, nil, io.EOF}
+	singularBatches := []*SingularBatch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
+	errors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
+	inputErrors := errors
+	var batches []Batch
+	if batchType == SpanBatchType {
+		spanBlockCounts := []int{1, 2, 3}
+		inputErrors = []error{nil, nil, nil, io.EOF}
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+		batches = append(batches, nil)
+	} else {
+		for _, singularBatch := range singularBatches {
+			batches = append(batches, singularBatch)
+		}
+	}
 
 	input := &fakeBatchQueueInput{
 		batches: batches,
-		errors:  errors,
+		errors:  inputErrors,
 		origin:  l1[0],
 	}
 
@@ -174,13 +247,13 @@ func TestBatchQueueEager(t *testing.T) {
 	// Advance the origin
 	input.origin = l1[1]
 
-	for i := 0; i < len(batches); i++ {
+	for i := 0; i < len(singularBatches); i++ {
 		b, e := bq.NextBatch(context.Background(), safeHead)
 		require.ErrorIs(t, e, errors[i])
 		if b == nil {
-			require.Nil(t, batches[i])
+			require.Nil(t, singularBatches[i])
 		} else {
-			require.Equal(t, batches[i], b)
+			require.Equal(t, singularBatches[i], b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -189,9 +262,9 @@ func TestBatchQueueEager(t *testing.T) {
 	}
 }
 
-// TestBatchQueueInvalidInternalAdvance asserts that we do not miss an epoch when generating batches.
+// BatchQueueInvalidInternalAdvance asserts that we do not miss an epoch when generating batches.
 // This is a regression test for CLI-3378.
-func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
+func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlTrace)
 	l1 := L1Chain([]uint64{10, 15, 20, 25, 30})
 	safeHead := eth.L2BlockRef{
@@ -204,20 +277,32 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: 10,
+			L2Time: genesisTimestamp,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
-		SpanBatchTime:     &maxTs,
+		SpanBatchTime:     getSpanBatchTime(batchType),
 	}
 
-	batches := []Batch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
+	singularBatches := []*SingularBatch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
 	errors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
+	inputErrors := errors
+	var batches []Batch
+	if batchType == SpanBatchType {
+		spanBlockCounts := []int{1, 2, 3}
+		inputErrors = []error{nil, nil, nil, io.EOF}
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+		batches = append(batches, nil)
+	} else {
+		for _, singularBatch := range singularBatches {
+			batches = append(batches, singularBatch)
+		}
+	}
 
 	input := &fakeBatchQueueInput{
 		batches: batches,
-		errors:  errors,
+		errors:  inputErrors,
 		origin:  l1[0],
 	}
 
@@ -225,13 +310,13 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 
 	// Load continuous batches for epoch 0
-	for i := 0; i < len(batches); i++ {
+	for i := 0; i < len(singularBatches); i++ {
 		b, e := bq.NextBatch(context.Background(), safeHead)
 		require.ErrorIs(t, e, errors[i])
 		if b == nil {
-			require.Nil(t, batches[i])
+			require.Nil(t, singularBatches[i])
 		} else {
-			require.Equal(t, batches[i], b)
+			require.Equal(t, singularBatches[i], b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -284,7 +369,7 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 
 }
 
-func TestBatchQueueMissing(t *testing.T) {
+func BatchQueueMissing(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlCrit)
 	l1 := L1Chain([]uint64{10, 15, 20, 25})
 	safeHead := eth.L2BlockRef{
@@ -297,30 +382,40 @@ func TestBatchQueueMissing(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: 10,
+			L2Time: genesisTimestamp,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
-		SpanBatchTime:     &maxTs,
+		SpanBatchTime:     getSpanBatchTime(batchType),
 	}
 
 	// The batches at 18 and 20 are skipped to stop 22 from being eagerly processed.
 	// This test checks that batch timestamp 12 & 14 are created, 16 is used, and 18 is advancing the epoch.
 	// Due to the large sequencer time drift 16 is perfectly valid to have epoch 0 as origin.
-	batches := []Batch{b(16, l1[0]), b(22, l1[1])}
-	errors := []error{nil, nil}
+	singularBatches := []*SingularBatch{b(16, l1[0]), b(22, l1[1])}
+	inputErrors := []error{nil, nil}
+	var batches []Batch
+	if batchType == SpanBatchType {
+		spanBlockCounts := []int{1, 1}
+		inputErrors = []error{nil, nil, nil, io.EOF}
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+	} else {
+		for _, singularBatch := range singularBatches {
+			batches = append(batches, singularBatch)
+		}
+	}
 
 	input := &fakeBatchQueueInput{
 		batches: batches,
-		errors:  errors,
+		errors:  inputErrors,
 		origin:  l1[0],
 	}
 
 	bq := NewBatchQueue(log, cfg, input)
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 
-	for i := 0; i < len(batches); i++ {
+	for i := 0; i < len(singularBatches); i++ {
 		b, e := bq.NextBatch(context.Background(), safeHead)
 		require.ErrorIs(t, e, NotEnoughData)
 		require.Nil(t, b)
@@ -359,7 +454,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	// Check for the inputted batch at t = 16
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
-	require.Equal(t, b, batches[0].(*SingularBatch))
+	require.Equal(t, b, singularBatches[0])
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2

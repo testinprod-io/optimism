@@ -65,6 +65,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	if len(bq.nextSpan) > 0 {
 		nextBatch := bq.nextSpan[0]
 		bq.nextSpan = bq.nextSpan[1:]
+		nextBatch.ParentHash = safeL2Head.Hash
 		return nextBatch, nil
 	}
 
@@ -131,6 +132,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		}
 		nextBatch := nextSpan[0]
 		bq.nextSpan = nextSpan[1:]
+		nextBatch.ParentHash = safeL2Head.Hash
 		return nextBatch, nil
 	}
 	return nil, nil

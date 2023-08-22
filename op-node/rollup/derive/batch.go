@@ -128,7 +128,7 @@ type SpanBatch struct {
 }
 
 func (b *SpanBatch) GetBatchType() int {
-	return SingularBatchType
+	return SpanBatchType
 }
 
 func (b *SpanBatch) GetTimestamp() uint64 {
@@ -594,6 +594,7 @@ func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, origi
 	b.BatchTimestamp = blockTimstamps[0]
 	b.BlockTimestamps = blockTimstamps
 	b.BlockOriginNums = blockOriginNums
+	b.IsDerived = true
 	return nil
 }
 
