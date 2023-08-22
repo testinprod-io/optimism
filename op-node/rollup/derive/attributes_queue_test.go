@@ -45,7 +45,7 @@ func TestAttributesQueue(t *testing.T) {
 	safeHead.L1Origin = l1Info.ID()
 	safeHead.Time = l1Info.InfoTime
 
-	batch := BatchV1{
+	batch := SingularBatch{
 		ParentHash:   safeHead.Hash,
 		EpochNum:     rollup.Epoch(l1Info.InfoNum),
 		EpochHash:    l1Info.InfoHash,

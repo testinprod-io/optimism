@@ -33,7 +33,7 @@ var defaultTestChannelConfig = ChannelConfig{
 		TargetNumFrames:  1,
 		ApproxComprRatio: 0.4,
 	},
-	BatchType: derive.BatchV1Type,
+	BatchType: derive.SingularBatchType,
 	ParentRef: &eth.L2BlockRef{Time: 0},
 }
 
@@ -185,15 +185,15 @@ func addTooManyBlocks(cb *channelBuilder) error {
 // is set to 0, the channel builder cannot have a duration timeout.
 func FuzzDurationTimeoutZeroMaxChannelDuration(f *testing.F) {
 	for i := range [10]int{} {
-		f.Add(uint64(i), derive.BatchV1Type)
-		f.Add(uint64(i), derive.BatchV2Type)
+		f.Add(uint64(i), derive.SingularBatchType)
+		f.Add(uint64(i), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, l1BlockNum uint64, batchType int) {
 		channelConfig := defaultTestChannelConfig
 		channelConfig.MaxChannelDuration = 0
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -209,8 +209,8 @@ func FuzzDurationTimeoutZeroMaxChannelDuration(f *testing.F) {
 // as long as the channel builder's timeout is set to 0.
 func FuzzChannelBuilder_DurationZero(f *testing.F) {
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64, batchType int) {
 		if maxChannelDuration == 0 {
@@ -222,7 +222,7 @@ func FuzzChannelBuilder_DurationZero(f *testing.F) {
 		channelConfig.MaxChannelDuration = maxChannelDuration
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -242,8 +242,8 @@ func FuzzChannelBuilder_DurationZero(f *testing.F) {
 func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64, timeout uint64, batchType int) {
 		if maxChannelDuration == 0 {
@@ -255,7 +255,7 @@ func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 		channelConfig.MaxChannelDuration = maxChannelDuration
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -285,8 +285,8 @@ func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 func FuzzChannelCloseTimeout(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64, timeout uint64, batchType int) {
 		// Create the channel builder
@@ -295,7 +295,7 @@ func FuzzChannelCloseTimeout(f *testing.F) {
 		channelConfig.SubSafetyMargin = subSafetyMargin
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -319,8 +319,8 @@ func FuzzChannelCloseTimeout(f *testing.F) {
 func FuzzChannelZeroCloseTimeout(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64, batchType int) {
 		// Create the channel builder
@@ -329,7 +329,7 @@ func FuzzChannelZeroCloseTimeout(f *testing.F) {
 		channelConfig.SubSafetyMargin = subSafetyMargin
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -352,8 +352,8 @@ func FuzzChannelZeroCloseTimeout(f *testing.F) {
 func FuzzSeqWindowClose(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64, timeout uint64, batchType int) {
 		// Create the channel builder
@@ -362,7 +362,7 @@ func FuzzSeqWindowClose(f *testing.F) {
 		channelConfig.SubSafetyMargin = subSafetyMargin
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -370,7 +370,7 @@ func FuzzSeqWindowClose(f *testing.F) {
 
 		// Check the timeout
 		cb.timeout = timeout
-		cb.updateSwTimeout(&derive.BatchV1{EpochNum: rollup.Epoch(epochNum)})
+		cb.updateSwTimeout(&derive.SingularBatch{EpochNum: rollup.Epoch(epochNum)})
 		calculatedTimeout := epochNum + seqWindowSize - subSafetyMargin
 		if timeout > calculatedTimeout && calculatedTimeout != 0 {
 			cb.checkTimeout(calculatedTimeout)
@@ -386,8 +386,8 @@ func FuzzSeqWindowClose(f *testing.F) {
 func FuzzSeqWindowZeroTimeoutClose(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV1Type)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.BatchV2Type)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
 	}
 	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64, batchType int) {
 		// Create the channel builder
@@ -396,7 +396,7 @@ func FuzzSeqWindowZeroTimeoutClose(f *testing.F) {
 		channelConfig.SubSafetyMargin = subSafetyMargin
 		channelConfig.BatchType = batchType
 		rcfg := &spanBatchNotActivated
-		if batchType == derive.BatchV2Type {
+		if batchType == derive.SpanBatchType {
 			rcfg = &spanBatchActivated
 		}
 		cb, err := newChannelBuilder(channelConfig, rcfg)
@@ -404,7 +404,7 @@ func FuzzSeqWindowZeroTimeoutClose(f *testing.F) {
 
 		// Check the timeout
 		cb.timeout = 0
-		cb.updateSwTimeout(&derive.BatchV1{EpochNum: rollup.Epoch(epochNum)})
+		cb.updateSwTimeout(&derive.SingularBatch{EpochNum: rollup.Epoch(epochNum)})
 		calculatedTimeout := epochNum + seqWindowSize - subSafetyMargin
 		cb.checkTimeout(calculatedTimeout)
 		if cb.timeout != 0 {
@@ -433,15 +433,15 @@ func TestChannelBuilderBatchType(t *testing.T) {
 	}
 	for _, test := range tests {
 		test := test
-		t.Run(test.name+"_BatchV1", func(t *testing.T) {
-			test.f(t, derive.BatchV1Type, &spanBatchNotActivated)
+		t.Run(test.name+"_SingularBatch", func(t *testing.T) {
+			test.f(t, derive.SingularBatchType, &spanBatchNotActivated)
 		})
 	}
 
 	for _, test := range tests {
 		test := test
-		t.Run(test.name+"_BatchV2", func(t *testing.T) {
-			test.f(t, derive.BatchV2Type, &spanBatchActivated)
+		t.Run(test.name+"_SpanBatch", func(t *testing.T) {
+			test.f(t, derive.SpanBatchType, &spanBatchActivated)
 		})
 	}
 }
@@ -500,7 +500,7 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	// to construct a single frame
 	c, err := channelConfig.CompressorConfig.NewCompressor()
 	require.NoError(t, err)
-	co, err := derive.NewChannelOut(c, &rollup.Config{}, derive.BatchV1Type, &eth.L2BlockRef{}, channelConfig.MaxFrameSize)
+	co, err := derive.NewChannelOut(c, &rollup.Config{}, derive.SingularBatchType, &eth.L2BlockRef{}, channelConfig.MaxFrameSize)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	fn, err := co.OutputFrame(&buf, channelConfig.MaxFrameSize)
@@ -524,7 +524,7 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 func TestChannelBuilder_OutputFramesWorks(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
-	channelConfig.BatchType = derive.BatchV1Type
+	channelConfig.BatchType = derive.SingularBatchType
 
 	// Construct the channel builder
 	cb, err := newChannelBuilder(channelConfig, &spanBatchNotActivated)
@@ -648,7 +648,7 @@ func ChannelBuilder_AddBlock(t *testing.T, batchType int, rcfg *rollup.Config) {
 
 	// Check the fields reset in the AddBlock function
 	expectedInputBytes := 74
-	if batchType == derive.BatchV2Type {
+	if batchType == derive.SpanBatchType {
 		expectedInputBytes = 47
 	}
 	require.Equal(t, expectedInputBytes, cb.co.InputBytes())
@@ -695,7 +695,7 @@ func ChannelBuilder_Reset(t *testing.T, batchType int, rcfg *rollup.Config) {
 	require.Equal(t, 2, len(cb.blocks))
 	require.Equal(t, timeout, cb.timeout)
 	require.NoError(t, cb.fullErr)
-	if batchType == derive.BatchV1Type {
+	if batchType == derive.SingularBatchType {
 		require.Greater(t, len(cb.frames), 1)
 	}
 
@@ -834,20 +834,20 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 	require.Zero(cb.InputBytes())
 
 	var l int
-	var batchV2 derive.BatchV2
+	var spanBatch derive.SpanBatch
 	for i := 0; i < 5; i++ {
 		block := newMiniL2Block(rng.Intn(32))
-		if batchType == derive.BatchV1Type {
+		if batchType == derive.SingularBatchType {
 			l += blockBatchRlpSize(t, block)
 		} else {
-			batchV1, _, err := derive.BlockToBatchV1(block)
+			singularBatch, _, err := derive.BlockToSingularBatch(block)
 			require.NoError(err)
 			if i == 0 {
-				batchV2.MergeBatchV1s([]*derive.BatchV1{batchV1}, 0, 0)
+				spanBatch.MergeSingularBatches([]*derive.SingularBatch{singularBatch}, 0, 0)
 			} else {
-				batchV2.AppendBatchV1(batchV1)
+				spanBatch.AppendSingularBatch(singularBatch)
 			}
-			batch := derive.InitBatchDataV2(batchV2)
+			batch := derive.InitBatchDataV2(spanBatch)
 			var buf bytes.Buffer
 			require.NoError(batch.EncodeRLP(&buf))
 			l = buf.Len()
@@ -897,8 +897,8 @@ func ChannelBuilder_OutputBytes(t *testing.T, batchType int, rcfg *rollup.Config
 
 func blockBatchRlpSize(t *testing.T, b *types.Block) int {
 	t.Helper()
-	batchV1, _, err := derive.BlockToBatchV1(b)
-	batch := derive.InitBatchDataV1(*batchV1)
+	singularBatch, _, err := derive.BlockToSingularBatch(b)
+	batch := derive.InitBatchDataV1(*singularBatch)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	require.NoError(t, batch.EncodeRLP(&buf), "RLP-encoding batch")

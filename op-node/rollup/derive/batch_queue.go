@@ -45,7 +45,7 @@ type BatchQueue struct {
 	// batches in order of when we've first seen them, grouped by L2 timestamp
 	batches map[uint64][]*BatchWithL1InclusionBlock
 
-	nextSpan []*BatchV1
+	nextSpan []*SingularBatch
 }
 
 // NewBatchQueue creates a BatchQueue, which should be Reset(origin) before use.
@@ -61,7 +61,7 @@ func (bq *BatchQueue) Origin() eth.L1BlockRef {
 	return bq.prev.Origin()
 }
 
-func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*BatchV1, error) {
+func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*SingularBatch, error) {
 	if len(bq.nextSpan) > 0 {
 		nextBatch := bq.nextSpan[0]
 		bq.nextSpan = bq.nextSpan[1:]
@@ -119,10 +119,10 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	} else if err != nil {
 		return nil, err
 	}
-	if batch.BatchType == BatchV1Type {
-		return &batch.BatchV1, nil
-	} else if batch.BatchType == BatchV2Type {
-		nextSpan, err := batch.SplitBatchV2(bq.l1Blocks)
+	if batch.BatchType == SingularBatchType {
+		return &batch.SingularBatch, nil
+	} else if batch.BatchType == SpanBatchType {
+		nextSpan, err := batch.SplitSpanBatch(bq.l1Blocks)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ batchLoop:
 	// batch to ensure that we at least have one batch per epoch.
 	if nextTimestamp < nextEpoch.Time || firstOfEpoch {
 		bq.log.Info("Generating next batch", "epoch", epoch, "timestamp", nextTimestamp)
-		return InitBatchDataV1(BatchV1{
+		return InitBatchDataV1(SingularBatch{
 			ParentHash:   l2SafeHead.Hash,
 			EpochNum:     rollup.Epoch(epoch.Number),
 			EpochHash:    epoch.Hash,

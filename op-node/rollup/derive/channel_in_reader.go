@@ -87,8 +87,8 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (*BatchData, error) {
 		cr.NextChannel()
 		return nil, NotEnoughData
 	}
-	if batch.BatchType == BatchV2Type {
-		batch.BatchV2.DeriveBatchV2Fields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
+	if batch.BatchType == SpanBatchType {
+		batch.SpanBatch.DeriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
 	}
 	return batch, nil
 }

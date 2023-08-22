@@ -51,7 +51,7 @@ func mockHash(time uint64, layer uint8) common.Hash {
 func b(timestamp uint64, epoch eth.L1BlockRef) *BatchData {
 	rng := rand.New(rand.NewSource(int64(timestamp)))
 	data := testutils.RandomData(rng, 20)
-	return InitBatchDataV1(BatchV1{
+	return InitBatchDataV1(SingularBatch{
 		ParentHash:   mockHash(timestamp-2, 2),
 		Timestamp:    timestamp,
 		EpochNum:     rollup.Epoch(epoch.Number),
@@ -180,7 +180,7 @@ func TestBatchQueueEager(t *testing.T) {
 		if b == nil {
 			require.Nil(t, batches[i])
 		} else {
-			require.Equal(t, batches[i].BatchV1, *b)
+			require.Equal(t, batches[i].SingularBatch, *b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -231,7 +231,7 @@ func TestBatchQueueInvalidInternalAdvance(t *testing.T) {
 		if b == nil {
 			require.Nil(t, batches[i])
 		} else {
-			require.Equal(t, batches[i].BatchV1, *b)
+			require.Equal(t, batches[i].SingularBatch, *b)
 			safeHead.Number += 1
 			safeHead.Time += 2
 			safeHead.Hash = mockHash(b.Timestamp, 2)
@@ -359,7 +359,7 @@ func TestBatchQueueMissing(t *testing.T) {
 	// Check for the inputted batch at t = 16
 	b, e = bq.NextBatch(context.Background(), safeHead)
 	require.Nil(t, e)
-	require.Equal(t, b, &batches[0].BatchV1)
+	require.Equal(t, b, &batches[0].SingularBatch)
 	require.Equal(t, rollup.Epoch(0), b.EpochNum)
 	safeHead.Number += 1
 	safeHead.Time += 2

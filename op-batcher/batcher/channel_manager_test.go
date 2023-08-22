@@ -47,14 +47,14 @@ func TestChannelManagerBatchType(t *testing.T) {
 	}
 	for _, test := range tests {
 		test := test
-		t.Run(test.name+"_BatchV1", func(t *testing.T) {
+		t.Run(test.name+"_SingularBatch", func(t *testing.T) {
 			test.f(t, &spanBatchNotActivated, &safeHead)
 		})
 	}
 
 	for _, test := range tests {
 		test := test
-		t.Run(test.name+"_BatchV2", func(t *testing.T) {
+		t.Run(test.name+"_SpanBatch", func(t *testing.T) {
 			test.f(t, &spanBatchActivated, &safeHead)
 		})
 	}

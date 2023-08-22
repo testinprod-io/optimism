@@ -27,16 +27,16 @@ const (
 
 func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
 	switch batch.Batch.BatchType {
-	case BatchV1Type:
+	case SingularBatchType:
 		if cfg.IsSpanBatch(batch.Batch.Timestamp) {
 			return BatchDrop
 		}
-		return CheckBatchV1(cfg, log, l1Blocks, l2SafeHead, batch)
-	case BatchV2Type:
+		return CheckSingularBatch(cfg, log, l1Blocks, l2SafeHead, batch)
+	case SpanBatchType:
 		if !cfg.IsSpanBatch(batch.Batch.BatchTimestamp) {
 			return BatchDrop
 		}
-		return CheckBatchV2(cfg, log, l1Blocks, l2SafeHead, batch)
+		return CheckSpanBatch(cfg, log, l1Blocks, l2SafeHead, batch)
 	default:
 		log.Warn("unrecognized batch type: %d", batch.Batch.BatchType)
 		return BatchDrop
@@ -46,7 +46,7 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 // CheckBatch checks if the given batch can be applied on top of the given l2SafeHead, given the contextual L1 blocks the batch was included in.
 // The first entry of the l1Blocks should match the origin of the l2SafeHead. One or more consecutive l1Blocks should be provided.
 // In case of only a single L1 block, the decision whether a batch is valid may have to stay undecided.
-func CheckBatchV1(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
+func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
 	// add details to the log
 	log = log.New(
 		"batch_timestamp", batch.Batch.Timestamp,
@@ -160,6 +160,6 @@ func CheckBatchV1(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef,
 	return BatchAccept
 }
 
-func CheckBatchV2(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
+func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
 	return BatchAccept
 }

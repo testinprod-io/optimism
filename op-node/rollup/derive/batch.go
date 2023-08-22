@@ -22,14 +22,14 @@ import (
 // Batch format
 // first byte is type followed by bytestring.
 //
-// BatchV1Type := 0
-// batchV1 := BatchV1Type ++ RLP([epoch, timestamp, transaction_list]
+// SingularBatchType := 0
+// singularBatch := SingularBatchType ++ RLP([epoch, timestamp, transaction_list]
 //
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
-// BatchV2Type := 1
-// batchV2 := BatchV2Type ++ prefix ++ payload
+// SpanBatchType := 1
+// spanBatch := SpanBatchType ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data ++ tx_sigs
 
@@ -39,11 +39,11 @@ var encodeBufferPool = sync.Pool{
 }
 
 const (
-	BatchV1Type = iota
-	BatchV2Type
+	SingularBatchType = iota
+	SpanBatchType
 )
 
-type BatchV1 struct {
+type SingularBatch struct {
 	ParentHash common.Hash  // parent L2 block hash
 	EpochNum   rollup.Epoch // aka l1 num
 	EpochHash  common.Hash  // block hash
@@ -52,45 +52,45 @@ type BatchV1 struct {
 	Transactions []hexutil.Bytes
 }
 
-type BatchV2Prefix struct {
+type SpanBatchPrefix struct {
 	RelTimestamp  uint64
 	L1OriginNum   uint64
 	ParentCheck   []byte
 	L1OriginCheck []byte
 }
 
-type BatchV2Signature struct {
+type SpanBatchSignature struct {
 	V uint64
 	R *uint256.Int
 	S *uint256.Int
 }
 
-type BatchV2Payload struct {
+type SpanBatchPayload struct {
 	BlockCount    uint64
 	OriginBits    *big.Int
 	BlockTxCounts []uint64
 
 	// below fields may be generalized
 	TxDatas []hexutil.Bytes
-	TxSigs  []BatchV2Signature
+	TxSigs  []SpanBatchSignature
 }
 
-type BatchV2Derived struct {
+type SpanBatchDerived struct {
 	BatchTimestamp  uint64
 	BlockTimestamps []uint64
 	BlockOriginNums []uint64
 }
 
-type BatchV2 struct {
-	BatchV2Prefix
-	BatchV2Payload
-	BatchV2Derived
+type SpanBatch struct {
+	SpanBatchPrefix
+	SpanBatchPayload
+	SpanBatchDerived
 }
 
 type BatchData struct {
 	BatchType int
-	BatchV1
-	BatchV2
+	SingularBatch
+	SpanBatch
 	// batches may contain additional data with new upgrades
 }
 
@@ -114,12 +114,12 @@ func (b *BatchData) MarshalBinary() ([]byte, error) {
 
 func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	switch b.BatchType {
-	case BatchV1Type:
-		buf.WriteByte(BatchV1Type)
-		return rlp.Encode(buf, &b.BatchV1)
-	case BatchV2Type:
-		buf.WriteByte(BatchV2Type)
-		return b.BatchV2.Encode(buf)
+	case SingularBatchType:
+		buf.WriteByte(SingularBatchType)
+		return rlp.Encode(buf, &b.SingularBatch)
+	case SpanBatchType:
+		buf.WriteByte(SpanBatchType)
+		return b.SpanBatch.Encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
 	}
@@ -150,37 +150,37 @@ func (b *BatchData) decodeTyped(data []byte) error {
 		return fmt.Errorf("batch too short")
 	}
 	switch data[0] {
-	case BatchV1Type:
-		b.BatchType = BatchV1Type
-		return rlp.DecodeBytes(data[1:], &b.BatchV1)
-	case BatchV2Type:
-		b.BatchType = BatchV2Type
-		return b.BatchV2.DecodeBytes(data[1:])
+	case SingularBatchType:
+		b.BatchType = SingularBatchType
+		return rlp.DecodeBytes(data[1:], &b.SingularBatch)
+	case SpanBatchType:
+		b.BatchType = SpanBatchType
+		return b.SpanBatch.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
 	}
 }
 
-func InitBatchDataV1(batchV1 BatchV1) *BatchData {
+func InitBatchDataV1(singularBatch SingularBatch) *BatchData {
 	return &BatchData{
-		BatchType: BatchV1Type,
-		BatchV1:   batchV1,
+		BatchType:     SingularBatchType,
+		SingularBatch: singularBatch,
 	}
 }
 
-func InitBatchDataV2(batchV2 BatchV2) *BatchData {
+func InitBatchDataV2(spanBatch SpanBatch) *BatchData {
 	return &BatchData{
-		BatchType: BatchV2Type,
-		BatchV2:   batchV2,
+		BatchType: SpanBatchType,
+		SpanBatch: spanBatch,
 	}
 }
 
-func (b *BatchV1) Epoch() eth.BlockID {
+func (b *SingularBatch) Epoch() eth.BlockID {
 	return eth.BlockID{Hash: b.EpochHash, Number: uint64(b.EpochNum)}
 }
 
-// DecodePrefix parses data into b.BatchV2Prefix
-func (b *BatchV2) DecodePrefix(r *bytes.Reader) error {
+// DecodePrefix parses data into b.SpanBatchPrefix
+func (b *SpanBatch) DecodePrefix(r *bytes.Reader) error {
 	relTimestamp, err := binary.ReadUvarint(r)
 	if err != nil {
 		return fmt.Errorf("failed to read rel timestamp: %w", err)
@@ -204,7 +204,7 @@ func (b *BatchV2) DecodePrefix(r *bytes.Reader) error {
 	return nil
 }
 
-func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uint64) {
+func (b *SpanBatchPayload) DecodeOriginBits(originBitBuffer []byte, blockCount uint64) {
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i += 8 {
 		end := i + 8
@@ -260,8 +260,8 @@ func ReadTxData(r *bytes.Reader) ([]byte, error) {
 	return txData, nil
 }
 
-// DecodePayload parses data into b.BatchV2Payload
-func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
+// DecodePayload parses data into b.SpanBatchPayload
+func (b *SpanBatch) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
 	// TODO: check block count is not too large
 	if err != nil {
@@ -296,10 +296,10 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 		}
 		txDatas[i] = txData
 	}
-	txSigs := make([]BatchV2Signature, totalBlockTxCount)
+	txSigs := make([]SpanBatchSignature, totalBlockTxCount)
 	var sigBuffer [32]byte
 	for i := 0; i < int(totalBlockTxCount); i++ {
-		var txSig BatchV2Signature
+		var txSig SpanBatchSignature
 		v, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read tx sig v: %w", err)
@@ -326,7 +326,7 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 }
 
 // DecodeBytes parses data into b from data
-func (b *BatchV2) DecodeBytes(data []byte) error {
+func (b *SpanBatch) DecodeBytes(data []byte) error {
 	r := bytes.NewReader(data)
 	if err := b.DecodePrefix(r); err != nil {
 		return err
@@ -337,7 +337,7 @@ func (b *BatchV2) DecodeBytes(data []byte) error {
 	return nil
 }
 
-func (b *BatchV2) EncodePrefix(w io.Writer) error {
+func (b *SpanBatch) EncodePrefix(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.RelTimestamp)
 	if _, err := w.Write(buf[:n]); err != nil {
@@ -356,7 +356,7 @@ func (b *BatchV2) EncodePrefix(w io.Writer) error {
 	return nil
 }
 
-func (b *BatchV2Payload) EncodeOriginBits() []byte {
+func (b *SpanBatchPayload) EncodeOriginBits() []byte {
 	originBitBufferLen := b.BlockCount / 8
 	if b.BlockCount%8 != 0 {
 		originBitBufferLen++
@@ -376,7 +376,7 @@ func (b *BatchV2Payload) EncodeOriginBits() []byte {
 	return originBitBuffer
 }
 
-func (b *BatchV2) EncodePayload(w io.Writer) error {
+func (b *SpanBatch) EncodePayload(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.BlockCount)
 	if _, err := w.Write(buf[:n]); err != nil {
@@ -415,7 +415,7 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 }
 
 // Encode writes the byte encoding of b to w
-func (b *BatchV2) Encode(w io.Writer) error {
+func (b *SpanBatch) Encode(w io.Writer) error {
 	if err := b.EncodePrefix(w); err != nil {
 		return err
 	}
@@ -426,7 +426,7 @@ func (b *BatchV2) Encode(w io.Writer) error {
 }
 
 // EncodeBytes returns the byte encoding of b
-func (b *BatchV2) EncodeBytes() ([]byte, error) {
+func (b *SpanBatch) EncodeBytes() ([]byte, error) {
 	buf := encodeBufferPool.Get().(*bytes.Buffer)
 	defer encodeBufferPool.Put(buf)
 	buf.Reset()
@@ -436,52 +436,52 @@ func (b *BatchV2) EncodeBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// MergeBatchV1s merges BatchV1 List and initialize single BatchV2
-func (b *BatchV2) MergeBatchV1s(batchV1s []*BatchV1, originChangedBit uint, genesisTimestamp uint64) error {
-	if len(batchV1s) == 0 {
-		return errors.New("cannot merge empty batchV1 list")
+// MergeSingularBatches merges SingularBatch List and initialize single SpanBatch
+func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, originChangedBit uint, genesisTimestamp uint64) error {
+	if len(singularBatches) == 0 {
+		return errors.New("cannot merge empty singularBatch list")
 	}
 	// Sort by timestamp of L2 block
-	sort.Slice(batchV1s, func(i, j int) bool {
-		return batchV1s[i].Timestamp < batchV1s[j].Timestamp
+	sort.Slice(singularBatches, func(i, j int) bool {
+		return singularBatches[i].Timestamp < singularBatches[j].Timestamp
 	})
-	// BatchV2Prefix
-	span_start := batchV1s[0]
-	span_end := batchV1s[len(batchV1s)-1]
+	// SpanBatchPrefix
+	span_start := singularBatches[0]
+	span_end := singularBatches[len(singularBatches)-1]
 	b.RelTimestamp = span_start.Timestamp - genesisTimestamp
 	b.L1OriginNum = uint64(span_end.EpochNum)
 	b.ParentCheck = make([]byte, 20)
 	copy(b.ParentCheck, span_start.ParentHash[:20])
 	b.L1OriginCheck = make([]byte, 20)
 	copy(b.L1OriginCheck, span_end.EpochHash[:20])
-	// BatchV2Payload
-	b.BlockCount = uint64(len(batchV1s))
+	// SpanBatchPayload
+	b.BlockCount = uint64(len(singularBatches))
 	b.OriginBits = new(big.Int)
 	b.OriginBits.SetBit(b.OriginBits, 0, originChangedBit)
-	for i := 1; i < len(batchV1s); i++ {
+	for i := 1; i < len(singularBatches); i++ {
 		bit := uint(0)
-		if batchV1s[i-1].EpochNum < batchV1s[i].EpochNum {
+		if singularBatches[i-1].EpochNum < singularBatches[i].EpochNum {
 			bit = 1
 		}
 		b.OriginBits.SetBit(b.OriginBits, i, bit)
 	}
 	var blockTxCounts []uint64
 	var txDatas []hexutil.Bytes
-	var txSigs []BatchV2Signature
+	var txSigs []SpanBatchSignature
 	var blockTimstamps []uint64
 	var blockOriginNums []uint64
-	for _, batchV1 := range batchV1s {
-		blockTxCount := uint64(len(batchV1.Transactions))
+	for _, singularBatch := range singularBatches {
+		blockTxCount := uint64(len(singularBatch.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		blockTimstamps = append(blockTimstamps, batchV1.Timestamp)
-		blockOriginNums = append(blockOriginNums, uint64(batchV1.EpochNum))
-		for _, rawTx := range batchV1.Transactions {
+		blockTimstamps = append(blockTimstamps, singularBatch.Timestamp)
+		blockOriginNums = append(blockOriginNums, uint64(singularBatch.EpochNum))
+		for _, rawTx := range singularBatch.Transactions {
 			// below segment may be generalized
 			var tx types.Transaction
 			if err := tx.UnmarshalBinary(rawTx); err != nil {
 				return errors.New("failed to decode tx")
 			}
-			var txSig BatchV2Signature
+			var txSig SpanBatchSignature
 			v, r, s := tx.RawSignatureValues()
 			R, _ := uint256.FromBig(r)
 			S, _ := uint256.FromBig(s)
@@ -489,11 +489,11 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []*BatchV1, originChangedBit uint, gene
 			txSig.R = R
 			txSig.S = S
 			txSigs = append(txSigs, txSig)
-			batchV2Tx, err := NewBatchV2Tx(tx)
+			spanBatchTx, err := NewSpanBatchTx(tx)
 			if err != nil {
 				return nil
 			}
-			txData, err := batchV2Tx.MarshalBinary()
+			txData, err := spanBatchTx.MarshalBinary()
 			if err != nil {
 				return nil
 			}
@@ -509,10 +509,10 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []*BatchV1, originChangedBit uint, gene
 	return nil
 }
 
-// SplitBatchV2 splits single BatchV2 and initialize BatchV1 lists
-// Cannot fill every BatchV1 parent hash
-func (b *BatchV2) SplitBatchV2(l1Origins []eth.L1BlockRef) ([]*BatchV1, error) {
-	batchV1s := make([]*BatchV1, b.BlockCount)
+// SplitSpanBatch splits single SpanBatch and initialize SingularBatch lists
+// Cannot fill every SingularBatch parent hash
+func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch, error) {
+	singularBatches := make([]*SingularBatch, b.BlockCount)
 	txIdx := 0
 	originIdx := -1
 	for i := 0; i < len(l1Origins); i++ {
@@ -525,23 +525,23 @@ func (b *BatchV2) SplitBatchV2(l1Origins []eth.L1BlockRef) ([]*BatchV1, error) {
 		return nil, fmt.Errorf("cannot find L1 origin")
 	}
 	for i := 0; i < int(b.BlockCount); i++ {
-		batchV1 := BatchV1{}
-		batchV1.Timestamp = b.BlockTimestamps[i]
-		batchV1.EpochNum = rollup.Epoch(b.BlockOriginNums[i])
+		singularBatch := SingularBatch{}
+		singularBatch.Timestamp = b.BlockTimestamps[i]
+		singularBatch.EpochNum = rollup.Epoch(b.BlockOriginNums[i])
 		if b.OriginBits.Bit(i) == 1 && i > 0 {
 			originIdx += 1
 		}
-		batchV1.EpochHash = l1Origins[originIdx].Hash
+		singularBatch.EpochHash = l1Origins[originIdx].Hash
 
 		for txIndex := 0; txIndex < int(b.BlockTxCounts[i]); txIndex++ {
-			var batchV2Tx BatchV2Tx
-			if err := batchV2Tx.UnmarshalBinary(b.TxDatas[txIdx]); err != nil {
+			var spanBatchTx SpanBatchTx
+			if err := spanBatchTx.UnmarshalBinary(b.TxDatas[txIdx]); err != nil {
 				return nil, err
 			}
 			v := new(big.Int).SetUint64(b.TxSigs[txIdx].V)
 			r := b.TxSigs[txIdx].R.ToBig()
 			s := b.TxSigs[txIdx].S.ToBig()
-			tx, err := batchV2Tx.ConvertToFullTx(v, r, s)
+			tx, err := spanBatchTx.ConvertToFullTx(v, r, s)
 			if err != nil {
 				return nil, err
 			}
@@ -549,34 +549,34 @@ func (b *BatchV2) SplitBatchV2(l1Origins []eth.L1BlockRef) ([]*BatchV1, error) {
 			if err != nil {
 				return nil, err
 			}
-			batchV1.Transactions = append(batchV1.Transactions, encodedTx)
+			singularBatch.Transactions = append(singularBatch.Transactions, encodedTx)
 			txIdx++
 		}
-		batchV1s[i] = &batchV1
+		singularBatches[i] = &singularBatch
 	}
-	return batchV1s, nil
+	return singularBatches, nil
 }
 
-// SplitBatchV2CheckValidation splits single BatchV2 and initialize BatchV1 lists and validates ParentCheck and L1OriginCheck
-// Cannot fill in BatchV1 parent hash except the first BatchV1 because we cannot trust other L2s yet.
-func (b *BatchV2) SplitBatchV2CheckValidation(l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef) ([]*BatchV1, error) {
-	batchV1s, err := b.SplitBatchV2(l1Origins)
+// SplitSpanBatchCheckValidation splits single SpanBatch and initialize SingularBatch lists and validates ParentCheck and L1OriginCheck
+// Cannot fill in SingularBatch parent hash except the first SingularBatch because we cannot trust other L2s yet.
+func (b *SpanBatch) SplitSpanBatchCheckValidation(l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef) ([]*SingularBatch, error) {
+	singularBatches, err := b.SplitSpanBatch(l1Origins)
 	if err != nil {
 		return nil, err
 	}
-	// set only the first batchV1's parent hash
-	batchV1s[0].ParentHash = safeL2Head.Hash
+	// set only the first singularBatch's parent hash
+	singularBatches[0].ParentHash = safeL2Head.Hash
 	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
 		return nil, errors.New("parent hash mismatch")
 	}
-	l1OriginBlockHash := batchV1s[len(batchV1s)-1].EpochHash
+	l1OriginBlockHash := singularBatches[len(singularBatches)-1].EpochHash
 	if !bytes.Equal(l1OriginBlockHash[:20], b.L1OriginCheck) {
 		return nil, errors.New("l1 origin hash mismatch")
 	}
-	return batchV1s, nil
+	return singularBatches, nil
 }
 
-func (b *BatchV2) DeriveBatchV2Fields(blockTime, genesisTimestamp uint64) {
+func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64) {
 	b.BatchTimestamp = b.RelTimestamp + genesisTimestamp
 	b.BlockTimestamps = make([]uint64, b.BlockCount)
 	b.BlockOriginNums = make([]uint64, b.BlockCount)
@@ -591,23 +591,23 @@ func (b *BatchV2) DeriveBatchV2Fields(blockTime, genesisTimestamp uint64) {
 	}
 }
 
-func (b *BatchV2) AppendBatchV1(batchV1 *BatchV1) error {
+func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
 	b.BlockCount += 1
 	originBit := uint(0)
-	if b.L1OriginNum != uint64(batchV1.EpochNum) {
+	if b.L1OriginNum != uint64(singularBatch.EpochNum) {
 		originBit = 1
 	}
 	b.OriginBits.SetBit(b.OriginBits, int(b.BlockCount-1), originBit)
-	b.L1OriginNum = uint64(batchV1.EpochNum)
-	b.L1OriginCheck = batchV1.EpochHash.Bytes()[:20]
-	b.BlockTxCounts = append(b.BlockTxCounts, uint64(len(batchV1.Transactions)))
-	for _, rawTx := range batchV1.Transactions {
+	b.L1OriginNum = uint64(singularBatch.EpochNum)
+	b.L1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
+	b.BlockTxCounts = append(b.BlockTxCounts, uint64(len(singularBatch.Transactions)))
+	for _, rawTx := range singularBatch.Transactions {
 		// below segment may be generalized
 		var tx types.Transaction
 		if err := tx.UnmarshalBinary(rawTx); err != nil {
 			return errors.New("failed to decode tx")
 		}
-		var txSig BatchV2Signature
+		var txSig SpanBatchSignature
 		v, r, s := tx.RawSignatureValues()
 		R, _ := uint256.FromBig(r)
 		S, _ := uint256.FromBig(s)
@@ -615,17 +615,17 @@ func (b *BatchV2) AppendBatchV1(batchV1 *BatchV1) error {
 		txSig.R = R
 		txSig.S = S
 		b.TxSigs = append(b.TxSigs, txSig)
-		batchV2Tx, err := NewBatchV2Tx(tx)
+		spanBatchTx, err := NewSpanBatchTx(tx)
 		if err != nil {
 			return err
 		}
-		txData, err := batchV2Tx.MarshalBinary()
+		txData, err := spanBatchTx.MarshalBinary()
 		if err != nil {
 			return err
 		}
 		b.TxDatas = append(b.TxDatas, txData)
 	}
-	b.BlockTimestamps = append(b.BlockTimestamps, batchV1.Timestamp)
-	b.BlockOriginNums = append(b.BlockOriginNums, uint64(batchV1.EpochNum))
+	b.BlockTimestamps = append(b.BlockTimestamps, singularBatch.Timestamp)
+	b.BlockOriginNums = append(b.BlockOriginNums, uint64(singularBatch.EpochNum))
 	return nil
 }

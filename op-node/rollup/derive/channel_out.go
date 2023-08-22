@@ -68,7 +68,7 @@ type ChannelOut struct {
 
 	rcfg *rollup.Config
 
-	spanBatchBuf *BatchV2
+	spanBatchBuf *SpanBatch
 
 	lastBlock *eth.L2BlockRef
 
@@ -88,7 +88,7 @@ func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, last
 		batchType:    batchType,
 		rcfg:         rcfg,
 		lastBlock:    lastBlock,
-		spanBatchBuf: &BatchV2{},
+		spanBatchBuf: &SpanBatch{},
 		maxFrameSize: maxFrameSize,
 	}
 	_, err := rand.Read(c.id[:])
@@ -118,7 +118,7 @@ func (co *ChannelOut) AddBlock(block *types.Block) (uint64, error) {
 		return 0, errors.New("already closed")
 	}
 
-	batch, _, err := BlockToBatchV1(block)
+	batch, _, err := BlockToSingularBatch(block)
 	if err != nil {
 		return 0, err
 	}
@@ -130,15 +130,15 @@ func (co *ChannelOut) AddBlock(block *types.Block) (uint64, error) {
 // that it returns is ErrTooManyRLPBytes. If this error is returned, the channel
 // should be closed and a new one should be made.
 //
-// AddBatch should be used together with BlockToBatchV1 if you need to access the
+// AddBatch should be used together with BlockToSingularBatch if you need to access the
 // BatchData before adding a block to the channel. It isn't possible to access
 // the batch data with AddBlock.
-func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
+func (co *ChannelOut) AddBatch(batch *SingularBatch) (uint64, error) {
 	if co.closed {
 		return 0, errors.New("already closed")
 	}
 
-	isSpanBatch := co.batchType == BatchV2Type
+	isSpanBatch := co.batchType == SpanBatchType
 
 	var buf bytes.Buffer
 	var lastSpanBatch bytes.Buffer
@@ -148,14 +148,14 @@ func (co *ChannelOut) AddBatch(batch *BatchV1) (uint64, error) {
 			if batch.EpochHash != co.lastBlock.L1Origin.Hash {
 				originChangeBit = 1
 			}
-			if err := co.spanBatchBuf.MergeBatchV1s([]*BatchV1{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
+			if err := co.spanBatchBuf.MergeSingularBatches([]*SingularBatch{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
 				return 0, err
 			}
 		} else {
 			if err := rlp.Encode(&lastSpanBatch, InitBatchDataV2(*co.spanBatchBuf)); err != nil {
 				return 0, err
 			}
-			if err := co.spanBatchBuf.AppendBatchV1(batch); err != nil {
+			if err := co.spanBatchBuf.AppendSingularBatch(batch); err != nil {
 				return 0, err
 			}
 		}
@@ -283,8 +283,8 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 	}
 }
 
-// BlockToBatchV1 transforms a block into a batch object that can easily be RLP encoded.
-func BlockToBatchV1(block *types.Block) (*BatchV1, L1BlockInfo, error) {
+// BlockToSingularBatch transforms a block into a batch object that can easily be RLP encoded.
+func BlockToSingularBatch(block *types.Block) (*SingularBatch, L1BlockInfo, error) {
 	opaqueTxs := make([]hexutil.Bytes, 0, len(block.Transactions()))
 	for i, tx := range block.Transactions() {
 		if tx.Type() == types.DepositTxType {
@@ -308,7 +308,7 @@ func BlockToBatchV1(block *types.Block) (*BatchV1, L1BlockInfo, error) {
 		return nil, l1Info, fmt.Errorf("could not parse the L1 Info deposit: %w", err)
 	}
 
-	return &BatchV1{
+	return &SingularBatch{
 		ParentHash:   block.ParentHash(),
 		EpochNum:     rollup.Epoch(l1Info.Number),
 		EpochHash:    l1Info.BlockHash,

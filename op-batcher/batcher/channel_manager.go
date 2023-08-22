@@ -192,9 +192,9 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 		return nil
 	}
 
-	batchType := derive.BatchV1Type
+	batchType := derive.SingularBatchType
 	if s.rcfg.IsSpanBatch(s.lastProcessedBlock.Time + s.rcfg.BlockTime) {
-		batchType = derive.BatchV2Type
+		batchType = derive.SpanBatchType
 	}
 	channelCfg := s.cfg
 	channelCfg.BatchType = batchType
@@ -233,7 +233,7 @@ func (s *channelManager) processBlocks() error {
 		latestL2ref eth.L2BlockRef
 	)
 	for i, block := range s.blocks {
-		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.BatchV1Type {
+		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.SingularBatchType {
 			s.currentChannel.Close()
 			break
 		}

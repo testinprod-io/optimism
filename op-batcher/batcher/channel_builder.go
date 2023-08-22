@@ -198,7 +198,7 @@ func (c *channelBuilder) AddBlock(block *types.Block) (derive.L1BlockInfo, error
 		return derive.L1BlockInfo{}, c.FullErr()
 	}
 
-	batch, l1info, err := derive.BlockToBatchV1(block)
+	batch, l1info, err := derive.BlockToSingularBatch(block)
 	if err != nil {
 		return l1info, fmt.Errorf("converting block to batch: %w", err)
 	}
@@ -256,7 +256,7 @@ func (c *channelBuilder) updateDurationTimeout(l1BlockNum uint64) {
 // derived from the batch's origin L1 block. The timeout is only moved forward
 // if the derived sequencer window timeout is earlier than the currently set
 // timeout.
-func (c *channelBuilder) updateSwTimeout(batch *derive.BatchV1) {
+func (c *channelBuilder) updateSwTimeout(batch *derive.SingularBatch) {
 	timeout := uint64(batch.EpochNum) + c.cfg.SeqWindowSize - c.cfg.SubSafetyMargin
 	c.updateTimeout(timeout, ErrSeqWindowClose)
 }
