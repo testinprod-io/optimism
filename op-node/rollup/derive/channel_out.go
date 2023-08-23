@@ -67,7 +67,8 @@ type ChannelOut struct {
 
 	rcfg *rollup.Config
 
-	spanBatchBuf *SpanBatch
+	spanBatch    *SpanBatch
+	spanBatchBuf *bytes.Buffer
 
 	lastBlock *eth.L2BlockRef
 }
@@ -78,14 +79,14 @@ func (co *ChannelOut) ID() ChannelID {
 
 func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
 	c := &ChannelOut{
-		id:           ChannelID{}, // TODO: use GUID here instead of fully random data
-		frame:        0,
-		rlpLength:    0,
-		compress:     compress,
-		batchType:    batchType,
-		rcfg:         rcfg,
-		lastBlock:    lastBlock,
-		spanBatchBuf: &SpanBatch{},
+		id:        ChannelID{}, // TODO: use GUID here instead of fully random data
+		frame:     0,
+		rlpLength: 0,
+		compress:  compress,
+		batchType: batchType,
+		rcfg:      rcfg,
+		lastBlock: lastBlock,
+		spanBatch: &SpanBatch{},
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -118,53 +119,38 @@ func (co *ChannelOut) AddBlock(block *types.Block) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return co.AddBatch(batch)
+	return co.AddSingularBatch(batch)
 }
 
-// AddBatch adds a batch to the channel. It returns the RLP encoded byte size
+// AddSingularBatch adds a batch to the channel. It returns the RLP encoded byte size
 // and an error if there is a problem adding the batch. The only sentinel error
 // that it returns is ErrTooManyRLPBytes. If this error is returned, the channel
 // should be closed and a new one should be made.
 //
-// AddBatch should be used together with BlockToSingularBatch if you need to access the
+// AddSingularBatch should be used together with BlockToSingularBatch if you need to access the
 // BatchData before adding a block to the channel. It isn't possible to access
 // the batch data with AddBlock.
-func (co *ChannelOut) AddBatch(batch *SingularBatch) (uint64, error) {
+func (co *ChannelOut) AddSingularBatch(batch *SingularBatch) (uint64, error) {
 	if co.closed {
 		return 0, errors.New("already closed")
 	}
 
-	isSpanBatch := co.batchType == SpanBatchType
+	switch co.batchType {
+	case SingularBatchType:
+		return co.writeSingularBatch(batch)
+	case SpanBatchType:
+		return co.writeSpanBatch(batch)
+	default:
+		return 0, fmt.Errorf("unrecognized batch type: %d", co.batchType)
+	}
+}
 
+func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 	var buf bytes.Buffer
-	var lastSpanBatch bytes.Buffer
-	if isSpanBatch {
-		if co.spanBatchBuf.BlockCount == 0 {
-			originChangeBit := uint(0)
-			if batch.EpochHash != co.lastBlock.L1Origin.Hash {
-				originChangeBit = 1
-			}
-			if err := co.spanBatchBuf.MergeSingularBatches([]*SingularBatch{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
-				return 0, err
-			}
-		} else {
-			if err := rlp.Encode(&lastSpanBatch, NewSpanBatchData(*co.spanBatchBuf)); err != nil {
-				return 0, err
-			}
-			if err := co.spanBatchBuf.AppendSingularBatch(batch); err != nil {
-				return 0, err
-			}
-		}
-		if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatchBuf)); err != nil {
-			return 0, err
-		}
-		co.rlpLength = 0
-	} else {
-		// We encode to a temporary buffer to determine the encoded length to
-		// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
-		if err := rlp.Encode(&buf, NewSingularBatchData(*batch)); err != nil {
-			return 0, err
-		}
+	// We encode to a temporary buffer to determine the encoded length to
+	// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
+	if err := rlp.Encode(&buf, NewSingularBatchData(*batch)); err != nil {
+		return 0, err
 	}
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
 		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
@@ -174,21 +160,52 @@ func (co *ChannelOut) AddBatch(batch *SingularBatch) (uint64, error) {
 
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
-	if isSpanBatch {
+
+	if errors.Is(err, CompressorFullErr) && co.compress.Len() == 0 {
 		co.compress.Reset()
+		written, err = co.compress.ForceWrite(buf.Bytes())
 	}
-	if errors.Is(err, CompressorFullErr) {
-		if isSpanBatch {
-			if co.spanBatchBuf.BlockCount > 1 {
-				written, _ = co.compress.ForceWrite(lastSpanBatch.Bytes())
-				return uint64(written), err
-			}
-			written, err = co.compress.ForceWrite(buf.Bytes())
-		} else if co.compress.Len() == 0 {
-			co.compress.Reset()
-			written, err = co.compress.ForceWrite(buf.Bytes())
+	return uint64(written), err
+}
+
+func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
+	var buf bytes.Buffer
+	if co.spanBatch.BlockCount == 0 {
+		originChangeBit := uint(0)
+		if batch.EpochHash != co.lastBlock.L1Origin.Hash {
+			originChangeBit = 1
+		}
+		if err := co.spanBatch.MergeSingularBatches([]*SingularBatch{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
+			return 0, err
+		}
+	} else {
+		if err := co.spanBatch.AppendSingularBatch(batch); err != nil {
+			return 0, err
 		}
 	}
+	if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatch)); err != nil {
+		return 0, err
+	}
+	co.rlpLength = 0
+	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
+		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
+			buf.Len(), co.rlpLength, MaxRLPBytesPerChannel, ErrTooManyRLPBytes)
+	}
+	co.rlpLength = buf.Len()
+
+	// avoid using io.Copy here, because we need all or nothing
+	co.compress.Reset()
+	written, err := co.compress.Write(buf.Bytes())
+	if errors.Is(err, CompressorFullErr) {
+		co.compress.Reset()
+		if co.spanBatch.BlockCount > 1 {
+			written, _ = co.compress.ForceWrite(co.spanBatchBuf.Bytes())
+			return uint64(written), err
+		}
+		written, err = co.compress.ForceWrite(buf.Bytes())
+	}
+
+	co.spanBatchBuf = &buf
 	return uint64(written), err
 }
 
