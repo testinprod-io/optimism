@@ -249,14 +249,14 @@ func (b *BatchData) GetBatch() (Batch, error) {
 	}
 }
 
-func InitBatchDataV1(singularBatch SingularBatch) *BatchData {
+func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 	return &BatchData{
 		BatchType:     SingularBatchType,
 		SingularBatch: singularBatch,
 	}
 }
 
-func InitBatchDataV2(spanBatch SpanBatch) *BatchData {
+func NewSpanBatchData(spanBatch SpanBatch) *BatchData {
 	return &BatchData{
 		BatchType: SpanBatchType,
 		SpanBatch: spanBatch,

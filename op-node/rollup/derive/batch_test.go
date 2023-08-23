@@ -88,7 +88,7 @@ func RandomSingularBatch(rng *rand.Rand, txCount int) *BatchData {
 	if err != nil {
 		panic("BlockToSingularBatch:" + err.Error())
 	}
-	return InitBatchDataV1(*singularBatch)
+	return NewSingularBatchData(*singularBatch)
 }
 
 func TestBatchRoundTrip(t *testing.T) {

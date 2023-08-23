@@ -152,21 +152,21 @@ func (co *ChannelOut) AddBatch(batch *SingularBatch) (uint64, error) {
 				return 0, err
 			}
 		} else {
-			if err := rlp.Encode(&lastSpanBatch, InitBatchDataV2(*co.spanBatchBuf)); err != nil {
+			if err := rlp.Encode(&lastSpanBatch, NewSpanBatchData(*co.spanBatchBuf)); err != nil {
 				return 0, err
 			}
 			if err := co.spanBatchBuf.AppendSingularBatch(batch); err != nil {
 				return 0, err
 			}
 		}
-		if err := rlp.Encode(&buf, InitBatchDataV2(*co.spanBatchBuf)); err != nil {
+		if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatchBuf)); err != nil {
 			return 0, err
 		}
 		co.rlpLength = 0
 	} else {
 		// We encode to a temporary buffer to determine the encoded length to
 		// ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
-		if err := rlp.Encode(&buf, InitBatchDataV1(*batch)); err != nil {
+		if err := rlp.Encode(&buf, NewSingularBatchData(*batch)); err != nil {
 			return 0, err
 		}
 	}

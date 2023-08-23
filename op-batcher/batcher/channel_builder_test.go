@@ -847,7 +847,7 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 			} else {
 				spanBatch.AppendSingularBatch(singularBatch)
 			}
-			batch := derive.InitBatchDataV2(spanBatch)
+			batch := derive.NewSpanBatchData(spanBatch)
 			var buf bytes.Buffer
 			require.NoError(batch.EncodeRLP(&buf))
 			l = buf.Len()
@@ -898,7 +898,7 @@ func ChannelBuilder_OutputBytes(t *testing.T, batchType int, rcfg *rollup.Config
 func blockBatchRlpSize(t *testing.T, b *types.Block) int {
 	t.Helper()
 	singularBatch, _, err := derive.BlockToSingularBatch(b)
-	batch := derive.InitBatchDataV1(*singularBatch)
+	batch := derive.NewSingularBatchData(*singularBatch)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	require.NoError(t, batch.EncodeRLP(&buf), "RLP-encoding batch")
