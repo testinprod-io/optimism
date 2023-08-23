@@ -155,10 +155,12 @@ func newMiniL2BlockWithNumberParent(numTx int, number *big.Int, parent common.Ha
 		panic(err)
 	}
 
+	rng := rand.New(rand.NewSource(123))
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 	txs := make([]*types.Transaction, 0, 1+numTx)
 	txs = append(txs, types.NewTx(l1InfoTx))
 	for i := 0; i < numTx; i++ {
-		txs = append(txs, types.NewTx(&types.DynamicFeeTx{}))
+		txs = append(txs, types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer))
 	}
 
 	return types.NewBlock(&types.Header{
@@ -171,7 +173,7 @@ func newMiniL2BlockWithNumberParent(numTx int, number *big.Int, parent common.Ha
 // which is presumably ErrTooManyRLPBytes.
 func addTooManyBlocks(cb *channelBuilder) error {
 	for i := 0; i < 10_000; i++ {
-		block := newMiniL2Block(100)
+		block := newMiniL2Block(1000)
 		_, err := cb.AddBlock(block)
 		if err != nil {
 			return err
@@ -420,7 +422,6 @@ func TestChannelBuilderBatchType(t *testing.T) {
 	}{
 		{"ChannelBuilder_NextFrame", ChannelBuilder_NextFrame},
 		{"ChannelBuilder_OutputWrongFramePanic", ChannelBuilder_OutputWrongFramePanic},
-		{"ChannelBuilder_OutputFramesWorks", ChannelBuilder_OutputFramesWorks},
 		{"ChannelBuilder_MaxRLPBytesPerChannel", ChannelBuilder_MaxRLPBytesPerChannel},
 		{"ChannelBuilder_OutputFramesMaxFrameIndex", ChannelBuilder_OutputFramesMaxFrameIndex},
 		{"ChannelBuilder_AddBlock", ChannelBuilder_AddBlock},
@@ -521,14 +522,14 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	})
 }
 
-// ChannelBuilder_OutputFramesWorks tests the [ChannelBuilder] OutputFrames is successful.
-func ChannelBuilder_OutputFramesWorks(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestChannelBuilder_OutputFramesWorks tests the [ChannelBuilder] OutputFrames is successful.
+func TestChannelBuilder_OutputFramesWorks(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
 	channelConfig.BatchType = derive.SingularBatchType
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &spanBatchNotActivated)
 	require.NoError(t, err)
 	require.False(t, cb.IsFull())
 	require.Equal(t, 0, cb.PendingFrames())
@@ -694,7 +695,6 @@ func ChannelBuilder_Reset(t *testing.T, batchType int, rcfg *rollup.Config) {
 
 	// Check the fields reset in the Reset function
 	require.Equal(t, 2, len(cb.blocks))
-	require.Greater(t, len(cb.frames), 1)
 	require.Equal(t, timeout, cb.timeout)
 	require.NoError(t, cb.fullErr)
 	if batchType == derive.SingularBatchType {

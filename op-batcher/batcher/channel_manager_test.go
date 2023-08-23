@@ -2,7 +2,6 @@ package batcher
 
 import (
 	"io"
-	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -22,14 +21,6 @@ import (
 )
 
 func TestChannelManagerBatchType(t *testing.T) {
-	maxTs := uint64(math.MaxUint64)
-	spanBatchNotActivated := rollup.Config{
-		SpanBatchTime: &maxTs,
-	}
-	zeroTs := uint64(0)
-	spanBatchActivated := rollup.Config{
-		SpanBatchTime: &zeroTs,
-	}
 	safeHead := eth.L2BlockRef{
 		Time: 0,
 	}
@@ -323,7 +314,7 @@ func ChannelManagerClosePendingChannel(t *testing.T, rcfg *rollup.Config, safeHe
 			MaxFrameSize:   1000,
 			ChannelTimeout: 1000,
 			CompressorConfig: compressor.Config{
-				TargetNumFrames:  100,
+				TargetNumFrames:  1,
 				TargetFrameSize:  1000,
 				ApproxComprRatio: 1.0,
 			},
@@ -331,12 +322,7 @@ func ChannelManagerClosePendingChannel(t *testing.T, rcfg *rollup.Config, safeHe
 		rcfg, safeHead,
 	)
 
-	numTx := 50000
-	if *rcfg.SpanBatchTime == 0 {
-		// Adjust number of txs to make 2 frames
-		// Encoding empty txs as span batch requires more data size because span batch encodes tx signature to fixed length
-		numTx = 20000
-	}
+	numTx := 3
 	a := newMiniL2Block(numTx)
 	b := newMiniL2BlockWithNumberParent(10, big.NewInt(1), a.Hash())
 
