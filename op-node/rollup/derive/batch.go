@@ -31,7 +31,7 @@ import (
 // BatchV2Type := 1
 // batchV2 := BatchV2Type ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
-// payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data_headers ++ tx_data ++ tx_sigs
+// payload := block_count ++ origin_bits ++ block_tx_counts ++ txs
 
 // encodeBufferPool holds temporary encoder buffers for batch encoding
 var encodeBufferPool = sync.Pool{
