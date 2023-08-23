@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"math"
 	"math/big"
 	"math/rand"
@@ -586,10 +587,13 @@ func ChannelBuilder_MaxRLPBytesPerChannel(t *testing.T, batchType int, rcfg *rol
 func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg *rollup.Config) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
-	channelConfig.CompressorConfig.TargetNumFrames = math.MaxInt
+	channelConfig.CompressorConfig.TargetNumFrames = 4000
 	channelConfig.CompressorConfig.TargetFrameSize = 24
-	channelConfig.CompressorConfig.ApproxComprRatio = 0
+	channelConfig.CompressorConfig.ApproxComprRatio = 1
 	channelConfig.BatchType = batchType
+
+	rng := rand.New(rand.NewSource(123))
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 
 	// Continuously add blocks until the max frame index is reached
 	// This should cause the [channelBuilder.OutputFrames] function
@@ -605,22 +609,21 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg 
 			Number:     common.Big0,
 		}, nil, nil, nil, trie.NewStackTrie(nil))
 		l1InfoTx, _ := derive.L1InfoDeposit(0, eth.BlockToInfo(lBlock), eth.SystemConfig{}, false)
-		txs := []*types.Transaction{types.NewTx(l1InfoTx)}
+		txs := []*types.Transaction{types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)}
 		a := types.NewBlock(&types.Header{
 			Number: big.NewInt(0),
 		}, txs, nil, nil, trie.NewStackTrie(nil))
 		_, err = cb.AddBlock(a)
-		require.NoError(t, cb.co.Flush())
 		if cb.IsFull() {
 			fullErr := cb.FullErr()
-			require.ErrorIs(t, fullErr, ErrMaxFrameIndex)
+			require.ErrorIs(t, fullErr, derive.CompressorFullErr)
 			break
 		}
 		require.NoError(t, err)
-		_ = cb.OutputFrames()
-		// Flushing so we can construct new frames
-		_ = cb.co.Flush()
 	}
+
+	_ = cb.OutputFrames()
+	require.ErrorIs(t, cb.FullErr(), ErrMaxFrameIndex)
 }
 
 // ChannelBuilder_AddBlock tests the AddBlock function
