@@ -35,7 +35,7 @@ Where:
     1 bit per L2 block, indicating if the L1 origin changed this L2 block.
   - `block_tx_counts`: for each block, a `uvarint` of `len(block.transactions)`.
   - `txs`: L2 transactions which is reorganized and encoded as below.
-- `txs = contract_creation_bits ++ tx_sigs ++ tx_nonces ++ tx_gases ++ tx_tos ++ tx_datas`
+- `txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_nonces ++ tx_gases ++ tx_tos ++ tx_datas`
   - `contract_creation_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating if transaction is a contract creation transaction.
   - `y_parity_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating the y parity value when recovering transaction sender address.
   - `tx_sigs`: concatenated list of transaction signatures
