@@ -84,6 +84,8 @@ type BatchV2Payload struct {
 	BlockTxCounts []uint64
 
 	Txs BatchV2Txs
+
+	FeeRecipents []common.Address
 }
 
 type BatchV2Version byte
@@ -231,6 +233,39 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 	b.OriginBits = originBits
 }
 
+func (b *BatchV2) DecodeFeeRecipents(r *bytes.Reader) error {
+	if b.BatchV2Version > BatchV2V1 {
+		return nil
+	}
+	var idxs []uint64
+	cardinalFeeRecipentsCount := uint64(0)
+	for i := 0; i < int(b.BlockCount); i++ {
+		idx, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent index: %w", err)
+		}
+		idxs = append(idxs, idx)
+		if cardinalFeeRecipentsCount < idx+1 {
+			cardinalFeeRecipentsCount = idx + 1
+		}
+	}
+	var cardinalFeeRecipents []common.Address
+	for i := 0; i < int(cardinalFeeRecipentsCount); i++ {
+		feeRecipent := make([]byte, common.AddressLength)
+		_, err := io.ReadFull(r, feeRecipent)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent address: %w", err)
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, common.BytesToAddress(feeRecipent))
+	}
+	b.FeeRecipents = make([]common.Address, 0)
+	for _, idx := range idxs {
+		feeRecipent := cardinalFeeRecipents[idx]
+		b.FeeRecipents = append(b.FeeRecipents, feeRecipent)
+	}
+	return nil
+}
+
 // DecodePayload parses data into b.BatchV2Payload
 func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
@@ -277,6 +312,7 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
+	b.DecodeFeeRecipents(r)
 	return nil
 }
 
@@ -372,6 +408,39 @@ func (b *BatchV2) EncodeVersion(w io.Writer) error {
 	return nil
 }
 
+// EncodeFeeRecipents parses data into b.FeeRecipents
+func (b *BatchV2) EncodeFeeRecipents(w io.Writer) error {
+	if b.BatchV2Version > BatchV2V1 {
+		return nil
+	}
+	var buf [binary.MaxVarintLen64]byte
+	acc := uint64(0)
+	indexs := make(map[common.Address]uint64)
+	var cardinalFeeRecipents []common.Address
+	for _, feeRecipent := range b.FeeRecipents {
+		_, exists := indexs[feeRecipent]
+		if exists {
+			continue
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, feeRecipent)
+		indexs[feeRecipent] = acc
+		acc++
+	}
+	for _, feeReceipt := range b.FeeRecipents {
+		idx := indexs[feeReceipt]
+		n := binary.PutUvarint(buf[:], idx)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write fee recipent index: %w", err)
+		}
+	}
+	for _, cardinalFeeReceipt := range cardinalFeeRecipents {
+		if _, err := w.Write(cardinalFeeReceipt[:]); err != nil {
+			return fmt.Errorf("cannot write fee recipent address: %w", err)
+		}
+	}
+	return nil
+}
+
 func (b *BatchV2) EncodePayload(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.BlockCount)
@@ -389,6 +458,9 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		}
 	}
 	if err := b.Txs.Encode(w); err != nil {
+		return err
+	}
+	if err := b.EncodeFeeRecipents(w); err != nil {
 		return err
 	}
 	return nil
