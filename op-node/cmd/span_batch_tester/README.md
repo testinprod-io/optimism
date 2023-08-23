@@ -30,69 +30,12 @@ We need [batch_decoder](../batch_decoder/) to obtain channels.
 ./span_batch_tester analyze --in-channel=/tmp/batch_decoder/channel_cache --in-span-batch=/tmp/span_batch_tester/span_batch_cache --out=/tmp/span_batch_tester/result
 ```
 
-Example logs(on mainnet):
-
-```
-[1/80] Channel ID: 00b9f5ad2cc4bda91e9d83a1149b91fc, CompressedReductionPercent: 2.741022 %
-[2/80] Channel ID: 0180be8f09ef9ba8c8f34da4de99754c, CompressedReductionPercent: 2.640372 %
-[3/80] Channel ID: 019865185fb821c3500ec92bf18cdf1f, CompressedReductionPercent: 2.892947 %
-[4/80] Channel ID: 01a74f320aab8a35150d5d1d71e42c13, CompressedReductionPercent: 3.762513 %
-[5/80] Channel ID: 022ac44dbfb8756dc8918366a8b7cee4, CompressedReductionPercent: 2.969038 %
-[6/80] Channel ID: 0628f6c8090a5bd0e1a36a2294d54f4b, CompressedReductionPercent: 5.704166 %
-[7/80] Channel ID: 06d33430ef7a25fdf16513d0830ed1d8, CompressedReductionPercent: 3.452649 %
-[8/80] Channel ID: 091d4dc2bd07eb9043cc451bb6128b50, CompressedReductionPercent: 3.388687 %
-[9/80] Channel ID: 09a455ff8f48fd3c4c4c119844d14e23, CompressedReductionPercent: 3.095162 %
-[10/80] Channel ID: 0d54213c48e51c52ff01bad07e67aca0, CompressedReductionPercent: 2.956510 %
-...
-````
-
-Example logs(on goerli):
-
-```
-[1/143] Channel ID: 0012531bbbd7f87b3f5dc39b9ffa1b39, CompressedReductionPercent: 1.551085 %
-[2/143] Channel ID: 001d0b74e42e5748c2e151503de38c6a, CompressedReductionPercent: 14.540396 %
-[3/143] Channel ID: 0028b671a15b759e6f0a162c36bcd3c9, CompressedReductionPercent: 1.143876 %
-[4/143] Channel ID: 002d6753f1ecc4dac5ece135d5ad30c4, CompressedReductionPercent: 1.291216 %
-[5/143] Channel ID: 006442c4c387b4e5abfbf1b5868cc660, CompressedReductionPercent: 1.071292 %
-[6/143] Channel ID: 00a833117462681c9b3679c27ad614dc, CompressedReductionPercent: 0.896322 %
-[7/143] Channel ID: 00ccb5d85a6f9063d2a84db65c41f03f, CompressedReductionPercent: 1.147978 %
-[8/143] Channel ID: 00d652b37b72966598471c5ced5b61ab, CompressedReductionPercent: 1.529358 %
-[9/143] Channel ID: 00dce9e162acb73ccfee63eeefb9eadd, CompressedReductionPercent: 0.701666 %
-[10/143] Channel ID: 010e97dedbaba821e6c53d36b97d0a2b, CompressedReductionPercent: 2.392510 %
-[11/143] Channel ID: 01144a2232b99afb4548ae86bffee31f, CompressedReductionPercent: 18.849324 %
-[12/143] Channel ID: 0130423b23897cccc4c83490c57d6bc8, CompressedReductionPercent: 21.818182 %
-[13/143] Channel ID: 01378731f9c58ac26cd457a51107a1aa, CompressedReductionPercent: 14.045595 %
-...
+`span_batch_tester fetch`: Read L2 blocks and store in the form ov v0 batches.
+```sh
+./span_batch_tester fetch --l2=[L2_RPC] --out=/tmp/span_batch_tester/batches_v0_cache --start=13630000 --end=13631000 --concurrent-requests=100
 ```
 
-Percentage spike is strange and only occurs in goerli. Need to sanity check.
-
-
-Example output of result json. `091d4dc2bd07eb9043cc451bb6128b50` is channel ID:
-```
-➜  result jq . 091d4dc2bd07eb9043cc451bb6128b50.json
-{
-  "FrameCount": 10,
-  "BatchV1sCompressedSize": 1134156,
-  "BatchV1sUncompressedSize": 3408969,
-  "BatchV1sCompressionRatio": 0.3326976572682239,
-  "SpanBatchCompressedSize": 1095723,
-  "SpanBatchUncompressedSize": 3368258,
-  "SpanBatchCompressionRatio": 0.32530851259018756,
-  "BatchV1sMetadataSize": 39384,
-  "BatchV1sTxSize": 3369585,
-  "SpanBatchMetadataSize": 388,
-  "SpanBatchTxSize": 3367870,
-  "SpanBatchPrefixSize": 48,
-  "SpanBatchPayloadSize": 3368210,
-  "CompressedReductionPercent": 3.3886872705342075,
-  "UncompressedSizeReductionPercent": 1.1942320390710526,
-  "L2TxCount": 5359,
-  "L1StartNum": 17766518,
-  "L1EndNum": 17766567,
-  "L1BlockCount": 50,
-  "L2StartNum": 107322975,
-  "L2EndNum": 107323274,
-  "L2BlockCount": 300
-}
+`span_batch_tester merge`: Merge consecutive v0 batches to span batches.
+```sh
+./span_batch_tester merge --start=13630000 --end=13631000 --l2=[L2_RPC] --genesis-timestamp=1673550516  --in=/tmp/span_batch_tester/batches_v0_cache --out=/tmp/span_batch_tester/merge_result
 ```

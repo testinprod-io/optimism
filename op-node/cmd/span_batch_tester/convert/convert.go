@@ -65,13 +65,10 @@ func LoadChannelFile(file string) reassemble.ChannelWithMetadata {
 }
 
 // GetL2StartParentBlock returns parent L2 block of first L2 block per channel
-func GetL2StartParentBlock(client *ethclient.Client, chm reassemble.ChannelWithMetadata) (*types.Block, error) {
-	if len(chm.Batches) == 0 {
-		return nil, errors.New("channel is empty")
-	}
+func GetL2StartParentBlock(client *ethclient.Client, parentHash common.Hash) (*types.Block, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	startParent, err := client.BlockByHash(ctx, chm.Batches[0].ParentHash)
+	startParent, err := client.BlockByHash(ctx, parentHash)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +89,10 @@ func GetOriginChangedBit(startParent *types.Block, l1OriginHash common.Hash) (ui
 
 // ConvertChannel initialize BatchV2 using BatchV1s per channel
 func ConvertChannel(client *ethclient.Client, chm reassemble.ChannelWithMetadata, genesisTimestamp uint64) SpanBatchWithMetadata {
-	startParent, err := GetL2StartParentBlock(client, chm)
+	if len(chm.Batches) == 0 {
+		log.Fatal(errors.New("channel is empty"))
+	}
+	startParent, err := GetL2StartParentBlock(client, chm.Batches[0].ParentHash)
 	if err != nil {
 		log.Fatal(err)
 	}
