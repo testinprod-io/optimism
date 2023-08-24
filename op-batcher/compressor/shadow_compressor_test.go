@@ -37,11 +37,18 @@ func TestShadowCompressor(t *testing.T) {
 		errs:            []error{},
 		fullErr:         nil,
 	}, {
-		name:            "large block",
+		name:            "large first block",
 		targetFrameSize: 1,
 		targetNumFrames: 1,
 		data:            [][]byte{bytes.Repeat([]byte{0}, 1024)},
-		errs:            []error{derive.CompressorFullErr},
+		errs:            []error{nil},
+		fullErr:         derive.CompressorFullErr,
+	}, {
+		name:            "large second block",
+		targetFrameSize: 1,
+		targetNumFrames: 1,
+		data:            [][]byte{bytes.Repeat([]byte{0}, 512), bytes.Repeat([]byte{0}, 1024)},
+		errs:            []error{nil, derive.CompressorFullErr},
 		fullErr:         derive.CompressorFullErr,
 	}, {
 		name:            "random data",
