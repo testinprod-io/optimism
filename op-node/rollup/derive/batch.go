@@ -719,3 +719,36 @@ func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
 	b.BlockOriginNums = append(b.BlockOriginNums, uint64(singularBatch.EpochNum))
 	return nil
 }
+
+type SpanBatchBuilder struct {
+	parentEpochHash  common.Hash
+	genesisTimestamp uint64
+	spanBatch        *SpanBatch
+}
+
+func NewSpanBatchBuilder(parentEpochHash common.Hash, genesisTimestamp uint64) *SpanBatchBuilder {
+	return &SpanBatchBuilder{
+		parentEpochHash:  parentEpochHash,
+		genesisTimestamp: genesisTimestamp,
+		spanBatch:        &SpanBatch{},
+	}
+}
+
+func (b *SpanBatchBuilder) AppendSingularBatch(singularBatch *SingularBatch) error {
+	if b.spanBatch.BlockCount == 0 {
+		originChangedBit := 0
+		if singularBatch.EpochHash != b.parentEpochHash {
+			originChangedBit = 1
+		}
+		return b.spanBatch.MergeSingularBatches([]*SingularBatch{singularBatch}, uint(originChangedBit), b.genesisTimestamp)
+	}
+	return b.spanBatch.AppendSingularBatch(singularBatch)
+}
+
+func (b *SpanBatchBuilder) GetSpanBatch() *SpanBatch {
+	return b.spanBatch
+}
+
+func (b *SpanBatchBuilder) GetBlockCount() uint64 {
+	return b.spanBatch.BlockCount
+}

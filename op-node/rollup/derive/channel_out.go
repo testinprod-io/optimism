@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"io"
 
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -65,28 +64,22 @@ type ChannelOut struct {
 
 	batchType int
 
-	rcfg *rollup.Config
-
-	spanBatch    *SpanBatch
-	spanBatchBuf *bytes.Buffer
-
-	lastBlock *eth.L2BlockRef
+	spanBatchBuilder *SpanBatchBuilder
+	spanBatchBuf     *bytes.Buffer
 }
 
 func (co *ChannelOut) ID() ChannelID {
 	return co.id
 }
 
-func NewChannelOut(compress Compressor, rcfg *rollup.Config, batchType int, lastBlock *eth.L2BlockRef) (*ChannelOut, error) {
+func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
 	c := &ChannelOut{
-		id:        ChannelID{}, // TODO: use GUID here instead of fully random data
-		frame:     0,
-		rlpLength: 0,
-		compress:  compress,
-		batchType: batchType,
-		rcfg:      rcfg,
-		lastBlock: lastBlock,
-		spanBatch: &SpanBatch{},
+		id:               ChannelID{}, // TODO: use GUID here instead of fully random data
+		frame:            0,
+		rlpLength:        0,
+		compress:         compress,
+		batchType:        batchType,
+		spanBatchBuilder: spanBatchBuilder,
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -170,41 +163,33 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	var buf bytes.Buffer
-	if co.spanBatch.BlockCount == 0 {
-		originChangeBit := uint(0)
-		if batch.EpochHash != co.lastBlock.L1Origin.Hash {
-			originChangeBit = 1
-		}
-		if err := co.spanBatch.MergeSingularBatches([]*SingularBatch{batch}, originChangeBit, co.rcfg.Genesis.L2Time); err != nil {
-			return 0, err
-		}
-	} else {
-		if err := co.spanBatch.AppendSingularBatch(batch); err != nil {
-			return 0, err
-		}
+	if err := co.spanBatchBuilder.AppendSingularBatch(batch); err != nil {
+		return 0, err
 	}
-	if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatch)); err != nil {
+	if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatchBuilder.GetSpanBatch())); err != nil {
 		return 0, err
 	}
 	co.rlpLength = 0
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
+		_, _ = co.compress.ForceWrite(co.spanBatchBuf.Bytes())
 		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
 			buf.Len(), co.rlpLength, MaxRLPBytesPerChannel, ErrTooManyRLPBytes)
 	}
 	co.rlpLength = buf.Len()
 
 	// avoid using io.Copy here, because we need all or nothing
-	co.compress.Reset()
 	written, err := co.compress.Write(buf.Bytes())
 	if errors.Is(err, CompressorFullErr) {
 		co.compress.Reset()
-		if co.spanBatch.BlockCount > 1 {
+		if co.spanBatchBuilder.GetBlockCount() > 1 {
 			written, _ = co.compress.ForceWrite(co.spanBatchBuf.Bytes())
 			return uint64(written), err
 		}
 		written, err = co.compress.ForceWrite(buf.Bytes())
+		return uint64(written), err
 	}
 
+	co.compress.Reset()
 	co.spanBatchBuf = &buf
 	return uint64(written), err
 }
