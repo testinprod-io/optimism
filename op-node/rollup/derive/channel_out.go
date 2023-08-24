@@ -81,8 +81,10 @@ func (co *ChannelOut) ID() ChannelID {
 }
 
 func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
+	// If the channel uses SingularBatch, use compressor directly as its readyBuf
 	var readyBuf ReadyBuffer = compress
 	if batchType == SpanBatchType {
+		// If the channel uses SpanBatch, create empty buffer for readyBuf
 		readyBuf = &bytes.Buffer{}
 	}
 	c := &ChannelOut{
@@ -108,6 +110,7 @@ func (co *ChannelOut) Reset() error {
 	co.rlpLength = 0
 	co.compress.Reset()
 	co.readyBuf.Reset()
+	co.spanBatchBuilder.Reset()
 	co.closed = false
 	_, err := rand.Read(co.id[:])
 	return err
@@ -174,6 +177,10 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 	return uint64(written), err
 }
 
+// writeSpanBatch appends a SingularBatch to the channel's SpanBatch.
+// It resets channel contents and rewrites the entire SpanBatch because a channel can have only one SpanBatch.
+// Because the prefix of SpanBatch will be changed when appending new blocks, compressed results must be written to readyBuf after the channel is closed.
+// So we can only get frames once the channel is full or closed, in case of SpanBatch.
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	if co.fullErr != nil {
 		return 0, co.fullErr
@@ -193,21 +200,28 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	}
 	co.rlpLength = buf.Len()
 
-	if err := co.Flush(); err != nil {
-		return 0, err
+	if co.spanBatchBuilder.GetBlockCount() > 1 {
+		// Flush compressed data to the ready buffer
+		// If the channel is full after this block is appended, we should use preserved data.
+		if err := co.Flush(); err != nil {
+			return 0, err
+		}
 	}
+
+	// Reset compressor to rewrite the entire span batch
 	co.compress.Reset()
-	// avoid using io.Copy here, because we need all or nothing
+	// Avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
 	if co.compress.FullErr() != nil {
 		co.fullErr = co.compress.FullErr()
 		if co.spanBatchBuilder.GetBlockCount() == 1 {
-			co.readyBuf.Reset()
+			// Do not return CompressorFullErr for the first block in the batch
 			err = nil
 		}
 		return uint64(written), err
 	}
 
+	// If compressor is not full yet, readyBuf must be reset to avoid submitting invalid frames
 	co.readyBuf.Reset()
 	return uint64(written), err
 }

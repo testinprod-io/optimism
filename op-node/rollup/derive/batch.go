@@ -752,3 +752,7 @@ func (b *SpanBatchBuilder) GetSpanBatch() *SpanBatch {
 func (b *SpanBatchBuilder) GetBlockCount() uint64 {
 	return b.spanBatch.BlockCount
 }
+
+func (b *SpanBatchBuilder) Reset() {
+	b.spanBatch = &SpanBatch{}
+}
