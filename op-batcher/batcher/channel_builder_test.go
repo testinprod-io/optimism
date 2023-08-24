@@ -502,7 +502,8 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	// to construct a single frame
 	c, err := channelConfig.CompressorConfig.NewCompressor()
 	require.NoError(t, err)
-	co, err := derive.NewChannelOut(c, &rollup.Config{}, derive.SingularBatchType, &eth.L2BlockRef{})
+	spanBatchBuilder := derive.NewSpanBatchBuilder(channelConfig.ParentRef.Hash, rcfg.Genesis.L2Time)
+	co, err := derive.NewChannelOut(c, derive.SingularBatchType, spanBatchBuilder)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	fn, err := co.OutputFrame(&buf, channelConfig.MaxFrameSize)

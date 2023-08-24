@@ -35,14 +35,9 @@ func NewRatioCompressor(config Config) (derive.Compressor, error) {
 }
 
 func (t *RatioCompressor) Write(p []byte) (int, error) {
-	t.inputBytes += len(p)
 	if err := t.FullErr(); err != nil {
 		return 0, err
 	}
-	return t.compress.Write(p)
-}
-
-func (t *RatioCompressor) ForceWrite(p []byte) (int, error) {
 	t.inputBytes += len(p)
 	return t.compress.Write(p)
 }
