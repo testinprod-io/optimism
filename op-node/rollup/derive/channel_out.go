@@ -46,8 +46,13 @@ type Compressor interface {
 	// calls to Write will fail if an error is returned from this method, but calls to Write
 	// can still return CompressorFullErr even if this does not.
 	FullErr() error
+}
 
-	ForceWrite(p []byte) (int, error)
+type ReadyBuffer interface {
+	io.Writer
+	io.Reader
+	Reset()
+	Len() int
 }
 
 type ChannelOut struct {
@@ -65,7 +70,10 @@ type ChannelOut struct {
 	batchType int
 
 	spanBatchBuilder *SpanBatchBuilder
-	spanBatchBuf     *bytes.Buffer
+
+	readyBuf ReadyBuffer
+
+	fullErr error
 }
 
 func (co *ChannelOut) ID() ChannelID {
@@ -73,6 +81,10 @@ func (co *ChannelOut) ID() ChannelID {
 }
 
 func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
+	var readyBuf ReadyBuffer = compress
+	if batchType == SpanBatchType {
+		readyBuf = &bytes.Buffer{}
+	}
 	c := &ChannelOut{
 		id:               ChannelID{}, // TODO: use GUID here instead of fully random data
 		frame:            0,
@@ -80,6 +92,7 @@ func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBat
 		compress:         compress,
 		batchType:        batchType,
 		spanBatchBuilder: spanBatchBuilder,
+		readyBuf:         readyBuf,
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -94,6 +107,7 @@ func (co *ChannelOut) Reset() error {
 	co.frame = 0
 	co.rlpLength = 0
 	co.compress.Reset()
+	co.readyBuf.Reset()
 	co.closed = false
 	_, err := rand.Read(co.id[:])
 	return err
@@ -146,22 +160,24 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 		return 0, err
 	}
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
-		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
+		co.fullErr = fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
 			buf.Len(), co.rlpLength, MaxRLPBytesPerChannel, ErrTooManyRLPBytes)
+		return 0, co.fullErr
 	}
 	co.rlpLength += buf.Len()
 
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
-
-	if errors.Is(err, CompressorFullErr) && co.compress.Len() == 0 {
-		co.compress.Reset()
-		written, err = co.compress.ForceWrite(buf.Bytes())
+	if co.compress.FullErr() != nil {
+		co.fullErr = co.compress.FullErr()
 	}
 	return uint64(written), err
 }
 
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
+	if co.fullErr != nil {
+		return 0, co.fullErr
+	}
 	var buf bytes.Buffer
 	if err := co.spanBatchBuilder.AppendSingularBatch(batch); err != nil {
 		return 0, err
@@ -171,26 +187,28 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	}
 	co.rlpLength = 0
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
-		_, _ = co.compress.ForceWrite(co.spanBatchBuf.Bytes())
-		return 0, fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
+		co.fullErr = fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
 			buf.Len(), co.rlpLength, MaxRLPBytesPerChannel, ErrTooManyRLPBytes)
+		return 0, co.fullErr
 	}
 	co.rlpLength = buf.Len()
 
+	if err := co.Flush(); err != nil {
+		return 0, err
+	}
+	co.compress.Reset()
 	// avoid using io.Copy here, because we need all or nothing
 	written, err := co.compress.Write(buf.Bytes())
-	if errors.Is(err, CompressorFullErr) {
-		co.compress.Reset()
-		if co.spanBatchBuilder.GetBlockCount() > 1 {
-			written, _ = co.compress.ForceWrite(co.spanBatchBuf.Bytes())
-			return uint64(written), err
+	if co.compress.FullErr() != nil {
+		co.fullErr = co.compress.FullErr()
+		if co.spanBatchBuilder.GetBlockCount() == 1 {
+			co.readyBuf.Reset()
+			err = nil
 		}
-		written, err = co.compress.ForceWrite(buf.Bytes())
 		return uint64(written), err
 	}
 
-	co.compress.Reset()
-	co.spanBatchBuf = &buf
+	co.readyBuf.Reset()
 	return uint64(written), err
 }
 
@@ -203,17 +221,24 @@ func (co *ChannelOut) InputBytes() int {
 // Use `Flush` or `Close` to move data from the compression buffer into the ready buffer if more bytes
 // are needed. Add blocks may add to the ready buffer, but it is not guaranteed due to the compression stage.
 func (co *ChannelOut) ReadyBytes() int {
-	return co.compress.Len()
+	return co.readyBuf.Len()
 }
 
 // Flush flushes the internal compression stage to the ready buffer. It enables pulling a larger & more
 // complete frame. It reduces the compression efficiency.
 func (co *ChannelOut) Flush() error {
-	return co.compress.Flush()
+	if err := co.compress.Flush(); err != nil {
+		return err
+	}
+	if co.batchType == SpanBatchType && co.readyBuf.Len() == 0 && co.compress.Len() > 0 {
+		_, err := io.Copy(co.readyBuf, co.compress)
+		return err
+	}
+	return nil
 }
 
 func (co *ChannelOut) FullErr() error {
-	return co.compress.FullErr()
+	return co.fullErr
 }
 
 func (co *ChannelOut) Close() error {
@@ -221,6 +246,11 @@ func (co *ChannelOut) Close() error {
 		return errors.New("already closed")
 	}
 	co.closed = true
+	if co.batchType == SpanBatchType {
+		if err := co.Flush(); err != nil {
+			return err
+		}
+	}
 	return co.compress.Close()
 }
 
@@ -244,8 +274,8 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 
 	// Copy data from the local buffer into the frame data buffer
 	maxDataSize := maxSize - FrameV0OverHeadSize
-	if maxDataSize > uint64(co.compress.Len()) {
-		maxDataSize = uint64(co.compress.Len())
+	if maxDataSize > uint64(co.readyBuf.Len()) {
+		maxDataSize = uint64(co.readyBuf.Len())
 		// If we are closed & will not spill past the current frame
 		// mark it is the final frame of the channel.
 		if co.closed {
@@ -254,7 +284,7 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 	}
 	f.Data = make([]byte, maxDataSize)
 
-	if _, err := io.ReadFull(co.compress, f.Data); err != nil {
+	if _, err := io.ReadFull(co.readyBuf, f.Data); err != nil {
 		return 0, err
 	}
 
