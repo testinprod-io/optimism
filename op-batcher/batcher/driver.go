@@ -116,7 +116,7 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.
 
 	cfg.metr = m
 
-	syncStatus, err := fetchSyncStatus(ctx, cfg.RollupNode)
+	syncStatus, err := fetchSyncStatus(ctx, cfg.RollupNode, cfg.NetworkTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (l *BatchSubmitter) Start() error {
 
 	l.shutdownCtx, l.cancelShutdownCtx = context.WithCancel(context.Background())
 	l.killCtx, l.cancelKillCtx = context.WithCancel(context.Background())
-	syncStatus, err := fetchSyncStatus(context.Background(), l.RollupNode)
+	syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout)
 	if err != nil {
 		return nil
 	}
@@ -255,9 +255,7 @@ func (l *BatchSubmitter) loadBlockIntoState(ctx context.Context, blockNumber uin
 // calculateL2BlockRangeToStore determines the range (start,end] that should be loaded into the local state.
 // It also takes care of initializing some local state (i.e. will modify l.lastStoredBlock in certain conditions)
 func (l *BatchSubmitter) calculateL2BlockRangeToStore(ctx context.Context) (eth.BlockID, eth.BlockID, error) {
-	ctx, cancel := context.WithTimeout(ctx, l.NetworkTimeout)
-	defer cancel()
-	syncStatus, err := fetchSyncStatus(ctx, l.RollupNode)
+	syncStatus, err := fetchSyncStatus(ctx, l.RollupNode, l.NetworkTimeout)
 	if err != nil {
 		return eth.BlockID{}, eth.BlockID{}, err
 	}
@@ -309,7 +307,7 @@ func (l *BatchSubmitter) loop() {
 					l.log.Error("error closing the channel manager to handle a L2 reorg", "err", err)
 				}
 				l.publishStateToL1(queue, receiptsCh, true)
-				syncStatus, err := fetchSyncStatus(context.Background(), l.RollupNode)
+				syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout)
 				// TODO: error handling
 				l.state.Clear(&syncStatus.SafeL2)
 				continue
@@ -448,7 +446,9 @@ func (l *BatchSubmitter) l1Tip(ctx context.Context) (eth.L1BlockRef, error) {
 	return eth.InfoToL1BlockRef(eth.HeaderBlockInfo(head)), nil
 }
 
-func fetchSyncStatus(ctx context.Context, rollupNode *sources.RollupClient) (*eth.SyncStatus, error) {
+func fetchSyncStatus(ctx context.Context, rollupNode *sources.RollupClient, timeout time.Duration) (*eth.SyncStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	syncStatus, err := rollupNode.SyncStatus(ctx)
 	// Ensure that we have the sync status
 	if err != nil {
