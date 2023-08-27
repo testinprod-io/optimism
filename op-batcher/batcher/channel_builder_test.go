@@ -565,6 +565,56 @@ func TestChannelBuilder_OutputFramesWorks(t *testing.T) {
 	}
 }
 
+// TestChannelBuilder_OutputFramesWorks tests the [ChannelBuilder] OutputFrames is successful.
+func TestChannelBuilder_OutputFramesWorks_SpanBatch(t *testing.T) {
+	channelConfig := defaultTestChannelConfig
+	channelConfig.MaxFrameSize = 24
+	channelConfig.CompressorConfig.TargetFrameSize = 50
+	channelConfig.BatchType = derive.SpanBatchType
+
+	// Construct the channel builder
+	cb, err := newChannelBuilder(channelConfig, &spanBatchActivated)
+	require.NoError(t, err)
+	require.False(t, cb.IsFull())
+	require.Equal(t, 0, cb.PendingFrames())
+
+	// Calling OutputFrames without having called [AddBlock]
+	// should return no error
+	require.NoError(t, cb.OutputFrames())
+
+	// There should be no ready bytes yet
+	require.Equal(t, 0, cb.co.ReadyBytes())
+
+	// fill up
+	for {
+		err = addMiniBlock(cb)
+		if err == nil {
+			require.False(t, cb.IsFull())
+			// There should be no ready bytes until the channel is full
+			require.Equal(t, cb.co.ReadyBytes(), 0)
+		} else {
+			require.ErrorIs(t, err, derive.CompressorFullErr)
+			break
+		}
+	}
+
+	require.True(t, cb.IsFull())
+	// Check how many ready bytes
+	// There should be more than the max frame size ready
+	require.Greater(t, uint64(cb.co.ReadyBytes()), channelConfig.MaxFrameSize)
+	require.Equal(t, 0, cb.PendingFrames())
+
+	// We should be able to output the frames
+	require.NoError(t, cb.OutputFrames())
+
+	// There should be many frames in the channel builder now
+	require.Greater(t, cb.PendingFrames(), 1)
+	for i := 0; i < cb.numFrames-1; i++ {
+		require.Len(t, cb.frames[i].data, int(channelConfig.MaxFrameSize))
+
+	}
+}
+
 // ChannelBuilder_MaxRLPBytesPerChannel tests the [channelBuilder.OutputFrames]
 // function errors when the max RLP bytes per channel is reached.
 func ChannelBuilder_MaxRLPBytesPerChannel(t *testing.T, batchType int, rcfg *rollup.Config) {
@@ -589,7 +639,7 @@ func ChannelBuilder_MaxRLPBytesPerChannel(t *testing.T, batchType int, rcfg *rol
 func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType int, rcfg *rollup.Config) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
-	channelConfig.CompressorConfig.TargetNumFrames = 4000
+	channelConfig.CompressorConfig.TargetNumFrames = 6000
 	channelConfig.CompressorConfig.TargetFrameSize = 24
 	channelConfig.CompressorConfig.ApproxComprRatio = 1
 	channelConfig.BatchType = batchType

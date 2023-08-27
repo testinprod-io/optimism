@@ -203,7 +203,11 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	if co.spanBatchBuilder.GetBlockCount() > 1 {
 		// Flush compressed data to the ready buffer
 		// If the channel is full after this block is appended, we should use preserved data.
-		if err := co.Flush(); err != nil {
+		if err := co.compress.Flush(); err != nil {
+			return 0, err
+		}
+		_, err := io.Copy(co.readyBuf, co.compress)
+		if err != nil {
 			return 0, err
 		}
 	}
@@ -214,6 +218,7 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	written, err := co.compress.Write(buf.Bytes())
 	if co.compress.FullErr() != nil {
 		co.fullErr = co.compress.FullErr()
+		err = co.fullErr
 		if co.spanBatchBuilder.GetBlockCount() == 1 {
 			// Do not return CompressorFullErr for the first block in the batch
 			err = nil
@@ -244,7 +249,7 @@ func (co *ChannelOut) Flush() error {
 	if err := co.compress.Flush(); err != nil {
 		return err
 	}
-	if co.batchType == SpanBatchType && co.readyBuf.Len() == 0 && co.compress.Len() > 0 {
+	if co.batchType == SpanBatchType && co.closed && co.readyBuf.Len() == 0 && co.compress.Len() > 0 {
 		_, err := io.Copy(co.readyBuf, co.compress)
 		return err
 	}
