@@ -28,7 +28,7 @@ import (
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
-// BatchV2Type := 1
+// BatchV2V1Type := 1
 // batchV2 := BatchV2Type ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ txs
@@ -40,7 +40,9 @@ var encodeBufferPool = sync.Pool{
 
 const (
 	BatchV1Type = iota
-	BatchV2Type
+	// BatchV2Type
+	BatchV2V1Type
+	BatchV2V2Type
 )
 
 const (
@@ -89,11 +91,6 @@ type BatchV2Payload struct {
 }
 
 type BatchV2Version byte
-
-const (
-	BatchV2V1 = iota
-	BatchV2V2
-)
 
 type BatchV2 struct {
 	BatchV2Version
@@ -171,7 +168,7 @@ type BatchData struct {
 
 func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 	return &BatchData{
-		BatchType: BatchV2Type,
+		BatchType: int(batchV2.BatchV2Version),
 		BatchV2:   batchV2,
 	}
 }
@@ -218,7 +215,7 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 }
 
 func (b *BatchV2) DecodeFeeRecipents(r *bytes.Reader) error {
-	if b.BatchV2Version < BatchV2V2 {
+	if b.BatchV2Version < BatchV2V2Type {
 		return nil
 	}
 	var idxs []uint64
@@ -383,7 +380,7 @@ func (b *BatchV2Payload) EncodeOriginBits() []byte {
 
 // EncodeFeeRecipents parses data into b.FeeRecipents
 func (b *BatchV2) EncodeFeeRecipents(w io.Writer) error {
-	if b.BatchV2Version < BatchV2V2 {
+	if b.BatchV2Version < BatchV2V2Type {
 		return nil
 	}
 	var buf [binary.MaxVarintLen64]byte
@@ -495,8 +492,11 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	case BatchV1Type:
 		buf.WriteByte(BatchV1Type)
 		return rlp.Encode(buf, &b.BatchV1)
-	case BatchV2Type:
-		buf.WriteByte(BatchV2Type)
+	case BatchV2V1Type:
+		buf.WriteByte(BatchV2V1Type)
+		return b.BatchV2.Encode(buf)
+	case BatchV2V2Type:
+		buf.WriteByte(BatchV2V2Type)
 		return b.BatchV2.Encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
@@ -531,8 +531,13 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	case BatchV1Type:
 		b.BatchType = BatchV1Type
 		return rlp.DecodeBytes(data[1:], &b.BatchV1)
-	case BatchV2Type:
-		b.BatchType = BatchV2Type
+	case BatchV2V1Type:
+		b.BatchType = BatchV2V1Type
+		b.BatchV2.BatchV2Version = BatchV2V1Type
+		return b.BatchV2.DecodeBytes(data[1:])
+	case BatchV2V2Type:
+		b.BatchType = BatchV2V2Type
+		b.BatchV2.BatchV2Version = BatchV2V2Type
 		return b.BatchV2.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
@@ -544,6 +549,9 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
+	// placeholder: when fee recipent is added, BatchV2Version will be adjusted
+	b.BatchV2Version = BatchV2V1Type
+
 	// Sort by timestamp of L2 block
 	sort.Slice(batchV1s, func(i, j int) bool {
 		return batchV1s[i].Timestamp < batchV1s[j].Timestamp

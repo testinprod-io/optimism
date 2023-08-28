@@ -64,9 +64,9 @@ func RandomBatchV2V1(rng *rand.Rand) *BatchData {
 		panic("NewBatchV2TxsV?:" + err.Error())
 	}
 	return &BatchData{
-		BatchType: BatchV2Type,
+		BatchType: BatchV2V1Type,
 		BatchV2: BatchV2{
-			BatchV2Version: BatchV2V1,
+			BatchV2Version: BatchV2V1Type,
 			BatchV2Prefix: BatchV2Prefix{
 				RelTimestamp:  rng.Uint64(),
 				L1OriginNum:   rng.Uint64(),
@@ -85,7 +85,8 @@ func RandomBatchV2V1(rng *rand.Rand) *BatchData {
 
 func RandomBatchV2V2(rng *rand.Rand) *BatchData {
 	batchData := RandomBatchV2V1(rng)
-	batchData.BatchV2.BatchV2Version = BatchV2V2
+	batchData.BatchType = BatchV2V2Type
+	batchData.BatchV2.BatchV2Version = BatchV2V2Type
 	// FeeRecipent length
 	N := int(batchData.BatchV2.BlockCount)
 	// cardinality of FeeRecipent
