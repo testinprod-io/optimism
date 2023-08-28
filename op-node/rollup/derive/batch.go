@@ -28,7 +28,9 @@ import (
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
-// BatchV2V1Type := 1
+// BatchV2Type
+//   BatchV2V1Type := 1
+//   BatchV2V2Type := 2 (with fee recipent)
 // batchV2 := BatchV2Type ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ txs
