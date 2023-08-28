@@ -48,7 +48,7 @@ type Compressor interface {
 	FullErr() error
 }
 
-type ReadyBuffer interface {
+type ChannelOutReader interface {
 	io.Writer
 	io.Reader
 	Reset()
@@ -71,7 +71,7 @@ type ChannelOut struct {
 
 	spanBatchBuilder *SpanBatchBuilder
 
-	readyBuf ReadyBuffer
+	reader ChannelOutReader
 
 	fullErr error
 }
@@ -81,11 +81,11 @@ func (co *ChannelOut) ID() ChannelID {
 }
 
 func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
-	// If the channel uses SingularBatch, use compressor directly as its readyBuf
-	var readyBuf ReadyBuffer = compress
+	// If the channel uses SingularBatch, use compressor directly as its reader
+	var reader ChannelOutReader = compress
 	if batchType == SpanBatchType {
-		// If the channel uses SpanBatch, create empty buffer for readyBuf
-		readyBuf = &bytes.Buffer{}
+		// If the channel uses SpanBatch, create empty buffer for reader
+		reader = &bytes.Buffer{}
 	}
 	c := &ChannelOut{
 		id:               ChannelID{}, // TODO: use GUID here instead of fully random data
@@ -94,7 +94,7 @@ func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBat
 		compress:         compress,
 		batchType:        batchType,
 		spanBatchBuilder: spanBatchBuilder,
-		readyBuf:         readyBuf,
+		reader:           reader,
 	}
 	_, err := rand.Read(c.id[:])
 	if err != nil {
@@ -109,7 +109,7 @@ func (co *ChannelOut) Reset() error {
 	co.frame = 0
 	co.rlpLength = 0
 	co.compress.Reset()
-	co.readyBuf.Reset()
+	co.reader.Reset()
 	co.spanBatchBuilder.Reset()
 	co.closed = false
 	_, err := rand.Read(co.id[:])
@@ -179,7 +179,7 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 
 // writeSpanBatch appends a SingularBatch to the channel's SpanBatch.
 // It resets channel contents and rewrites the entire SpanBatch because a channel can have only one SpanBatch.
-// Because the prefix of SpanBatch will be changed when appending new blocks, compressed results must be written to readyBuf after the channel is closed.
+// Because the prefix of SpanBatch will be changed when appending new blocks, compressed results must be written to reader after the channel is closed.
 // So we can only get frames once the channel is full or closed, in case of SpanBatch.
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	if co.fullErr != nil {
@@ -206,7 +206,7 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		if err := co.compress.Flush(); err != nil {
 			return 0, err
 		}
-		_, err := io.Copy(co.readyBuf, co.compress)
+		_, err := io.Copy(co.reader, co.compress)
 		if err != nil {
 			return 0, err
 		}
@@ -226,8 +226,8 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		return uint64(written), err
 	}
 
-	// If compressor is not full yet, readyBuf must be reset to avoid submitting invalid frames
-	co.readyBuf.Reset()
+	// If compressor is not full yet, reader must be reset to avoid submitting invalid frames
+	co.reader.Reset()
 	return uint64(written), err
 }
 
@@ -240,7 +240,7 @@ func (co *ChannelOut) InputBytes() int {
 // Use `Flush` or `Close` to move data from the compression buffer into the ready buffer if more bytes
 // are needed. Add blocks may add to the ready buffer, but it is not guaranteed due to the compression stage.
 func (co *ChannelOut) ReadyBytes() int {
-	return co.readyBuf.Len()
+	return co.reader.Len()
 }
 
 // Flush flushes the internal compression stage to the ready buffer. It enables pulling a larger & more
@@ -249,8 +249,8 @@ func (co *ChannelOut) Flush() error {
 	if err := co.compress.Flush(); err != nil {
 		return err
 	}
-	if co.batchType == SpanBatchType && co.closed && co.readyBuf.Len() == 0 && co.compress.Len() > 0 {
-		_, err := io.Copy(co.readyBuf, co.compress)
+	if co.batchType == SpanBatchType && co.closed && co.reader.Len() == 0 && co.compress.Len() > 0 {
+		_, err := io.Copy(co.reader, co.compress)
 		return err
 	}
 	return nil
@@ -293,8 +293,8 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 
 	// Copy data from the local buffer into the frame data buffer
 	maxDataSize := maxSize - FrameV0OverHeadSize
-	if maxDataSize > uint64(co.readyBuf.Len()) {
-		maxDataSize = uint64(co.readyBuf.Len())
+	if maxDataSize > uint64(co.reader.Len()) {
+		maxDataSize = uint64(co.reader.Len())
 		// If we are closed & will not spill past the current frame
 		// mark it is the final frame of the channel.
 		if co.closed {
@@ -303,7 +303,7 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 	}
 	f.Data = make([]byte, maxDataSize)
 
-	if _, err := io.ReadFull(co.readyBuf, f.Data); err != nil {
+	if _, err := io.ReadFull(co.reader, f.Data); err != nil {
 		return 0, err
 	}
 
