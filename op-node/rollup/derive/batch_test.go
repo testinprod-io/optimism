@@ -142,6 +142,9 @@ func TestBatchRoundTrip(t *testing.T) {
 		RandomBatchV1(rng, 5),
 		RandomBatchV1(rng, 7),
 		RandomBatchV2V1(rng),
+		RandomBatchV2V1(rng),
+		RandomBatchV2V2(rng),
+		RandomBatchV2V2(rng),
 	}
 
 	for i, batch := range batches {
