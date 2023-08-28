@@ -234,7 +234,7 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 }
 
 func (b *BatchV2) DecodeFeeRecipents(r *bytes.Reader) error {
-	if b.BatchV2Version > BatchV2V1 {
+	if b.BatchV2Version < BatchV2V2 {
 		return nil
 	}
 	var idxs []uint64
@@ -410,7 +410,7 @@ func (b *BatchV2) EncodeVersion(w io.Writer) error {
 
 // EncodeFeeRecipents parses data into b.FeeRecipents
 func (b *BatchV2) EncodeFeeRecipents(w io.Writer) error {
-	if b.BatchV2Version > BatchV2V1 {
+	if b.BatchV2Version < BatchV2V2 {
 		return nil
 	}
 	var buf [binary.MaxVarintLen64]byte
