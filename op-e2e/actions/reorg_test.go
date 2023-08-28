@@ -39,7 +39,7 @@ func setupReorgTestActors(t Testing, dp *e2eutils.DeployParams, sd *e2eutils.Set
 		MinL1TxSize: 0,
 		MaxL1TxSize: 128_000,
 		BatcherKey:  dp.Secrets.Batcher,
-	}, rollupSeqCl, miner.EthClient(), seqEngine.EthClient())
+	}, rollupSeqCl, miner.EthClient(), seqEngine.EthClient(), seqEngine.EngineClient(t, sd.RollupCfg))
 	return sd, dp, miner, sequencer, seqEngine, verifier, verifEngine, batcher
 }
 
@@ -584,7 +584,7 @@ func TestRestartOpGeth(gt *testing.T) {
 		MinL1TxSize: 0,
 		MaxL1TxSize: 128_000,
 		BatcherKey:  dp.Secrets.Batcher,
-	}, sequencer.RollupClient(), miner.EthClient(), seqEng.EthClient())
+	}, sequencer.RollupClient(), miner.EthClient(), seqEng.EthClient(), seqEng.EngineClient(t, sd.RollupCfg))
 
 	// start
 	sequencer.ActL2PipelineFull(t)
@@ -673,7 +673,7 @@ func TestConflictingL2Blocks(gt *testing.T) {
 		MinL1TxSize: 0,
 		MaxL1TxSize: 128_000,
 		BatcherKey:  dp.Secrets.Batcher,
-	}, altSequencer.RollupClient(), miner.EthClient(), altSeqEng.EthClient())
+	}, altSequencer.RollupClient(), miner.EthClient(), altSeqEng.EthClient(), altSeqEng.EngineClient(t, sd.RollupCfg))
 
 	// And set up user Alice, using the alternative sequencer endpoint
 	l2Cl := altSeqEng.EthClient()

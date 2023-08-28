@@ -221,6 +221,7 @@ func Setup(t require.TestingT, deployParams *DeployParams, alloc *AllocParams) *
 		DepositContractAddress: predeploys.DevOptimismPortalAddr,
 		L1SystemConfigAddress:  predeploys.DevSystemConfigAddr,
 		RegolithTime:           deployConf.RegolithTime(uint64(deployConf.L1GenesisBlockTimestamp)),
+		SpanBatchTime:          deployConf.SpanBatchTime(uint64(deployConf.L1GenesisBlockTimestamp)),
 	}
 
 	deploymentsL1 := DeploymentsL1{
