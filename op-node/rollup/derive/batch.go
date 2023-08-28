@@ -343,7 +343,6 @@ func (b BatchV2) PrefixSize() (int, error) {
 
 func (b BatchV2) MetadataSize() (int, error) {
 	// define metadata as every data except tx related field
-	// start with 1 because of version field
 	size := 0
 	prefixSize, err := b.PrefixSize()
 	if err != nil {
