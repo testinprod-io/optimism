@@ -103,9 +103,6 @@ type BatchV2 struct {
 
 // custom implementation of unmarshaling json because Txs field is an interface
 func (b *BatchV2) UnmarshalJSON(data []byte) error {
-	if err := json.Unmarshal(data, &b.BatchV2Version); err != nil {
-		return err
-	}
 	if err := json.Unmarshal(data, &b.BatchV2Prefix); err != nil {
 		return err
 	}
@@ -177,19 +174,6 @@ func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 		BatchType: BatchV2Type,
 		BatchV2:   batchV2,
 	}
-}
-
-// DecodeVersion parses BatchV2 version
-func (b *BatchV2) DecodeVersion(r *bytes.Reader) error {
-	version, err := r.ReadByte()
-	if err != nil {
-		return fmt.Errorf("failed to read version: %w", err)
-	}
-	if int(version) > BatchV2V2 {
-		return fmt.Errorf("invalid version: %d", version)
-	}
-	b.BatchV2Version = BatchV2Version(version)
-	return nil
 }
 
 // DecodePrefix parses data into b.BatchV2Prefix
@@ -319,9 +303,6 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 // DecodeBytes parses data into b from data
 func (b *BatchV2) DecodeBytes(data []byte) error {
 	r := bytes.NewReader(data)
-	if err := b.DecodeVersion(r); err != nil {
-		return err
-	}
 	if err := b.DecodePrefix(r); err != nil {
 		return err
 	}
@@ -363,7 +344,7 @@ func (b BatchV2) PrefixSize() (int, error) {
 func (b BatchV2) MetadataSize() (int, error) {
 	// define metadata as every data except tx related field
 	// start with 1 because of version field
-	size := 1
+	size := 0
 	prefixSize, err := b.PrefixSize()
 	if err != nil {
 		return 0, err
@@ -399,13 +380,6 @@ func (b *BatchV2Payload) EncodeOriginBits() []byte {
 		originBitBuffer[i/8] = byte(bits)
 	}
 	return originBitBuffer
-}
-
-func (b *BatchV2) EncodeVersion(w io.Writer) error {
-	if _, err := w.Write([]byte{byte(b.BatchV2Version)}); err != nil {
-		return fmt.Errorf("cannot write version: %w", err)
-	}
-	return nil
 }
 
 // EncodeFeeRecipents parses data into b.FeeRecipents
@@ -468,9 +442,6 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 
 // Encode writes the byte encoding of b to w
 func (b *BatchV2) Encode(w io.Writer) error {
-	if err := b.EncodeVersion(w); err != nil {
-		return err
-	}
 	if err := b.EncodePrefix(w); err != nil {
 		return err
 	}
