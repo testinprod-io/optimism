@@ -28,7 +28,9 @@ import (
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
-// BatchV2Type := 1
+// BatchV2Type
+//   BatchV2V1Type := 1
+//   BatchV2V2Type := 2 (with fee recipent)
 // batchV2 := BatchV2Type ++ prefix ++ payload
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := block_count ++ origin_bits ++ block_tx_counts ++ txs
@@ -40,7 +42,9 @@ var encodeBufferPool = sync.Pool{
 
 const (
 	BatchV1Type = iota
-	BatchV2Type
+	// BatchV2Type
+	BatchV2V1Type
+	BatchV2V2Type
 )
 
 const (
@@ -84,9 +88,14 @@ type BatchV2Payload struct {
 	BlockTxCounts []uint64
 
 	Txs BatchV2Txs
+
+	FeeRecipents []common.Address
 }
 
+type BatchV2Version byte
+
 type BatchV2 struct {
+	BatchV2Version
 	BatchV2Prefix
 	BatchV2Payload
 }
@@ -161,7 +170,7 @@ type BatchData struct {
 
 func InitBatchDataV2(batchV2 BatchV2) *BatchData {
 	return &BatchData{
-		BatchType: BatchV2Type,
+		BatchType: int(batchV2.BatchV2Version),
 		BatchV2:   batchV2,
 	}
 }
@@ -205,6 +214,39 @@ func (b *BatchV2Payload) DecodeOriginBits(originBitBuffer []byte, blockCount uin
 		}
 	}
 	b.OriginBits = originBits
+}
+
+func (b *BatchV2) DecodeFeeRecipents(r *bytes.Reader) error {
+	if b.BatchV2Version < BatchV2V2Type {
+		return nil
+	}
+	var idxs []uint64
+	cardinalFeeRecipentsCount := uint64(0)
+	for i := 0; i < int(b.BlockCount); i++ {
+		idx, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent index: %w", err)
+		}
+		idxs = append(idxs, idx)
+		if cardinalFeeRecipentsCount < idx+1 {
+			cardinalFeeRecipentsCount = idx + 1
+		}
+	}
+	var cardinalFeeRecipents []common.Address
+	for i := 0; i < int(cardinalFeeRecipentsCount); i++ {
+		feeRecipent := make([]byte, common.AddressLength)
+		_, err := io.ReadFull(r, feeRecipent)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent address: %w", err)
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, common.BytesToAddress(feeRecipent))
+	}
+	b.FeeRecipents = make([]common.Address, 0)
+	for _, idx := range idxs {
+		feeRecipent := cardinalFeeRecipents[idx]
+		b.FeeRecipents = append(b.FeeRecipents, feeRecipent)
+	}
+	return nil
 }
 
 // DecodePayload parses data into b.BatchV2Payload
@@ -253,6 +295,7 @@ func (b *BatchV2) DecodePayload(r *bytes.Reader) error {
 	b.BlockCount = blockCount
 	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
+	b.DecodeFeeRecipents(r)
 	return nil
 }
 
@@ -337,6 +380,39 @@ func (b *BatchV2Payload) EncodeOriginBits() []byte {
 	return originBitBuffer
 }
 
+// EncodeFeeRecipents parses data into b.FeeRecipents
+func (b *BatchV2) EncodeFeeRecipents(w io.Writer) error {
+	if b.BatchV2Version < BatchV2V2Type {
+		return nil
+	}
+	var buf [binary.MaxVarintLen64]byte
+	acc := uint64(0)
+	indexs := make(map[common.Address]uint64)
+	var cardinalFeeRecipents []common.Address
+	for _, feeRecipent := range b.FeeRecipents {
+		_, exists := indexs[feeRecipent]
+		if exists {
+			continue
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, feeRecipent)
+		indexs[feeRecipent] = acc
+		acc++
+	}
+	for _, feeReceipt := range b.FeeRecipents {
+		idx := indexs[feeReceipt]
+		n := binary.PutUvarint(buf[:], idx)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write fee recipent index: %w", err)
+		}
+	}
+	for _, cardinalFeeReceipt := range cardinalFeeRecipents {
+		if _, err := w.Write(cardinalFeeReceipt[:]); err != nil {
+			return fmt.Errorf("cannot write fee recipent address: %w", err)
+		}
+	}
+	return nil
+}
+
 func (b *BatchV2) EncodePayload(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.BlockCount)
@@ -354,6 +430,9 @@ func (b *BatchV2) EncodePayload(w io.Writer) error {
 		}
 	}
 	if err := b.Txs.Encode(w); err != nil {
+		return err
+	}
+	if err := b.EncodeFeeRecipents(w); err != nil {
 		return err
 	}
 	return nil
@@ -415,8 +494,11 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	case BatchV1Type:
 		buf.WriteByte(BatchV1Type)
 		return rlp.Encode(buf, &b.BatchV1)
-	case BatchV2Type:
-		buf.WriteByte(BatchV2Type)
+	case BatchV2V1Type:
+		buf.WriteByte(BatchV2V1Type)
+		return b.BatchV2.Encode(buf)
+	case BatchV2V2Type:
+		buf.WriteByte(BatchV2V2Type)
 		return b.BatchV2.Encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
@@ -451,8 +533,13 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	case BatchV1Type:
 		b.BatchType = BatchV1Type
 		return rlp.DecodeBytes(data[1:], &b.BatchV1)
-	case BatchV2Type:
-		b.BatchType = BatchV2Type
+	case BatchV2V1Type:
+		b.BatchType = BatchV2V1Type
+		b.BatchV2.BatchV2Version = BatchV2V1Type
+		return b.BatchV2.DecodeBytes(data[1:])
+	case BatchV2V2Type:
+		b.BatchType = BatchV2V2Type
+		b.BatchV2.BatchV2Version = BatchV2V2Type
 		return b.BatchV2.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
@@ -464,6 +551,9 @@ func (b *BatchV2) MergeBatchV1s(batchV1s []BatchV1, originChangedBit uint, genes
 	if len(batchV1s) == 0 {
 		return errors.New("cannot merge empty batchV1 list")
 	}
+	// placeholder: when fee recipent is added, BatchV2Version will be adjusted
+	b.BatchV2Version = BatchV2V1Type
+
 	// Sort by timestamp of L2 block
 	sort.Slice(batchV1s, func(i, j int) bool {
 		return batchV1s[i].Timestamp < batchV1s[j].Timestamp
