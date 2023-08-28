@@ -19,7 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-func RandomBatchV2(rng *rand.Rand) *BatchData {
+func RandomBatchV2V1(rng *rand.Rand) *BatchData {
 	blockCount := uint64(1 + rng.Int()&0xFF)
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i++ {
@@ -66,6 +66,7 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 	return &BatchData{
 		BatchType: BatchV2Type,
 		BatchV2: BatchV2{
+			BatchV2Version: BatchV2V1,
 			BatchV2Prefix: BatchV2Prefix{
 				RelTimestamp:  rng.Uint64(),
 				L1OriginNum:   rng.Uint64(),
@@ -80,6 +81,27 @@ func RandomBatchV2(rng *rand.Rand) *BatchData {
 			},
 		},
 	}
+}
+
+func RandomBatchV2V2(rng *rand.Rand) *BatchData {
+	batchData := RandomBatchV2V1(rng)
+	batchData.BatchV2.BatchV2Version = BatchV2V2
+	// FeeRecipent length
+	N := int(batchData.BatchV2.BlockCount)
+	// cardinality of FeeRecipent
+	K := 1 + rng.Intn(5)
+	var addressSet []common.Address
+	for i := 0; i < K; i++ {
+		address := testutils.RandomAddress(rng)
+		addressSet = append(addressSet, address)
+	}
+	var addressList []common.Address
+	for i := 0; i < N; i++ {
+		addressIdx := uint64(rand.Intn(len(addressSet)))
+		addressList = append(addressList, addressSet[addressIdx])
+	}
+	batchData.BatchV2.FeeRecipents = addressList
+	return batchData
 }
 
 func RandomBatchV1(rng *rand.Rand, txCount int) *BatchData {
@@ -119,7 +141,7 @@ func TestBatchRoundTrip(t *testing.T) {
 		},
 		RandomBatchV1(rng, 5),
 		RandomBatchV1(rng, 7),
-		RandomBatchV2(rng),
+		RandomBatchV2V1(rng),
 	}
 
 	for i, batch := range batches {
@@ -204,7 +226,7 @@ func TestBatchV2Merge(t *testing.T) {
 func prepareSplitBatch(rng *rand.Rand, l2BlockTime uint64) (func(blockNum uint64) (*types.Block, error), uint64, BatchV2, eth.L2BlockRef) {
 	genesisTimeStamp := rng.Uint64()
 	l1OriginBlock, _ := testutils.RandomBlock(rng, 1+uint64(rng.Intn(8)))
-	batchV2 := RandomBatchV2(rng).BatchV2
+	batchV2 := RandomBatchV2V1(rng).BatchV2
 	batchV2.L1OriginNum = l1OriginBlock.NumberU64()
 	batchV2.L1OriginCheck = l1OriginBlock.Hash().Bytes()[:20]
 	// recover parentHash
@@ -337,4 +359,30 @@ func TestBatchV2SplitMerge(t *testing.T) {
 	endEpochNum := batchV2.L1OriginNum
 	assert.True(t, endEpochNum == safeL2head.L1Origin.Number+originBitSum)
 	assert.True(t, endEpochNum == uint64(batchV1s[len(batchV1s)-1].EpochNum))
+}
+
+func TestBatchV2FeeRecipentsRoundTrip(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xcafe1338))
+
+	buf := new(bytes.Buffer)
+	for i := 0; i < 8; i++ {
+		batchV2 := RandomBatchV2V2(rng).BatchV2
+
+		err := batchV2.EncodeFeeRecipents(buf)
+		assert.NoError(t, err)
+
+		feeRecipentsEncoded := buf.Bytes()
+		buf.Reset()
+
+		originalFeeRecipents := batchV2.FeeRecipents[:]
+		// remove field
+		batchV2.FeeRecipents = batchV2.FeeRecipents[:0]
+		r := bytes.NewReader(feeRecipentsEncoded)
+
+		err = batchV2.DecodeFeeRecipents(r)
+		assert.NoError(t, err)
+
+		// check repopulated field is consistent
+		assert.Equal(t, originalFeeRecipents, batchV2.FeeRecipents, "fee recipents not equal")
+	}
 }
