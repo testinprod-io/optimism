@@ -47,6 +47,7 @@ func Compare(batchV2 convert.SpanBatchWithMetadata) (int, int) {
 
 	//	derive.BatchV2TxsV3FieldPerm = []int{3, 0, 4, 1, 2, 6, 5}
 
+	// choose your permutation
 	derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 6, 5}
 
 	spanBatchEncoded, err = batchV2.BatchV2.EncodeBytes()
