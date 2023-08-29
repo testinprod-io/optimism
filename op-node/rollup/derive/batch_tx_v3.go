@@ -16,7 +16,75 @@ import (
 )
 
 // adjust this for permuting data layout
-var BatchV2TxsV3Perm = []int{0, 1, 2, 3, 4, 5, 6}
+var BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
+
+// possible permutations
+var BatchV2TxsV3FieldPerms = [][]int{}
+
+// helper function names
+var BatchV2TxsV3FieldHelperFuncNames = []string{
+	"ContractCreationBits",
+	"YParityBits",
+	"TxSigs",
+	"TxNonces",
+	"TxGases",
+	"TxTos",
+	"TxDatas",
+}
+
+// Steinhaus–Johnson–Trotter algorithm
+func nextPermutation(data []int) bool {
+	i := len(data) - 2
+	for i >= 0 && data[i] >= data[i+1] {
+		i--
+	}
+	if i == -1 {
+		return false
+	}
+	j := len(data) - 1
+	for data[j] <= data[i] {
+		j--
+	}
+	data[i], data[j] = data[j], data[i]
+	left, right := i+1, len(data)-1
+	for left < right {
+		data[left], data[right] = data[right], data[left]
+		left++
+		right--
+	}
+	return true
+}
+
+func InitializePermutations() {
+	// We MUST encode ContractCreationBits before Tos
+	// ContractCreationBits method index = 0
+	// Tos method index = 5
+	// There are (7 choose 2) * 5! = 2520 possible permutations
+	indexs := []int{0, 1, 2, 3, 4, 5, 6}
+	indexOf := func(target int) int {
+		for i, v := range indexs {
+			if v == target {
+				return i
+			}
+		}
+		return -1
+	}
+	for {
+		i := indexOf(0)
+		j := indexOf(5)
+		if i < j {
+			perm := make([]int, len(indexs))
+			copy(perm, indexs)
+			BatchV2TxsV3FieldPerms = append(BatchV2TxsV3FieldPerms, perm)
+		}
+		if !nextPermutation(indexs) {
+			break
+		}
+	}
+	if len(BatchV2TxsV3FieldPerms) != 2520 {
+		panic("permutation initalization failure")
+	}
+}
 
 type BatchV2TxsV3 struct {
 	// these two fields must be manually set
@@ -346,10 +414,10 @@ func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
 		},
 	}
 
-	if len(BatchV2TxsV3Perm) != len(encodeFuncs) {
+	if len(BatchV2TxsV3FieldPerm) != len(encodeFuncs) {
 		panic("invalid permutation")
 	}
-	for _, idx := range BatchV2TxsV3Perm {
+	for _, idx := range BatchV2TxsV3FieldPerm {
 		encodeFunc := encodeFuncs[idx]
 		if err := encodeFunc(); err != nil {
 			return err
@@ -408,10 +476,10 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 		},
 	}
 
-	if len(BatchV2TxsV3Perm) != len(decodeFuncs) {
+	if len(BatchV2TxsV3FieldPerm) != len(decodeFuncs) {
 		panic("invalid permutation")
 	}
-	for _, idx := range BatchV2TxsV3Perm {
+	for _, idx := range BatchV2TxsV3FieldPerm {
 		decodeFunc := decodeFuncs[idx]
 		if err := decodeFunc(); err != nil {
 			return err
