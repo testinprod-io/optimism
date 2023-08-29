@@ -15,6 +15,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// adjust this for permuting data layout
+var BatchV2TxsV3Perm = []int{0, 1, 2, 3, 4, 5, 6}
+
 type BatchV2TxsV3 struct {
 	// these two fields must be manually set
 	TotalBlockTxCount uint64
@@ -342,7 +345,12 @@ func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
 			return nil
 		},
 	}
-	for _, encodeFunc := range encodeFuncs {
+
+	if len(BatchV2TxsV3Perm) != len(encodeFuncs) {
+		panic("invalid permutation")
+	}
+	for _, idx := range BatchV2TxsV3Perm {
+		encodeFunc := encodeFuncs[idx]
 		if err := encodeFunc(); err != nil {
 			return err
 		}
@@ -399,7 +407,12 @@ func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
 			return nil
 		},
 	}
-	for _, decodeFunc := range decodeFuncs {
+
+	if len(BatchV2TxsV3Perm) != len(decodeFuncs) {
+		panic("invalid permutation")
+	}
+	for _, idx := range BatchV2TxsV3Perm {
+		decodeFunc := decodeFuncs[idx]
 		if err := decodeFunc(); err != nil {
 			return err
 		}
