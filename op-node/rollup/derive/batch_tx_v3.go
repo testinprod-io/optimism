@@ -30,7 +30,7 @@ type BatchV2TxsV3 struct {
 	TxDatas              []hexutil.Bytes
 }
 
-func (btx *BatchV2TxsV3) EncodeContractCreationBits() []byte {
+func (btx *BatchV2TxsV3) EncodeContractCreationBits(w io.Writer) error {
 	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
 	if btx.TotalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
@@ -47,7 +47,10 @@ func (btx *BatchV2TxsV3) EncodeContractCreationBits() []byte {
 		}
 		contractCreationBitBuffer[i/8] = byte(bits)
 	}
-	return contractCreationBitBuffer
+	if _, err := w.Write(contractCreationBitBuffer); err != nil {
+		return fmt.Errorf("cannot write contract creation bits: %w", err)
+	}
+	return nil
 }
 
 func (btx *BatchV2TxsV3) DecodeContractCreationBits(r *bytes.Reader) error {
@@ -90,7 +93,7 @@ func (btx *BatchV2TxsV3) ContractCreationCount() uint64 {
 	return result
 }
 
-func (btx *BatchV2TxsV3) EncodeYParityBits() []byte {
+func (btx *BatchV2TxsV3) EncodeYParityBits(w io.Writer) error {
 	yParityBitBufferLen := btx.TotalBlockTxCount / 8
 	if btx.TotalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
@@ -107,7 +110,64 @@ func (btx *BatchV2TxsV3) EncodeYParityBits() []byte {
 		}
 		yParityBitBuffer[i/8] = byte(bits)
 	}
-	return yParityBitBuffer
+	if _, err := w.Write(yParityBitBuffer); err != nil {
+		return fmt.Errorf("cannot write y parity bits: %w", err)
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxSigs(w io.Writer) error {
+	for _, txSig := range btx.TxSigs {
+		rBuf := txSig.R.Bytes32()
+		if _, err := w.Write(rBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig r: %w", err)
+		}
+		sBuf := txSig.S.Bytes32()
+		if _, err := w.Write(sBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig s: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxNonces(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, txNonce := range btx.TxNonces {
+		n := binary.PutUvarint(buf[:], txNonce)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx nonce: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxGases(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, txGas := range btx.TxGases {
+		n := binary.PutUvarint(buf[:], txGas)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx gas: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxTos(w io.Writer) error {
+	for _, txTo := range btx.TxTos {
+		if _, err := w.Write(txTo.Bytes()); err != nil {
+			return fmt.Errorf("cannot write tx to address: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxDatas(w io.Writer) error {
+	for _, txData := range btx.TxDatas {
+		if _, err := w.Write(txData); err != nil {
+			return fmt.Errorf("cannot write tx data: %w", err)
+		}
+	}
+	return nil
 }
 
 func (btx *BatchV2TxsV3) DecodeYParityBits(r *bytes.Reader) error {
@@ -237,46 +297,26 @@ func (btx *BatchV2TxsV3) RecoverV(txTypes []int) {
 }
 
 func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
-	var buf [binary.MaxVarintLen64]byte
-	contractCreationBitBuffer := btx.EncodeContractCreationBits()
-	if _, err := w.Write(contractCreationBitBuffer); err != nil {
-		return fmt.Errorf("cannot write contract creation bits: %w", err)
+	if err := btx.EncodeContractCreationBits(w); err != nil {
+		return err
 	}
-	yParityBitBuffer := btx.EncodeYParityBits()
-	if _, err := w.Write(yParityBitBuffer); err != nil {
-		return fmt.Errorf("cannot write y parity bits: %w", err)
+	if err := btx.EncodeYParityBits(w); err != nil {
+		return err
 	}
-	for _, txSig := range btx.TxSigs {
-		rBuf := txSig.R.Bytes32()
-		if _, err := w.Write(rBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig r: %w", err)
-		}
-		sBuf := txSig.S.Bytes32()
-		if _, err := w.Write(sBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig s: %w", err)
-		}
+	if err := btx.EncodeTxSigs(w); err != nil {
+		return err
 	}
-	for _, txNonce := range btx.TxNonces {
-		n := binary.PutUvarint(buf[:], txNonce)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx nonce: %w", err)
-		}
+	if err := btx.EncodeTxNonces(w); err != nil {
+		return err
 	}
-	for _, txGas := range btx.TxGases {
-		n := binary.PutUvarint(buf[:], txGas)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx gas: %w", err)
-		}
+	if err := btx.EncodeTxGases(w); err != nil {
+		return err
 	}
-	for _, txTo := range btx.TxTos {
-		if _, err := w.Write(txTo.Bytes()); err != nil {
-			return fmt.Errorf("cannot write tx to address: %w", err)
-		}
+	if err := btx.EncodeTxTos(w); err != nil {
+		return err
 	}
-	for _, txData := range btx.TxDatas {
-		if _, err := w.Write(txData); err != nil {
-			return fmt.Errorf("cannot write tx data: %w", err)
-		}
+	if err := btx.EncodeTxDatas(w); err != nil {
+		return err
 	}
 	return nil
 }
