@@ -64,9 +64,12 @@ func Compare(batchV2 convert.SpanBatchWithMetadata) (int, int) {
 func Format(config Config) {
 	// update global varibles. Weird but works
 	derive.ChainID = config.ChainID
+
+	// out directory currently not used
 	if err := os.MkdirAll(config.OutDirectory, 0750); err != nil {
 		log.Fatal(err)
 	}
+
 	spanBatchFiles, err := os.ReadDir(config.InSpanBatchDirectory)
 	if err != nil {
 		log.Fatal(err)
