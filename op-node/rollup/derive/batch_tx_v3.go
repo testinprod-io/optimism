@@ -312,6 +312,7 @@ func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
 	if err := btx.EncodeTxGases(w); err != nil {
 		return err
 	}
+	// Must be called after EncodeContractCreationBits
 	if err := btx.EncodeTxTos(w); err != nil {
 		return err
 	}
