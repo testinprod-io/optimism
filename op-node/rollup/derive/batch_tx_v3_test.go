@@ -77,3 +77,24 @@ func TestTxFieldPermutation(t *testing.T) {
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", perm)
 	}
 }
+
+func TestTxFieldInvalidPermutation(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		} else if r != "contract creation bits not set" {
+			t.Errorf("Unexpected panic message: %v", r)
+		}
+	}()
+
+	rng := rand.New(rand.NewSource(0x4242424242424242))
+
+	// TxTos helper function first called before ContractCreationBits helper
+	BatchV2TxsV3FieldPerm = []int{5, 1, 2, 3, 4, 0, 6}
+	batch := RandomBatchV2V1(rng)
+	enc, err := batch.MarshalBinary()
+	assert.NoError(t, err)
+	var dec BatchData
+
+	dec.UnmarshalBinary(enc)
+}
