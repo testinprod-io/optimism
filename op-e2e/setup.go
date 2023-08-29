@@ -122,6 +122,8 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 		L2GenesisBlockParentHash:    common.Hash{},
 		L2GenesisBlockBaseFeePerGas: uint642big(7),
 
+		L2GenesisSpanBatchTimeOffset: e2eutils.SpanBatchTimeOffset(),
+
 		GasPriceOracleOverhead: 2100,
 		GasPriceOracleScalar:   1_000_000,
 

@@ -98,6 +98,8 @@ func MakeDeployParams(t require.TestingT, tp *TestParams) *DeployParams {
 		L2GenesisBlockParentHash:    common.Hash{},
 		L2GenesisBlockBaseFeePerGas: uint64ToBig(1000_000_000),
 
+		L2GenesisSpanBatchTimeOffset: SpanBatchTimeOffset(),
+
 		GasPriceOracleOverhead:      2100,
 		GasPriceOracleScalar:        1000_000,
 		DeploymentWaitConfirmations: 1,
@@ -290,4 +292,12 @@ func ForkedDeployConfig(t require.TestingT, mnemonicCfg *MnemonicConfig, startBl
 		FundDevAccounts:             true,
 	}
 	return out
+}
+
+func SpanBatchTimeOffset() *hexutil.Uint64 {
+	if os.Getenv("OP_E2E_USE_SPAN_BATCH") == "true" {
+		offset := hexutil.Uint64(0)
+		return &offset
+	}
+	return nil
 }
