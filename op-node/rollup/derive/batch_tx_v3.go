@@ -297,54 +297,112 @@ func (btx *BatchV2TxsV3) RecoverV(txTypes []int) {
 }
 
 func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
-	if err := btx.EncodeContractCreationBits(w); err != nil {
-		return err
+	encodeFuncs := []func() error{
+		func() error {
+			if err := btx.EncodeContractCreationBits(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeYParityBits(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxSigs(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxNonces(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxGases(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// Must be called after EncodeContractCreationBits
+			if err := btx.EncodeTxTos(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxDatas(w); err != nil {
+				return err
+			}
+			return nil
+		},
 	}
-	if err := btx.EncodeYParityBits(w); err != nil {
-		return err
-	}
-	if err := btx.EncodeTxSigs(w); err != nil {
-		return err
-	}
-	if err := btx.EncodeTxNonces(w); err != nil {
-		return err
-	}
-	if err := btx.EncodeTxGases(w); err != nil {
-		return err
-	}
-	// Must be called after EncodeContractCreationBits
-	if err := btx.EncodeTxTos(w); err != nil {
-		return err
-	}
-	if err := btx.EncodeTxDatas(w); err != nil {
-		return err
+	for _, encodeFunc := range encodeFuncs {
+		if err := encodeFunc(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
-	if err := btx.DecodeContractCreationBits(r); err != nil {
-		return err
+	var txTypes []int
+	decodeFuncs := []func() error{
+		func() error {
+			if err := btx.DecodeContractCreationBits(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeYParityBits(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxSigs(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxNonces(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxGases(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// Must be called after DecodeContractCreationBits
+			if err := btx.DecodeTxTos(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			var err error
+			txTypes, err = btx.DecodeTxDatas(r)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
 	}
-	if err := btx.DecodeYParityBits(r); err != nil {
-		return err
-	}
-	if err := btx.DecodeTxSigs(r); err != nil {
-		return err
-	}
-	if err := btx.DecodeTxNonces(r); err != nil {
-		return err
-	}
-	if err := btx.DecodeTxGases(r); err != nil {
-		return err
-	}
-	// Must be called after DecodeContractCreationBits
-	if err := btx.DecodeTxTos(r); err != nil {
-		return err
-	}
-	txTypes, err := btx.DecodeTxDatas(r)
-	if err != nil {
-		return err
+	for _, decodeFunc := range decodeFuncs {
+		if err := decodeFunc(); err != nil {
+			return err
+		}
 	}
 	// always do last
 	btx.RecoverV(txTypes)
