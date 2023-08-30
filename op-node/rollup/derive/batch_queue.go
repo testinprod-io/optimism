@@ -66,6 +66,9 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		nextBatch := bq.nextSpan[0]
 		bq.nextSpan = bq.nextSpan[1:]
 		nextBatch.ParentHash = safeL2Head.Hash
+		if nextBatch.GetEpochNum() == rollup.Epoch(bq.l1Blocks[0].Number)+1 {
+			bq.l1Blocks = bq.l1Blocks[1:]
+		}
 		return nextBatch, nil
 	}
 
