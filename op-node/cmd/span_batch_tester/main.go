@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
+	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/format"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/merge"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -246,6 +247,40 @@ func main() {
 					return err
 				}
 				fmt.Printf("Merged v0 batches in range [%v,%v).\n", config.Start, config.End)
+				return nil
+			},
+		},
+		{
+			Name:  "format",
+			Usage: "Search for best span batch format",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "in-span-batch",
+					Value: "/tmp/span_batch_tester/span_batch_cache",
+					Usage: "Cache directory for the converted batch",
+				},
+				&cli.StringFlag{
+					Name:  "out",
+					Value: "/tmp/span_batch_tester/format_result",
+					Usage: "Directory for the format result",
+				},
+				&cli.IntFlag{
+					Name:     "chain-id",
+					Required: true,
+					Usage:    "L2 chain id",
+					Value:    10,
+				},
+			},
+			Action: func(cliCtx *cli.Context) error {
+				// transaction encoding type is always BatchV2TxsV3Type
+				derive.BatchV2TxsType = derive.BatchV2TxsV3Type
+				chainID := big.NewInt(cliCtx.Int64("chain-id"))
+				config := format.Config{
+					InSpanBatchDirectory: cliCtx.String("in-span-batch"),
+					OutDirectory:         cliCtx.String("out"),
+					ChainID:              chainID,
+				}
+				format.Format(config)
 				return nil
 			},
 		},

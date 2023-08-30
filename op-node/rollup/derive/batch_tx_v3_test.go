@@ -51,3 +51,50 @@ func TestRecoverV(t *testing.T) {
 
 	assert.Equal(t, originalVs, recoveredVs, "recovered v mismatch")
 }
+
+func TestTxFieldPermutation(t *testing.T) {
+	InitializePermutations()
+
+	rng := rand.New(rand.NewSource(0x4141414141414141))
+
+	K := 100
+	rand.Shuffle(len(BatchV2TxsV3FieldPerms), func(i, j int) {
+		BatchV2TxsV3FieldPerms[i], BatchV2TxsV3FieldPerms[j] = BatchV2TxsV3FieldPerms[j], BatchV2TxsV3FieldPerms[i]
+	})
+
+	// try marshaling with each permutations
+	// we do not permute every possiblity because it takes over 30s to do so
+	for _, perm := range BatchV2TxsV3FieldPerms[:K] {
+		// update global variable
+		BatchV2TxsV3FieldPerm = perm
+
+		batch := RandomBatchV2V1(rng)
+		enc, err := batch.MarshalBinary()
+		assert.NoError(t, err)
+		var dec BatchData
+		err = dec.UnmarshalBinary(enc)
+		assert.NoError(t, err)
+		assert.Equal(t, batch, &dec, "Batch not equal test case %v", perm)
+	}
+}
+
+func TestTxFieldInvalidPermutation(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		} else if r != "contract creation bits not set" {
+			t.Errorf("Unexpected panic message: %v", r)
+		}
+	}()
+
+	rng := rand.New(rand.NewSource(0x4242424242424242))
+
+	// TxTos helper function first called before ContractCreationBits helper
+	BatchV2TxsV3FieldPerm = []int{5, 1, 2, 3, 4, 0, 6}
+	batch := RandomBatchV2V1(rng)
+	enc, err := batch.MarshalBinary()
+	assert.NoError(t, err)
+	var dec BatchData
+
+	dec.UnmarshalBinary(enc)
+}

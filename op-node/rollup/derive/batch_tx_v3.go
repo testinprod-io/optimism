@@ -15,11 +15,83 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// adjust this for permuting data layout
+var BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
+
+// possible permutations
+var BatchV2TxsV3FieldPerms = [][]int{}
+
+// helper function names
+var BatchV2TxsV3FieldHelperFuncNames = []string{
+	"ContractCreationBits",
+	"YParityBits",
+	"TxSigs",
+	"TxNonces",
+	"TxGases",
+	"TxTos",
+	"TxDatas",
+}
+
+// Steinhaus–Johnson–Trotter algorithm
+func nextPermutation(data []int) bool {
+	i := len(data) - 2
+	for i >= 0 && data[i] >= data[i+1] {
+		i--
+	}
+	if i == -1 {
+		return false
+	}
+	j := len(data) - 1
+	for data[j] <= data[i] {
+		j--
+	}
+	data[i], data[j] = data[j], data[i]
+	left, right := i+1, len(data)-1
+	for left < right {
+		data[left], data[right] = data[right], data[left]
+		left++
+		right--
+	}
+	return true
+}
+
+func InitializePermutations() {
+	// We MUST encode ContractCreationBits before Tos
+	// ContractCreationBits method index = 0
+	// Tos method index = 5
+	// There are (7 choose 2) * 5! = 2520 possible permutations
+	indexs := []int{0, 1, 2, 3, 4, 5, 6}
+	indexOf := func(target int) int {
+		for i, v := range indexs {
+			if v == target {
+				return i
+			}
+		}
+		return -1
+	}
+	for {
+		i := indexOf(0)
+		j := indexOf(5)
+		if i < j {
+			perm := make([]int, len(indexs))
+			copy(perm, indexs)
+			BatchV2TxsV3FieldPerms = append(BatchV2TxsV3FieldPerms, perm)
+		}
+		if !nextPermutation(indexs) {
+			break
+		}
+	}
+	if len(BatchV2TxsV3FieldPerms) != 2520 {
+		panic("permutation initalization failure")
+	}
+}
+
 type BatchV2TxsV3 struct {
 	// these two fields must be manually set
 	TotalBlockTxCount uint64
 	ChainID           *big.Int
 
+	// 7 fields
 	ContractCreationBits *big.Int
 	YParityBits          *big.Int
 	TxSigs               []BatchV2Signature
@@ -29,7 +101,7 @@ type BatchV2TxsV3 struct {
 	TxDatas              []hexutil.Bytes
 }
 
-func (btx *BatchV2TxsV3) EncodeContractCreationBits() []byte {
+func (btx *BatchV2TxsV3) EncodeContractCreationBits(w io.Writer) error {
 	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
 	if btx.TotalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
@@ -46,10 +118,22 @@ func (btx *BatchV2TxsV3) EncodeContractCreationBits() []byte {
 		}
 		contractCreationBitBuffer[i/8] = byte(bits)
 	}
-	return contractCreationBitBuffer
+	if _, err := w.Write(contractCreationBitBuffer); err != nil {
+		return fmt.Errorf("cannot write contract creation bits: %w", err)
+	}
+	return nil
 }
 
-func (btx *BatchV2TxsV3) DecodeContractCreationBits(contractCreationBitBuffer []byte) {
+func (btx *BatchV2TxsV3) DecodeContractCreationBits(r *bytes.Reader) error {
+	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
+	if btx.TotalBlockTxCount%8 != 0 {
+		contractCreationBitBufferLen++
+	}
+	contractCreationBitBuffer := make([]byte, contractCreationBitBufferLen)
+	_, err := io.ReadFull(r, contractCreationBitBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to read contract creation bits: %w", err)
+	}
 	contractCreationBits := new(big.Int)
 	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
 		end := i + 8
@@ -63,11 +147,12 @@ func (btx *BatchV2TxsV3) DecodeContractCreationBits(contractCreationBitBuffer []
 		}
 	}
 	btx.ContractCreationBits = contractCreationBits
+	return nil
 }
 
-func (btx *BatchV2TxsV3) ContractCreationCount() (uint64, error) {
+func (btx *BatchV2TxsV3) ContractCreationCount() uint64 {
 	if btx.ContractCreationBits == nil {
-		return 0, errors.New("contract creation bits not set")
+		panic("contract creation bits not set")
 	}
 	var result uint64 = 0
 	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
@@ -76,10 +161,10 @@ func (btx *BatchV2TxsV3) ContractCreationCount() (uint64, error) {
 			result++
 		}
 	}
-	return result, nil
+	return result
 }
 
-func (btx *BatchV2TxsV3) EncodeYParityBits() []byte {
+func (btx *BatchV2TxsV3) EncodeYParityBits(w io.Writer) error {
 	yParityBitBufferLen := btx.TotalBlockTxCount / 8
 	if btx.TotalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
@@ -96,10 +181,76 @@ func (btx *BatchV2TxsV3) EncodeYParityBits() []byte {
 		}
 		yParityBitBuffer[i/8] = byte(bits)
 	}
-	return yParityBitBuffer
+	if _, err := w.Write(yParityBitBuffer); err != nil {
+		return fmt.Errorf("cannot write y parity bits: %w", err)
+	}
+	return nil
 }
 
-func (btx *BatchV2TxsV3) DecodeYParityBits(yParityBitBuffer []byte) {
+func (btx *BatchV2TxsV3) EncodeTxSigs(w io.Writer) error {
+	for _, txSig := range btx.TxSigs {
+		rBuf := txSig.R.Bytes32()
+		if _, err := w.Write(rBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig r: %w", err)
+		}
+		sBuf := txSig.S.Bytes32()
+		if _, err := w.Write(sBuf[:]); err != nil {
+			return fmt.Errorf("cannot write tx sig s: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxNonces(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, txNonce := range btx.TxNonces {
+		n := binary.PutUvarint(buf[:], txNonce)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx nonce: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxGases(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, txGas := range btx.TxGases {
+		n := binary.PutUvarint(buf[:], txGas)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write tx gas: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxTos(w io.Writer) error {
+	for _, txTo := range btx.TxTos {
+		if _, err := w.Write(txTo.Bytes()); err != nil {
+			return fmt.Errorf("cannot write tx to address: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) EncodeTxDatas(w io.Writer) error {
+	for _, txData := range btx.TxDatas {
+		if _, err := w.Write(txData); err != nil {
+			return fmt.Errorf("cannot write tx data: %w", err)
+		}
+	}
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeYParityBits(r *bytes.Reader) error {
+	yParityBitBufferLen := btx.TotalBlockTxCount / 8
+	if btx.TotalBlockTxCount%8 != 0 {
+		yParityBitBufferLen++
+	}
+	yParityBitBuffer := make([]byte, yParityBitBufferLen)
+	_, err := io.ReadFull(r, yParityBitBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to read y parity bits: %w", err)
+	}
 	yParityBits := new(big.Int)
 	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
 		end := i + 8
@@ -113,6 +264,85 @@ func (btx *BatchV2TxsV3) DecodeYParityBits(yParityBitBuffer []byte) {
 		}
 	}
 	btx.YParityBits = yParityBits
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeTxSigs(r *bytes.Reader) error {
+	txSigs := make([]BatchV2Signature, btx.TotalBlockTxCount)
+	var sigBuffer [32]byte
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		var txSig BatchV2Signature
+		_, err := io.ReadFull(r, sigBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig r: %w", err)
+		}
+		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		_, err = io.ReadFull(r, sigBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to read tx sig s: %w", err)
+		}
+		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		txSigs[i] = txSig
+	}
+	btx.TxSigs = txSigs
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeTxNonces(r *bytes.Reader) error {
+	txNonces := make([]uint64, btx.TotalBlockTxCount)
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		txNonce, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read tx nonce: %w", err)
+		}
+		txNonces[i] = txNonce
+	}
+	btx.TxNonces = txNonces
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeTxGases(r *bytes.Reader) error {
+	txGases := make([]uint64, btx.TotalBlockTxCount)
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		txGas, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read tx gas: %w", err)
+		}
+		txGases[i] = txGas
+	}
+	btx.TxGases = txGases
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeTxTos(r *bytes.Reader) error {
+	var txTos []common.Address
+	txToBuffer := make([]byte, common.AddressLength)
+	contractCreationCount := btx.ContractCreationCount()
+	for i := 0; i < int(btx.TotalBlockTxCount-contractCreationCount); i++ {
+		_, err := io.ReadFull(r, txToBuffer)
+		if err != nil {
+			return fmt.Errorf("failed to read tx to address: %w", err)
+		}
+		txTos = append(txTos, common.BytesToAddress(txToBuffer))
+	}
+	btx.TxTos = txTos
+	return nil
+}
+
+func (btx *BatchV2TxsV3) DecodeTxDatas(r *bytes.Reader) ([]int, error) {
+	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
+	txTypes := make([]int, btx.TotalBlockTxCount)
+	// Do not need txDataHeader because RLP byte stream already includes length info
+	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+		txData, txType, err := ReadTxData(r)
+		if err != nil {
+			return nil, err
+		}
+		txDatas[i] = txData
+		txTypes[i] = txType
+	}
+	btx.TxDatas = txDatas
+	return txTypes, nil
 }
 
 func (btx *BatchV2TxsV3) RecoverV(txTypes []int) {
@@ -138,133 +368,125 @@ func (btx *BatchV2TxsV3) RecoverV(txTypes []int) {
 }
 
 func (btx *BatchV2TxsV3) Encode(w io.Writer) error {
-	var buf [binary.MaxVarintLen64]byte
-	contractCreationBitBuffer := btx.EncodeContractCreationBits()
-	if _, err := w.Write(contractCreationBitBuffer); err != nil {
-		return fmt.Errorf("cannot write contract creation bits: %w", err)
+	encodeFuncs := []func() error{
+		func() error {
+			if err := btx.EncodeContractCreationBits(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeYParityBits(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxSigs(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxNonces(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxGases(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// Must be called after EncodeContractCreationBits
+			if err := btx.EncodeTxTos(w); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.EncodeTxDatas(w); err != nil {
+				return err
+			}
+			return nil
+		},
 	}
-	yParityBitBuffer := btx.EncodeYParityBits()
-	if _, err := w.Write(yParityBitBuffer); err != nil {
-		return fmt.Errorf("cannot write y parity bits: %w", err)
+
+	if len(BatchV2TxsV3FieldPerm) != len(encodeFuncs) {
+		panic("invalid permutation")
 	}
-	for _, txSig := range btx.TxSigs {
-		rBuf := txSig.R.Bytes32()
-		if _, err := w.Write(rBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig r: %w", err)
-		}
-		sBuf := txSig.S.Bytes32()
-		if _, err := w.Write(sBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig s: %w", err)
-		}
-	}
-	for _, txNonce := range btx.TxNonces {
-		n := binary.PutUvarint(buf[:], txNonce)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx nonce: %w", err)
-		}
-	}
-	for _, txGas := range btx.TxGases {
-		n := binary.PutUvarint(buf[:], txGas)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx gas: %w", err)
-		}
-	}
-	for _, txTo := range btx.TxTos {
-		if _, err := w.Write(txTo.Bytes()); err != nil {
-			return fmt.Errorf("cannot write tx to address: %w", err)
-		}
-	}
-	for _, txData := range btx.TxDatas {
-		if _, err := w.Write(txData); err != nil {
-			return fmt.Errorf("cannot write tx data: %w", err)
+	for _, idx := range BatchV2TxsV3FieldPerm {
+		encodeFunc := encodeFuncs[idx]
+		if err := encodeFunc(); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func (btx *BatchV2TxsV3) Decode(r *bytes.Reader) error {
-	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
-		contractCreationBitBufferLen++
+	var txTypes []int
+	decodeFuncs := []func() error{
+		func() error {
+			if err := btx.DecodeContractCreationBits(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeYParityBits(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxSigs(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxNonces(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			if err := btx.DecodeTxGases(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// Must be called after DecodeContractCreationBits
+			if err := btx.DecodeTxTos(r); err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			var err error
+			txTypes, err = btx.DecodeTxDatas(r)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
 	}
-	contractCreationBitBuffer := make([]byte, contractCreationBitBufferLen)
-	_, err := io.ReadFull(r, contractCreationBitBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to read contract creation bits: %w", err)
+
+	if len(BatchV2TxsV3FieldPerm) != len(decodeFuncs) {
+		panic("invalid permutation")
 	}
-	yParityBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
-		yParityBitBufferLen++
-	}
-	yParityBitBuffer := make([]byte, yParityBitBufferLen)
-	_, err = io.ReadFull(r, yParityBitBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to read y parity bits: %w", err)
-	}
-	txSigs := make([]BatchV2Signature, btx.TotalBlockTxCount)
-	var sigBuffer [32]byte
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		var txSig BatchV2Signature
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig r: %w", err)
-		}
-		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig s: %w", err)
-		}
-		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		txSigs[i] = txSig
-	}
-	txNonces := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txNonce, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read tx nonce: %w", err)
-		}
-		txNonces[i] = txNonce
-	}
-	txGases := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txGas, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read tx gas: %w", err)
-		}
-		txGases[i] = txGas
-	}
-	var txTos []common.Address
-	txToBuffer := make([]byte, common.AddressLength)
-	btx.DecodeContractCreationBits(contractCreationBitBuffer)
-	contractCreationCount, err := btx.ContractCreationCount()
-	if err != nil {
-		return err
-	}
-	for i := 0; i < int(btx.TotalBlockTxCount-contractCreationCount); i++ {
-		_, err := io.ReadFull(r, txToBuffer)
-		if err != nil {
-			return fmt.Errorf("failed to read tx to address: %w", err)
-		}
-		txTos = append(txTos, common.BytesToAddress(txToBuffer))
-	}
-	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
-	txTypes := make([]int, btx.TotalBlockTxCount)
-	// Do not need txDataHeader because RLP byte stream already includes length info
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		txData, txType, err := ReadTxData(r)
-		if err != nil {
+	for _, idx := range BatchV2TxsV3FieldPerm {
+		decodeFunc := decodeFuncs[idx]
+		if err := decodeFunc(); err != nil {
 			return err
 		}
-		txDatas[i] = txData
-		txTypes[i] = txType
 	}
-	btx.TxSigs = txSigs
-	btx.DecodeYParityBits(yParityBitBuffer)
+	// always do last
 	btx.RecoverV(txTypes)
-	btx.TxNonces = txNonces
-	btx.TxGases = txGases
-	btx.TxTos = txTos
-	btx.TxDatas = txDatas
 	return nil
 }
 
