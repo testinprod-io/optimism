@@ -64,7 +64,8 @@ Introduce version `1` to the [batch-format](./derivation.md#batch-format) table:
 
 Notation:
 `++`: concatenation of byte-strings.
-`anchor`: first L2 block in the span
+`span_start`: first L2 block in the span
+`span_end`: last L2 block in the span
 `uvarint`: unsigned Base128 varint, as defined in [protobuf spec]
 
 [protobuf spec]: https://protobuf.dev/programming-guides/encoding/#varints
@@ -72,11 +73,12 @@ Notation:
 Where:
 
 - `prefix = rel_timestamp ++ parent_check ++ l1_origin_check`
-  - `rel_timestamp`: relative time since genesis, i.e. `anchor.timestamp - config.genesis.timestamp`.
-  - `parent_check`: first 20 bytes of parent hash, i.e. `anchor.parent_hash[:20]`.
+  - `rel_timestamp`: relative time since genesis, i.e. `span_start.timestamp - config.genesis.timestamp`.
+  - `parent_check`: first 20 bytes of parent hash, i.e. `span_start.parent_hash[:20]`.
+  - `l1_origin_num`: the block number of the last L1 origin
   - `l1_origin_check`: to ensure the intended L1 origins of this span of
-        L2 blocks are consistent with the L1 chain, the blockhash of the last L1 origin is referenced.
-        The hash is truncated to 20 bytes for efficiency, i.e. `anchor.l1_origin.hash[:20]`.
+    L2 blocks are consistent with the L1 chain, the blockhash of the last L1 origin is referenced.
+    The hash is truncated to 20 bytes for efficiency, i.e. `span_end.l1_origin.hash[:20]`.
 - `payload = block_count ++ block_tx_counts ++ tx_data_headers ++ tx_data ++ tx_sigs`:
   - `block_count`: `uvarint` number of L2 blocks.
   - `origin_bits`: bitlist of `block_count` bits, right-padded to a multiple of 8 bits:
@@ -144,40 +146,44 @@ Span-batch rules, in validation order:
     which makes the later L2 blocks invalid.
   - Variables:
     - `origin_changed_bit = origin_bits[0]`: `true` if the first L2 block changed its L1 origin, `false` otherwise.
-    - `start_epoch_num = safe_l2_head.origin.block_number + (origin_changed_bit ? 1 : 0)`
-    - `end_epoch_num = safe_l2_head.origin.block_number + sum(origin_bits)`: block number of last referenced L1 origin
+    - `start_epoch_num = batch.l1_origin_num - sum(origin_bits) + (origin_changed_bit ? 1 : 0)`
+    - `end_epoch_num = batch.l1_origin_num`
   - Rules:
     - `start_epoch_num + sequence_window_size < inclusion_block_number` -> `drop`:
       i.e. the batch must be included timely.
-    - `end_epoch_num < epoch.number` -> `future`: i.e. all referenced L1 epochs must be there.
-    - `end_epoch_num == epoch.number`:
-      - If `batch.l1_origin_check != epoch.hash[:20]` -> `drop`: verify the batch is intended for this L1 chain.
-    - `end_epoch_num > epoch.number` -> `drop`: must have been duplicate batch,
-      we may be past this L1 block in the safe L2 chain.
+    - `start_epoch_num > epoch.number + 1` -> `drop`:
+      i.e. the L1 origin cannot change by more than one L1 block per L2 block.
+    - If `end_epoch_num >= inclusion_block_number` -> `drop`:
+      if the end of the span is past the L1 block it was included in,
+      it cannot possibly reference the chain it was included in, and is thus non-canonical.
+    - If `batch.l1_origin_check` does not match the canonical L1 chain at `end_epoch_num` -> `drop`:
+      verify the batch is intended for this L1 chain.
+    - `start_epoch_num < epoch.number` -> `drop`: must have been duplicate batch,
+      we may be past this L1 block in the safe L2 chain. If a span-batch overlaps with older information,
+      it is dropped, since partially valid span-batches are not accepted.
 - Max Sequencer time-drift checks:
   - Note: The max time-drift is enforced for the *batch as a whole*, to keep the possible output variants small.
   - Variables:
     - `block_input`: an L2 block from the span-batch,
       with L1 origin as derived from the `origin_bits` and now established canonical L1 chain.
-    - `next_epoch` is relative to the `block_input`,
-      and may reach to the next origin outside of the L1 origins of the span.
+    - `next_epoch`: `block_input.origin`'s next L1 block. it may reach to the next origin outside of the L1 origins of the span.
   - Rules:
     - For each `block_input` that can be read from the span-batch:
       - `block_input.timestamp < block_input.origin.time` -> `drop`: enforce the min L2 timestamp rule.
       - `block_input.timestamp > block_input.origin.time + max_sequencer_drift`: enforce the L2 timestamp drift rule,
         but with exceptions to preserve above min L2 timestamp invariant:
         - `len(block_input.transactions) == 0`:
-          - `epoch.number == batch.epoch_num`:
-            this implies the batch does not already advance the L1 origin,
+          - `origin_bits[i] == 0`: `i` is the index of `block_input` in the span batch.
+            So this implies the block_input did not advance the L1 origin,
             and must thus be checked against `next_epoch`.
             - If `next_epoch` is not known -> `undecided`:
               without the next L1 origin we cannot yet determine if time invariant could have been kept.
-            - If `batch.timestamp >= next_epoch.time` -> `drop`:
+            - If `block_input.timestamp >= next_epoch.time` -> `drop`:
               the batch could have adopted the next L1 origin without breaking the `L2 time >= L1 time` invariant.
-        - `len(batch.transactions) > 0`: -> `drop`:
+        - `len(block_input.transactions) > 0`: -> `drop`:
           when exceeding the sequencer time drift, never allow the sequencer to include transactions.
 - And for all transactions:
-  - `drop` if the `batch.transactions` list contains a transaction
+  - `drop` if the `batch.tx_data` list contains a transaction
     that is invalid or derived by other means exclusively:
     - any transaction that is empty (zero length `tx_data`)
     - any [deposited transactions][g-deposit-tx-type] (identified by the transaction type prefix byte in `tx_data`)

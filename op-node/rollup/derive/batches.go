@@ -158,5 +158,133 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 }
 
 func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SpanBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
+	log = batch.GetLogContext(log)
+
+	// sanity check we have consistent inputs
+	if len(l1Blocks) == 0 {
+		log.Warn("missing L1 block input, cannot proceed with batch checking")
+		return BatchUndecided
+	}
+	epoch := l1Blocks[0]
+
+	nextTimestamp := l2SafeHead.Time + cfg.BlockTime
+
+	if batch.BatchTimestamp > nextTimestamp {
+		log.Trace("received out-of-order batch for future processing after next batch", "next_timestamp", nextTimestamp)
+		return BatchFuture
+	}
+	if batch.BatchTimestamp < nextTimestamp {
+		log.Warn("dropping batch with old timestamp", "min_timestamp", nextTimestamp)
+		return BatchDrop
+	}
+
+	// dependent on above timestamp check. If the timestamp is correct, then it must build on top of the safe head.
+	if !batch.CheckParentHash(l2SafeHead.Hash) {
+		log.Warn("ignoring batch with mismatching parent hash", "current_safe_head", l2SafeHead.Hash)
+		return BatchDrop
+	}
+
+	start_epoch_num := batch.BlockOriginNums[0]
+
+	// Filter out batches that were included too late.
+	if start_epoch_num+cfg.SeqWindowSize < l1InclusionBlock.Number {
+		log.Warn("batch was included too late, sequence window expired")
+		return BatchDrop
+	}
+
+	// Check the L1 origin of the batch
+	if start_epoch_num > epoch.Number+1 {
+		log.Warn("batch is for future epoch too far ahead, while it has the next timestamp, so it must be invalid", "current_epoch", epoch.ID())
+		return BatchDrop
+	}
+
+	end_epoch_num := batch.BlockOriginNums[len(batch.BlockOriginNums)-1]
+	if end_epoch_num >= l1InclusionBlock.Number {
+		log.Warn("the end of the span batch cannot past the L1 block it was included in")
+		return BatchDrop
+	}
+
+	originChecked := false
+	for _, l1Block := range l1Blocks {
+		if l1Block.Number == end_epoch_num {
+			if !batch.CheckOriginHash(l1Block.Hash) {
+				log.Warn("batch is for different L1 chain, epoch hash does not match", "expected", l1Block.Hash)
+				return BatchDrop
+			}
+			originChecked = true
+		}
+	}
+	if !originChecked {
+		log.Info("need more l1 blocks to check entire origins of span batch")
+		return BatchUndecided
+	}
+
+	if start_epoch_num < epoch.Number {
+		log.Warn("dropped batch, epoch is too old", "minimum", epoch.ID())
+		return BatchDrop
+	}
+
+	originIdx := 0
+	originAdvanced := false
+	if start_epoch_num == epoch.Number+1 {
+		originAdvanced = true
+	}
+
+	for i := uint64(0); i < batch.BlockCount; i++ {
+		if i > 0 {
+			originAdvanced = false
+			if batch.BlockOriginNums[i] > batch.BlockOriginNums[i-1] {
+				originAdvanced = true
+			}
+		}
+		if originAdvanced {
+			originIdx += 1
+		}
+		l1Origin := l1Blocks[originIdx]
+		blockTimestamp := batch.BlockTimestamps[i]
+		if blockTimestamp < l1Origin.Time {
+			log.Warn("block timestamp is less than L1 origin timestamp", "l2_timestamp", blockTimestamp, "l1_timestamp", l1Origin.Time, "origin", l1Origin.ID())
+			return BatchDrop
+		}
+
+		// Check if we ran out of sequencer time drift
+		if max := l1Origin.Time + cfg.MaxSequencerDrift; blockTimestamp > max {
+			if batch.BlockTxCounts[i] == 0 {
+				// If the sequencer is co-operating by producing an empty batch,
+				// then allow the batch if it was the right thing to do to maintain the L2 time >= L1 time invariant.
+				// We only check batches that do not advance the epoch, to ensure epoch advancement regardless of time drift is allowed.
+				if !originAdvanced {
+					if originIdx+1 >= len(l1Blocks) {
+						log.Info("without the next L1 origin we cannot determine yet if this empty batch that exceeds the time drift is still valid")
+						return BatchUndecided
+					}
+					if blockTimestamp >= l1Blocks[originIdx+1].Time { // check if the next L1 origin could have been adopted
+						log.Info("batch exceeded sequencer time drift without adopting next origin, and next L1 origin would have been valid")
+						return BatchDrop
+					} else {
+						log.Info("continuing with empty batch before late L1 block to preserve L2 time invariant")
+					}
+				}
+			} else {
+				// If the sequencer is ignoring the time drift rule, then drop the batch and force an empty batch instead,
+				// as the sequencer is not allowed to include anything past this point without moving to the next epoch.
+				log.Warn("batch exceeded sequencer time drift, sequencer must adopt new L1 origin to include transactions again", "max_time", max)
+				return BatchDrop
+			}
+		}
+	}
+
+	// We can do this check earlier, but it's a more intensive one, so we do this last.
+	for i, txData := range batch.TxDatas {
+		if len(txData) == 0 {
+			log.Warn("transaction data must not be empty, but found empty tx", "tx_index", i)
+			return BatchDrop
+		}
+		if txData[0] == types.DepositTxType {
+			log.Warn("sequencers may not embed any deposits into batch data, but found tx that has one", "tx_index", i)
+			return BatchDrop
+		}
+	}
+
 	return BatchAccept
 }
