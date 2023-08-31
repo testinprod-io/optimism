@@ -18,6 +18,7 @@ type Config struct {
 	InSpanBatchDirectory string
 	OutDirectory         string
 	ChainID              *big.Int
+	Permutation          []int
 }
 
 func calcCompressedSize(data []byte) int {
@@ -36,7 +37,7 @@ func calcCompressedSize(data []byte) int {
 	return buf.Len()
 }
 
-func Compare(batchV2 convert.SpanBatchWithMetadata) (int, int) {
+func Compare(permutation *[]int, batchV2 convert.SpanBatchWithMetadata) (int, int) {
 	derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
 	spanBatchEncoded, err := batchV2.BatchV2.EncodeBytes()
 	if err != nil {
@@ -45,10 +46,9 @@ func Compare(batchV2 convert.SpanBatchWithMetadata) (int, int) {
 
 	spanBatchCompressedSizeA := calcCompressedSize(spanBatchEncoded)
 
-	//	derive.BatchV2TxsV3FieldPerm = []int{3, 0, 4, 1, 2, 6, 5}
-
 	// choose your permutation
-	derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 6, 5}
+	// derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 6, 5}
+	derive.BatchV2TxsV3FieldPerm = *permutation
 
 	spanBatchEncoded, err = batchV2.BatchV2.EncodeBytes()
 	if err != nil {
@@ -59,7 +59,7 @@ func Compare(batchV2 convert.SpanBatchWithMetadata) (int, int) {
 	// if delta is positive, our new permutation gives smaller size
 	delta := spanBatchCompressedSizeA - spanBatchCompressedSizeB
 
-	return delta , spanBatchCompressedSizeA
+	return delta, spanBatchCompressedSizeA
 }
 
 func Format(config Config) {
@@ -87,7 +87,7 @@ func Format(config Config) {
 		// always reset perm to pass span batch hash check
 		derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
 		batchV2 := analyze.LoadSpanBatch(batchV2Filename)
-		delta, originalCompressedSize := Compare(batchV2)
+		delta, originalCompressedSize := Compare(&config.Permutation, batchV2)
 		if delta >= 0 {
 			cnt++
 		}
