@@ -6,6 +6,8 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
@@ -264,6 +266,12 @@ func main() {
 					Value: "/tmp/span_batch_tester/format_result",
 					Usage: "Directory for the format result",
 				},
+				&cli.StringFlag{
+					Name:     "permutation",
+					Required: true,
+					Usage:    "permute 0123456 for experimentation",
+					Value:    "0123456",
+				},
 				&cli.IntFlag{
 					Name:     "chain-id",
 					Required: true,
@@ -275,10 +283,48 @@ func main() {
 				// transaction encoding type is always BatchV2TxsV3Type
 				derive.BatchV2TxsType = derive.BatchV2TxsV3Type
 				chainID := big.NewInt(cliCtx.Int64("chain-id"))
+				permutationStr := cliCtx.String("permutation")
+				if len(permutationStr) != 7 {
+					log.Fatalf("invalid permutation length: %d", len(permutationStr))
+				}
+				var permutation []int
+				for _, c := range permutationStr {
+					val, err := strconv.Atoi(string(c))
+					if err != nil {
+						log.Fatal(err)
+					}
+					permutation = append(permutation, val)
+				}
+				indexOf := func(target int) int {
+					for i, v := range permutation {
+						if v == target {
+							return i
+						}
+					}
+					return -1
+				}
+				// We MUST encode ContractCreationBits before Tos
+				// ContractCreationBits method index = 0
+				// Tos method index = 5
+				i := indexOf(0)
+				j := indexOf(5)
+				if i > j {
+					log.Fatalf("Invalid index: %s", permutationStr)
+				}
+				// check permutation is legit
+				temp := make([]int, 7)
+				copy(temp, permutation)
+				sort.Ints(temp)
+				for i := 0; i < 7; i++ {
+					if i != temp[i] {
+						log.Fatalf("invalid permutation: %s", permutationStr)
+					}
+				}
 				config := format.Config{
 					InSpanBatchDirectory: cliCtx.String("in-span-batch"),
 					OutDirectory:         cliCtx.String("out"),
 					ChainID:              chainID,
+					Permutation:          permutation,
 				}
 				format.Format(config)
 				return nil
