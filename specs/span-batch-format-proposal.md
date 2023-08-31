@@ -35,22 +35,22 @@ Where:
     1 bit per L2 block, indicating if the L1 origin changed this L2 block.
   - `block_tx_counts`: for each block, a `uvarint` of `len(block.transactions)`.
   - `txs`: L2 transactions which is reorganized and encoded as below.
-- `txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_nonces ++ tx_gases ++ tx_tos ++ tx_datas`
+- `txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_tos ++ tx_datas ++ tx_nonces ++ tx_gases`
   - `contract_creation_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating if transaction is a contract creation transaction.
   - `y_parity_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating the y parity value when recovering transaction sender address.
   - `tx_sigs`: concatenated list of transaction signatures
     - `r` is encoded as big-endian `uint256`
     - `s` is encoded as big-endian `uint256`
-  - `tx_nonces`: concatenated list of `uvarint` of `nonce` field.
-  - `tx_gases`:  concatenated list of `uvarint` of gas limits.
-    - `legacy`: `gasLimit`
-    - `1`: ([EIP-2930]): `gasLimit`
-    - `2`: ([EIP-1559]): `gas_limit`
   - `tx_tos`: concatenated list of `to` field. `to` field in contract creation transaction will be `nil` and ignored.
   - `tx_datas`: concatenated list of variable length rlp encoded data follwing [EIP-2718] encoded format using `TransactionType`.
     - `legacy`: `rlp_encode(value, gasPrice, data)`
     - `1`: ([EIP-2930]): `0x01 ++ rlp_encode(value, gasPrice, data, accessList)`
     - `2`: ([EIP-1559]): `0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)`
+  - `tx_nonces`: concatenated list of `uvarint` of `nonce` field.
+  - `tx_gases`:  concatenated list of `uvarint` of gas limits.
+    - `legacy`: `gasLimit`
+    - `1`: ([EIP-2930]): `gasLimit`
+    - `2`: ([EIP-1559]): `gas_limit`
 
 [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 
@@ -83,3 +83,7 @@ Our goal is to find the sweet spot on code complexity - span batch size tradeoff
 For legacy type transactions, `v = 2 * ChainID + y_parity`. For other types of transactions, `v = y_parity`. We may only store `y_parity`, which is single bit per L2 transction.
 
 This optimization will benefit more when ratio between number of legacy type transactions over number of transactions excluding deposit tx is higher. Deposit transactions are excluded in batches and are never written at L1 so excluded while analyzing.
+
+#### Adjust `txs` Data Layout for Better Compression
+
+There are (7 choose 2) * 5! = 2520 permutations of ordering fields of `txs`. It is not 7! because `contract_creation_bits` must be first decoded in order to decode `tx_tos`. We experimented to find out the best layout for compression. It turned out placing random data together(`TxSigs`, `TxTos`, `TxDatas`), then placing leftovers helped gzip to gain more size reduction.
