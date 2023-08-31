@@ -16,7 +16,10 @@ import (
 )
 
 // adjust this for permuting data layout
-var BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
+
+// confirm permutation
+// var BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
+var BatchV2TxsV3FieldPerm = []int{0, 1, 2, 5, 6, 3, 4}
 
 // possible permutations
 var BatchV2TxsV3FieldPerms = [][]int{}
