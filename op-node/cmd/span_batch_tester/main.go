@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/analyze"
+	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/batcher"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/convert"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/fetch"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/span_batch_tester/format"
@@ -281,6 +282,72 @@ func main() {
 					ChainID:              chainID,
 				}
 				format.Format(config)
+				return nil
+			},
+		},
+		{
+			Name: "batcher",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "l2",
+					Required: true,
+					Usage:    "L2 RPC URL",
+					EnvVars:  []string{"L2_RPC"},
+				},
+				&cli.Uint64Flag{
+					Name:     "genesis-timestamp",
+					Required: true,
+					Usage:    "l2 genesis bedrock timestamp",
+					EnvVars:  []string{"GENESIS_TIMESTAMP"},
+				},
+				&cli.IntFlag{
+					Name:     "start",
+					Required: true,
+					Usage:    "First L2 block (inclusive) to start merging",
+				},
+				&cli.IntFlag{
+					Name:     "end",
+					Required: true,
+					Usage:    "Last L2 block (exclusive) to stop merging",
+				},
+				&cli.IntFlag{
+					Name:     "channel-size",
+					Required: true,
+				},
+				&cli.StringFlag{
+					Name:  "in",
+					Value: "/tmp/span_batch_tester/batches_v0_cache",
+					Usage: "Cache directory for the found v0 batches",
+				},
+				&cli.StringFlag{
+					Name:  "out",
+					Value: "/tmp/span_batch_tester/merge",
+					Usage: "Cache directory for the merged results",
+				},
+			},
+			Action: func(cliCtx *cli.Context) error {
+				client, err := ethclient.Dial(cliCtx.String("l2"))
+				if err != nil {
+					log.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				chainID, err := client.ChainID(ctx)
+				if err != nil {
+					log.Fatal(err)
+				}
+				config := batcher.Config{
+					Start:            uint64(cliCtx.Int("start")),
+					End:              uint64(cliCtx.Int("end")),
+					InDirectory:      cliCtx.String("in"),
+					OutDirectory:     cliCtx.String("out"),
+					GenesisTimestamp: cliCtx.Uint64("genesis-timestamp"),
+					ChainID:          chainID,
+					ChannelSize:      cliCtx.Int("channel-size"),
+				}
+				if err := batcher.Batcher(client, config); err != nil {
+					return err
+				}
 				return nil
 			},
 		},
