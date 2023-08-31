@@ -295,6 +295,22 @@ func main() {
 					}
 					permutation = append(permutation, val)
 				}
+				indexOf := func(target int) int {
+					for i, v := range permutation {
+						if v == target {
+							return i
+						}
+					}
+					return -1
+				}
+				// We MUST encode ContractCreationBits before Tos
+				// ContractCreationBits method index = 0
+				// Tos method index = 5
+				i := indexOf(0)
+				j := indexOf(5)
+				if i > j {
+					log.Fatalf("Invalid index: %s", permutationStr)
+				}
 				// check permutation is legit
 				temp := make([]int, 7)
 				copy(temp, permutation)
