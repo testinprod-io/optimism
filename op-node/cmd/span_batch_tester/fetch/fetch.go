@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"log"
 	"math/big"
 	"os"
@@ -20,6 +21,7 @@ type Config struct {
 	ChainID            *big.Int
 	OutDirectory       string
 	ConcurrentRequests uint64
+	EmptyTx            bool
 }
 
 // Batches fetches blocks in the given block range (inclusive to exclusive)
@@ -64,6 +66,9 @@ func fetchBatchesPerBlock(client *ethclient.Client, l2BlockNumber *big.Int, conf
 	batch, _, err := derive.BlockToBatch(l2Block)
 	if err != nil {
 		return err
+	}
+	if config.EmptyTx {
+		batch.BatchV1.Transactions = []hexutil.Bytes{}
 	}
 	filename := path.Join(config.OutDirectory, fmt.Sprintf("%d.json", l2BlockNumber.Uint64()))
 	file, err := os.Create(filename)

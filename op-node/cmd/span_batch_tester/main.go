@@ -55,6 +55,10 @@ func main() {
 					Value: 10,
 					Usage: "Concurrency level when fetching L2",
 				},
+				&cli.BoolFlag{
+					Name:  "empty-tx",
+					Value: false,
+				},
 			},
 			Action: func(cliCtx *cli.Context) error {
 				client, err := ethclient.Dial(cliCtx.String("l2"))
@@ -73,6 +77,7 @@ func main() {
 					ChainID:            chainID,
 					OutDirectory:       cliCtx.String("out"),
 					ConcurrentRequests: uint64(cliCtx.Int("concurrent-requests")),
+					EmptyTx:            cliCtx.Bool("empty-tx"),
 				}
 				if err := fetch.Batches(client, config); err != nil {
 					return err
