@@ -35,6 +35,7 @@ var encodeBufferPool = sync.Pool{
 const (
 	SingularBatchType = iota
 	SpanBatchType
+	SpanBatchV2Type
 )
 
 type Batch interface {
@@ -76,8 +77,8 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	case SingularBatchType:
 		buf.WriteByte(SingularBatchType)
 		return rlp.Encode(buf, &b.SingularBatch)
-	case SpanBatchType:
-		buf.WriteByte(SpanBatchType)
+	case SpanBatchType, SpanBatchV2Type:
+		buf.WriteByte(byte(b.BatchType))
 		return b.SpanBatch.Encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
@@ -112,8 +113,9 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	case SingularBatchType:
 		b.BatchType = SingularBatchType
 		return rlp.DecodeBytes(data[1:], &b.SingularBatch)
-	case SpanBatchType:
-		b.BatchType = SpanBatchType
+	case SpanBatchType, SpanBatchV2Type:
+		b.BatchType = int(data[0])
+		b.SpanBatch.batchType = int(data[0])
 		return b.SpanBatch.DecodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
@@ -124,7 +126,7 @@ func (b *BatchData) GetBatch() (Batch, error) {
 	switch b.BatchType {
 	case SingularBatchType:
 		return &b.SingularBatch, nil
-	case SpanBatchType:
+	case SpanBatchType, SpanBatchV2Type:
 		return &b.SpanBatch, nil
 	default:
 		return nil, fmt.Errorf("unrecognized batch type: %d", b.BatchType)
@@ -138,9 +140,9 @@ func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 	}
 }
 
-func NewSpanBatchData(spanBatch SpanBatch) *BatchData {
+func NewSpanBatchData(spanBatch SpanBatch, batchType int) *BatchData {
 	return &BatchData{
-		BatchType: SpanBatchType,
+		BatchType: batchType,
 		SpanBatch: spanBatch,
 	}
 }

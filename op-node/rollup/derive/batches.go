@@ -33,7 +33,7 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 		}
 		singularBatch, _ := batch.Batch.(*SingularBatch)
 		return CheckSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
-	case SpanBatchType:
+	case SpanBatchType, SpanBatchV2Type:
 		spanBatch, _ := batch.Batch.(*SpanBatch)
 		if !cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			return BatchDrop

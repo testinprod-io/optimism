@@ -901,7 +901,7 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 			} else {
 				spanBatch.AppendSingularBatch(singularBatch)
 			}
-			batch := derive.NewSpanBatchData(*spanBatch)
+			batch := derive.NewSpanBatchData(*spanBatch, derive.SpanBatchType)
 			var buf bytes.Buffer
 			require.NoError(batch.EncodeRLP(&buf))
 			l = buf.Len()

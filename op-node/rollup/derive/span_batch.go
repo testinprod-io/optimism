@@ -45,13 +45,14 @@ type SpanBatchDerivedFields struct {
 }
 
 type SpanBatch struct {
+	batchType int
 	SpanBatchPrefix
 	SpanBatchPayload
 	SpanBatchDerivedFields
 }
 
 func (b *SpanBatch) GetBatchType() int {
-	return SpanBatchType
+	return b.batchType
 }
 
 func (b *SpanBatch) GetTimestamp() uint64 {
@@ -101,6 +102,39 @@ func (b *SpanBatchPayload) DecodeOriginBits(originBitBuffer []byte, blockCount u
 		}
 	}
 	b.OriginBits = originBits
+}
+
+func (b *SpanBatch) DecodeFeeRecipients(r *bytes.Reader) error {
+	if b.batchType < SpanBatchV2Type {
+		return nil
+	}
+	var idxs []uint64
+	cardinalFeeRecipentsCount := uint64(0)
+	for i := 0; i < int(b.BlockCount); i++ {
+		idx, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent index: %w", err)
+		}
+		idxs = append(idxs, idx)
+		if cardinalFeeRecipentsCount < idx+1 {
+			cardinalFeeRecipentsCount = idx + 1
+		}
+	}
+	var cardinalFeeRecipents []common.Address
+	for i := 0; i < int(cardinalFeeRecipentsCount); i++ {
+		feeRecipent := make([]byte, common.AddressLength)
+		_, err := io.ReadFull(r, feeRecipent)
+		if err != nil {
+			return fmt.Errorf("failed to read fee recipent address: %w", err)
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, common.BytesToAddress(feeRecipent))
+	}
+	b.FeeRecipents = make([]common.Address, 0)
+	for _, idx := range idxs {
+		feeRecipent := cardinalFeeRecipents[idx]
+		b.FeeRecipents = append(b.FeeRecipents, feeRecipent)
+	}
+	return nil
 }
 
 // DecodePrefix parses data into b.SpanBatchPrefix
@@ -163,6 +197,9 @@ func (b *SpanBatch) DecodePayload(r *bytes.Reader) error {
 	if err = b.Txs.Decode(r); err != nil {
 		return err
 	}
+	if err = b.DecodeFeeRecipients(r); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -217,6 +254,39 @@ func (b *SpanBatchPayload) EncodeOriginBits() []byte {
 	return originBitBuffer
 }
 
+// EncodeFeeRecipients parses data into b.FeeRecipents
+func (b *SpanBatch) EncodeFeeRecipients(w io.Writer) error {
+	if b.batchType < SpanBatchV2Type {
+		return nil
+	}
+	var buf [binary.MaxVarintLen64]byte
+	acc := uint64(0)
+	indexs := make(map[common.Address]uint64)
+	var cardinalFeeRecipents []common.Address
+	for _, feeRecipent := range b.FeeRecipents {
+		_, exists := indexs[feeRecipent]
+		if exists {
+			continue
+		}
+		cardinalFeeRecipents = append(cardinalFeeRecipents, feeRecipent)
+		indexs[feeRecipent] = acc
+		acc++
+	}
+	for _, feeReceipt := range b.FeeRecipents {
+		idx := indexs[feeReceipt]
+		n := binary.PutUvarint(buf[:], idx)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write fee recipent index: %w", err)
+		}
+	}
+	for _, cardinalFeeReceipt := range cardinalFeeRecipents {
+		if _, err := w.Write(cardinalFeeReceipt[:]); err != nil {
+			return fmt.Errorf("cannot write fee recipent address: %w", err)
+		}
+	}
+	return nil
+}
+
 func (b *SpanBatch) EncodePayload(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.BlockCount)
@@ -234,6 +304,9 @@ func (b *SpanBatch) EncodePayload(w io.Writer) error {
 		}
 	}
 	if err := b.Txs.Encode(w); err != nil {
+		return err
+	}
+	if err := b.EncodeFeeRecipients(w); err != nil {
 		return err
 	}
 	return nil
@@ -266,7 +339,7 @@ func NewSpanBatch(singularBatches []*SingularBatch, originChangedBit uint, genes
 	if len(singularBatches) == 0 {
 		return nil, errors.New("cannot merge empty singularBatch list")
 	}
-	b := SpanBatch{}
+	b := SpanBatch{batchType: SpanBatchType}
 	// Sort by timestamp of L2 block
 	sort.Slice(singularBatches, func(i, j int) bool {
 		return singularBatches[i].Timestamp < singularBatches[j].Timestamp

@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"math/rand"
@@ -68,6 +69,7 @@ func RandomSpanBatch(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, 
 		panic(err.Error())
 	}
 	spanBatch := SpanBatch{
+		batchType: SpanBatchType,
 		SpanBatchPrefix: SpanBatchPrefix{
 			RelTimestamp:  rng.Uint64(),
 			L1OriginNum:   rng.Uint64(),
@@ -83,6 +85,27 @@ func RandomSpanBatch(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, 
 	}
 	spanBatch.DeriveSpanBatchFields(blockTime, genesisTimestamp, chainId)
 	return &spanBatch
+}
+
+func RandomSpanBatchWithFeeRecipients(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, chainId *big.Int) *SpanBatch {
+	spanBatch := RandomSpanBatch(rng, blockTime, genesisTimestamp, chainId)
+	spanBatch.batchType = SpanBatchV2Type
+	// FeeRecipent length
+	N := int(spanBatch.BlockCount)
+	// cardinality of FeeRecipent
+	K := 1 + rng.Intn(5)
+	var addressSet []common.Address
+	for i := 0; i < K; i++ {
+		address := testutils.RandomAddress(rng)
+		addressSet = append(addressSet, address)
+	}
+	var addressList []common.Address
+	for i := 0; i < N; i++ {
+		addressIdx := uint64(rand.Intn(len(addressSet)))
+		addressList = append(addressList, addressSet[addressIdx])
+	}
+	spanBatch.FeeRecipents = addressList
+	return spanBatch
 }
 
 func RandomSingularBatch(rng *rand.Rand, txCount int) *SingularBatch {
@@ -125,7 +148,8 @@ func TestBatchRoundTrip(t *testing.T) {
 		},
 		NewSingularBatchData(*RandomSingularBatch(rng, 5)),
 		NewSingularBatchData(*RandomSingularBatch(rng, 7)),
-		NewSpanBatchData(*RandomSpanBatch(rng, blockTime, genesisTimestamp, chainId)),
+		NewSpanBatchData(*RandomSpanBatch(rng, blockTime, genesisTimestamp, chainId), SpanBatchType),
+		NewSpanBatchData(*RandomSpanBatchWithFeeRecipients(rng, blockTime, genesisTimestamp, chainId), SpanBatchV2Type),
 	}
 
 	for i, batch := range batches {
@@ -134,7 +158,7 @@ func TestBatchRoundTrip(t *testing.T) {
 		var dec BatchData
 		err = dec.UnmarshalBinary(enc)
 		assert.NoError(t, err)
-		if dec.BatchType == SpanBatchType {
+		if dec.BatchType == SpanBatchType || dec.BatchType == SpanBatchV2Type {
 			dec.SpanBatch.DeriveSpanBatchFields(blockTime, genesisTimestamp, chainId)
 		}
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
@@ -300,4 +324,33 @@ func TestSpanBatchSplitMerge(t *testing.T) {
 	endEpochNum := spanBatch.L1OriginNum
 	assert.True(t, endEpochNum == safeL2head.L1Origin.Number+originBitSum)
 	assert.True(t, endEpochNum == uint64(singularBatchs[len(singularBatchs)-1].EpochNum))
+}
+
+func TestSpsanBatchFeeRecipentsRoundTrip(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xcafe1338))
+
+	chainId := new(big.Int).SetUint64(rng.Uint64())
+	l2BlockTime := uint64(2)
+	genesisTimestamp := uint64(0)
+	buf := new(bytes.Buffer)
+	for i := 0; i < 8; i++ {
+		spanBatch := RandomSpanBatchWithFeeRecipients(rng, l2BlockTime, genesisTimestamp, chainId)
+
+		err := spanBatch.EncodeFeeRecipients(buf)
+		assert.NoError(t, err)
+
+		feeRecipentsEncoded := buf.Bytes()
+		buf.Reset()
+
+		originalFeeRecipents := spanBatch.FeeRecipents[:]
+		// remove field
+		spanBatch.FeeRecipents = spanBatch.FeeRecipents[:0]
+		r := bytes.NewReader(feeRecipentsEncoded)
+
+		err = spanBatch.DecodeFeeRecipients(r)
+		assert.NoError(t, err)
+
+		// check repopulated field is consistent
+		assert.Equal(t, originalFeeRecipents, spanBatch.FeeRecipents, "fee recipents not equal")
+	}
 }
