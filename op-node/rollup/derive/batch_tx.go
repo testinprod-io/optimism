@@ -21,37 +21,26 @@ type SpanBatchTx struct {
 }
 
 type SpanBatchLegacyTxData struct {
-	Nonce    uint64          // nonce of sender account
-	GasPrice *big.Int        // wei per gas
-	Gas      uint64          // gas limit
-	To       *common.Address `rlp:"nil"` // nil means contract creation
-	Value    *big.Int        // wei amount
-	Data     []byte          // contract invocation input data
+	Value    *big.Int // wei amount
+	GasPrice *big.Int // wei per gas
+	Data     []byte
 }
 
 func (txData SpanBatchLegacyTxData) txType() byte { return types.LegacyTxType }
 
 type SpanBatchAccessListTxData struct {
-	ChainID    *big.Int         // destination chain ID
-	Nonce      uint64           // nonce of sender account
-	GasPrice   *big.Int         // wei per gas
-	Gas        uint64           // gas limit
-	To         *common.Address  `rlp:"nil"` // nil means contract creation
-	Value      *big.Int         // wei amount
-	Data       []byte           // contract invocation input data
+	Value      *big.Int // wei amount
+	GasPrice   *big.Int // wei per gas
+	Data       []byte
 	AccessList types.AccessList // EIP-2930 access list
 }
 
 func (txData SpanBatchAccessListTxData) txType() byte { return types.AccessListTxType }
 
 type SpanBatchDynamicFeeTxData struct {
-	ChainID    *big.Int
-	Nonce      uint64
+	Value      *big.Int
 	GasTipCap  *big.Int // a.k.a. maxPriorityFeePerGas
 	GasFeeCap  *big.Int // a.k.a. maxFeePerGas
-	Gas        uint64
-	To         *common.Address `rlp:"nil"` // nil means contract creation
-	Value      *big.Int
 	Data       []byte
 	AccessList types.AccessList
 }
@@ -170,17 +159,17 @@ func (tx *SpanBatchTx) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-// ConvertToFullTx takes signature value and convert SpanBatchTx to types.Transaction
-func (tx SpanBatchTx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, error) {
+// ConvertToFullTx takes values and convert SpanBatchTx to types.Transaction
+func (tx SpanBatchTx) ConvertToFullTx(nonce, gas uint64, to *common.Address, chainID, V, R, S *big.Int) (*types.Transaction, error) {
 	var inner types.TxData
 	switch tx.Type() {
 	case types.LegacyTxType:
 		batchTxInner := tx.inner.(*SpanBatchLegacyTxData)
 		inner = &types.LegacyTx{
-			Nonce:    batchTxInner.Nonce,
+			Nonce:    nonce,
 			GasPrice: batchTxInner.GasPrice,
-			Gas:      batchTxInner.Gas,
-			To:       batchTxInner.To,
+			Gas:      gas,
+			To:       to,
 			Value:    batchTxInner.Value,
 			Data:     batchTxInner.Data,
 			V:        V,
@@ -190,11 +179,11 @@ func (tx SpanBatchTx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, err
 	case types.AccessListTxType:
 		batchTxInner := tx.inner.(*SpanBatchAccessListTxData)
 		inner = &types.AccessListTx{
-			ChainID:    batchTxInner.ChainID,
-			Nonce:      batchTxInner.Nonce,
+			ChainID:    chainID,
+			Nonce:      nonce,
 			GasPrice:   batchTxInner.GasPrice,
-			Gas:        batchTxInner.Gas,
-			To:         batchTxInner.To,
+			Gas:        gas,
+			To:         to,
 			Value:      batchTxInner.Value,
 			Data:       batchTxInner.Data,
 			AccessList: batchTxInner.AccessList,
@@ -205,12 +194,12 @@ func (tx SpanBatchTx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, err
 	case types.DynamicFeeTxType:
 		batchTxInner := tx.inner.(*SpanBatchDynamicFeeTxData)
 		inner = &types.DynamicFeeTx{
-			ChainID:    batchTxInner.ChainID,
-			Nonce:      batchTxInner.Nonce,
+			ChainID:    chainID,
+			Nonce:      nonce,
 			GasTipCap:  batchTxInner.GasTipCap,
 			GasFeeCap:  batchTxInner.GasFeeCap,
-			Gas:        batchTxInner.Gas,
-			To:         batchTxInner.To,
+			Gas:        gas,
+			To:         to,
 			Value:      batchTxInner.Value,
 			Data:       batchTxInner.Data,
 			AccessList: batchTxInner.AccessList,
@@ -224,38 +213,26 @@ func (tx SpanBatchTx) ConvertToFullTx(V, R, S *big.Int) (*types.Transaction, err
 	return types.NewTx(inner), nil
 }
 
-// NewSpanBatchTx creates a new spanBatch transaction.
 func NewSpanBatchTx(tx types.Transaction) (*SpanBatchTx, error) {
 	var inner SpanBatchTxData
 	switch tx.Type() {
 	case types.LegacyTxType:
 		inner = SpanBatchLegacyTxData{
-			Nonce:    tx.Nonce(),
 			GasPrice: tx.GasPrice(),
-			Gas:      tx.Gas(),
-			To:       tx.To(),
 			Value:    tx.Value(),
 			Data:     tx.Data(),
 		}
 	case types.AccessListTxType:
 		inner = SpanBatchAccessListTxData{
-			ChainID:    tx.ChainId(),
-			Nonce:      tx.Nonce(),
 			GasPrice:   tx.GasPrice(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
 			Value:      tx.Value(),
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
 		}
 	case types.DynamicFeeTxType:
 		inner = SpanBatchDynamicFeeTxData{
-			ChainID:    tx.ChainId(),
-			Nonce:      tx.Nonce(),
 			GasTipCap:  tx.GasTipCap(),
 			GasFeeCap:  tx.GasFeeCap(),
-			Gas:        tx.Gas(),
-			To:         tx.To(),
 			Value:      tx.Value(),
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),

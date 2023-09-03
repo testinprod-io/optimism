@@ -137,7 +137,7 @@ func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder,
 	if err != nil {
 		return nil, err
 	}
-	spanBatchBuilder := derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Hash, rcfg.Genesis.L2Time)
+	spanBatchBuilder := derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Hash, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	co, err := derive.NewChannelOut(c, cfg.BatchType, spanBatchBuilder)
 	if err != nil {
 		return nil, err

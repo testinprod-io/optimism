@@ -52,9 +52,9 @@ func mockHash(time uint64, layer uint8) common.Hash {
 	return hash
 }
 
-func b(timestamp uint64, epoch eth.L1BlockRef) *SingularBatch {
+func b(chainId *big.Int, timestamp uint64, epoch eth.L1BlockRef) *SingularBatch {
 	rng := rand.New(rand.NewSource(int64(timestamp)))
-	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
+	signer := types.NewLondonSigner(chainId)
 	tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 	txData, _ := tx.MarshalBinary()
 	return &SingularBatch{
@@ -66,7 +66,7 @@ func b(timestamp uint64, epoch eth.L1BlockRef) *SingularBatch {
 	}
 }
 
-func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*SingularBatch, blockCounts []int) []Batch {
+func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*SingularBatch, blockCounts []int, chainId *big.Int) []Batch {
 	var spanBatches []Batch
 	idx := 0
 	for i, count := range blockCounts {
@@ -81,7 +81,7 @@ func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*S
 		if parentOriginNum != singularBatches[idx].EpochNum {
 			originChangedBit = 1
 		}
-		err := span.MergeSingularBatches(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp)
+		err := span.MergeSingularBatches(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp, chainId)
 		require.NoError(t, err)
 		spanBatches = append(spanBatches, &span)
 		idx += count
@@ -203,6 +203,7 @@ func BatchQueueNewOrigin(t *testing.T, batchType int) {
 func BatchQueueEager(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlCrit)
 	l1 := L1Chain([]uint64{10, 20, 30})
+	chainId := big.NewInt(1234)
 	safeHead := eth.L2BlockRef{
 		Hash:           mockHash(10, 2),
 		Number:         0,
@@ -219,16 +220,17 @@ func BatchQueueEager(t *testing.T, batchType int) {
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     30,
 		SpanBatchTime:     getSpanBatchTime(batchType),
+		L2ChainID:         chainId,
 	}
 
-	singularBatches := []*SingularBatch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
+	singularBatches := []*SingularBatch{b(cfg.L2ChainID, 12, l1[0]), b(cfg.L2ChainID, 14, l1[0]), b(cfg.L2ChainID, 16, l1[0]), b(cfg.L2ChainID, 18, l1[0]), b(cfg.L2ChainID, 20, l1[0]), b(cfg.L2ChainID, 22, l1[0]), nil}
 	errors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
 	inputErrors := errors
 	var batches []Batch
 	if batchType == SpanBatchType {
 		spanBlockCounts := []int{1, 2, 3}
 		inputErrors = []error{nil, nil, nil, io.EOF}
-		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts, chainId)
 		batches = append(batches, nil)
 	} else {
 		for _, singularBatch := range singularBatches {
@@ -267,6 +269,7 @@ func BatchQueueEager(t *testing.T, batchType int) {
 func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlTrace)
 	l1 := L1Chain([]uint64{10, 15, 20, 25, 30})
+	chainId := big.NewInt(1234)
 	safeHead := eth.L2BlockRef{
 		Hash:           mockHash(10, 2),
 		Number:         0,
@@ -283,16 +286,17 @@ func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
 		SpanBatchTime:     getSpanBatchTime(batchType),
+		L2ChainID:         chainId,
 	}
 
-	singularBatches := []*SingularBatch{b(12, l1[0]), b(14, l1[0]), b(16, l1[0]), b(18, l1[0]), b(20, l1[0]), b(22, l1[0]), nil}
+	singularBatches := []*SingularBatch{b(cfg.L2ChainID, 12, l1[0]), b(cfg.L2ChainID, 14, l1[0]), b(cfg.L2ChainID, 16, l1[0]), b(cfg.L2ChainID, 18, l1[0]), b(cfg.L2ChainID, 20, l1[0]), b(cfg.L2ChainID, 22, l1[0]), nil}
 	errors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
 	inputErrors := errors
 	var batches []Batch
 	if batchType == SpanBatchType {
 		spanBlockCounts := []int{1, 2, 3}
 		inputErrors = []error{nil, nil, nil, io.EOF}
-		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts, chainId)
 		batches = append(batches, nil)
 	} else {
 		for _, singularBatch := range singularBatches {
@@ -372,6 +376,7 @@ func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 func BatchQueueMissing(t *testing.T, batchType int) {
 	log := testlog.Logger(t, log.LvlCrit)
 	l1 := L1Chain([]uint64{10, 15, 20, 25})
+	chainId := big.NewInt(1234)
 	safeHead := eth.L2BlockRef{
 		Hash:           mockHash(10, 2),
 		Number:         0,
@@ -388,18 +393,19 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 		MaxSequencerDrift: 600,
 		SeqWindowSize:     2,
 		SpanBatchTime:     getSpanBatchTime(batchType),
+		L2ChainID:         chainId,
 	}
 
 	// The batches at 18 and 20 are skipped to stop 22 from being eagerly processed.
 	// This test checks that batch timestamp 12 & 14 are created, 16 is used, and 18 is advancing the epoch.
 	// Due to the large sequencer time drift 16 is perfectly valid to have epoch 0 as origin.
-	singularBatches := []*SingularBatch{b(16, l1[0]), b(22, l1[1])}
+	singularBatches := []*SingularBatch{b(cfg.L2ChainID, 16, l1[0]), b(cfg.L2ChainID, 22, l1[1])}
 	inputErrors := []error{nil, nil}
 	var batches []Batch
 	if batchType == SpanBatchType {
 		spanBlockCounts := []int{1, 1}
 		inputErrors = []error{nil, nil, nil, io.EOF}
-		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts)
+		batches = buildSpanBatches(t, &safeHead, singularBatches, spanBlockCounts, chainId)
 	} else {
 		for _, singularBatch := range singularBatches {
 			batches = append(batches, singularBatch)

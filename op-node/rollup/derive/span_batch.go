@@ -8,8 +8,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -35,10 +33,8 @@ type SpanBatchPayload struct {
 	BlockCount    uint64
 	OriginBits    *big.Int
 	BlockTxCounts []uint64
-
-	// below fields may be generalized
-	TxDatas []hexutil.Bytes
-	TxSigs  []SpanBatchSignature
+	Txs           *SpanBatchTxs
+	FeeRecipents  []common.Address
 }
 
 type SpanBatchDerivedFields struct {
@@ -148,6 +144,7 @@ func (b *SpanBatch) DecodePayload(r *bytes.Reader) error {
 	if err != nil {
 		return fmt.Errorf("failed to read origin bits: %w", err)
 	}
+	b.DecodeOriginBits(originBitBuffer, blockCount)
 	blockTxCounts := make([]uint64, blockCount)
 	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(blockCount); i++ {
@@ -159,41 +156,13 @@ func (b *SpanBatch) DecodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	// Do not need txDataHeader because RLP byte stream already includes length info
-	txDatas := make([]hexutil.Bytes, totalBlockTxCount)
-	for i := 0; i < int(totalBlockTxCount); i++ {
-		txData, err := ReadTxData(r)
-		if err != nil {
-			return err
-		}
-		txDatas[i] = txData
-	}
-	txSigs := make([]SpanBatchSignature, totalBlockTxCount)
-	var sigBuffer [32]byte
-	for i := 0; i < int(totalBlockTxCount); i++ {
-		var txSig SpanBatchSignature
-		v, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig v: %w", err)
-		}
-		txSig.V = v
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig r: %w", err)
-		}
-		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		_, err = io.ReadFull(r, sigBuffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to read tx sig s: %w", err)
-		}
-		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		txSigs[i] = txSig
-	}
 	b.BlockCount = blockCount
-	b.DecodeOriginBits(originBitBuffer, blockCount)
 	b.BlockTxCounts = blockTxCounts
-	b.TxDatas = txDatas
-	b.TxSigs = txSigs
+	b.Txs = &SpanBatchTxs{}
+	b.Txs.TotalBlockTxCount = totalBlockTxCount
+	if err = b.Txs.Decode(r); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -264,24 +233,8 @@ func (b *SpanBatch) EncodePayload(w io.Writer) error {
 			return fmt.Errorf("cannot write block tx count: %w", err)
 		}
 	}
-	for _, txData := range b.TxDatas {
-		if _, err := w.Write(txData); err != nil {
-			return fmt.Errorf("cannot write block tx data: %w", err)
-		}
-	}
-	for _, txSig := range b.TxSigs {
-		n = binary.PutUvarint(buf[:], txSig.V)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write tx sig v: %w", err)
-		}
-		rBuf := txSig.R.Bytes32()
-		if _, err := w.Write(rBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig r: %w", err)
-		}
-		sBuf := txSig.S.Bytes32()
-		if _, err := w.Write(sBuf[:]); err != nil {
-			return fmt.Errorf("cannot write tx sig s: %w", err)
-		}
+	if err := b.Txs.Encode(w); err != nil {
+		return err
 	}
 	return nil
 }
@@ -309,7 +262,7 @@ func (b *SpanBatch) EncodeBytes() ([]byte, error) {
 }
 
 // MergeSingularBatches merges SingularBatch List and initialize single SpanBatch
-func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, originChangedBit uint, genesisTimestamp uint64) error {
+func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, originChangedBit uint, genesisTimestamp uint64, chainId *big.Int) error {
 	if len(singularBatches) == 0 {
 		return errors.New("cannot merge empty singularBatch list")
 	}
@@ -338,8 +291,7 @@ func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, origi
 		b.OriginBits.SetBit(b.OriginBits, i, bit)
 	}
 	var blockTxCounts []uint64
-	var txDatas []hexutil.Bytes
-	var txSigs []SpanBatchSignature
+	var txs [][]byte
 	var blockTimstamps []uint64
 	var blockOriginNums []uint64
 	for _, singularBatch := range singularBatches {
@@ -348,33 +300,15 @@ func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, origi
 		blockTimstamps = append(blockTimstamps, singularBatch.Timestamp)
 		blockOriginNums = append(blockOriginNums, uint64(singularBatch.EpochNum))
 		for _, rawTx := range singularBatch.Transactions {
-			// below segment may be generalized
-			var tx types.Transaction
-			if err := tx.UnmarshalBinary(rawTx); err != nil {
-				return errors.New("failed to decode tx")
-			}
-			var txSig SpanBatchSignature
-			v, r, s := tx.RawSignatureValues()
-			R, _ := uint256.FromBig(r)
-			S, _ := uint256.FromBig(s)
-			txSig.V = v.Uint64()
-			txSig.R = R
-			txSig.S = S
-			txSigs = append(txSigs, txSig)
-			spanBatchTx, err := NewSpanBatchTx(tx)
-			if err != nil {
-				return nil
-			}
-			txData, err := spanBatchTx.MarshalBinary()
-			if err != nil {
-				return nil
-			}
-			txDatas = append(txDatas, txData)
+			txs = append(txs, rawTx)
 		}
 	}
 	b.BlockTxCounts = blockTxCounts
-	b.TxDatas = txDatas
-	b.TxSigs = txSigs
+	spanBatchTxs, err := NewSpanBatchTxs(txs, chainId)
+	if err != nil {
+		return err
+	}
+	b.Txs = spanBatchTxs
 	b.BatchTimestamp = blockTimstamps[0]
 	b.BlockTimestamps = blockTimstamps
 	b.BlockOriginNums = blockOriginNums
@@ -386,7 +320,6 @@ func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, origi
 // Cannot fill every SingularBatch parent hash
 func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch, error) {
 	singularBatches := make([]*SingularBatch, b.BlockCount)
-	txIdx := 0
 	originIdx := -1
 	for i := 0; i < len(l1Origins); i++ {
 		if l1Origins[i].Number == b.BlockOriginNums[0] {
@@ -397,6 +330,11 @@ func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch
 	if originIdx == -1 {
 		return nil, fmt.Errorf("cannot find L1 origin")
 	}
+	txs, err := b.Txs.FullTxs()
+	if err != nil {
+		return nil, err
+	}
+	txIdx := 0
 	for i := 0; i < int(b.BlockCount); i++ {
 		singularBatch := SingularBatch{}
 		singularBatch.Timestamp = b.BlockTimestamps[i]
@@ -406,23 +344,8 @@ func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch
 		}
 		singularBatch.EpochHash = l1Origins[originIdx].Hash
 
-		for txIndex := 0; txIndex < int(b.BlockTxCounts[i]); txIndex++ {
-			var spanBatchTx SpanBatchTx
-			if err := spanBatchTx.UnmarshalBinary(b.TxDatas[txIdx]); err != nil {
-				return nil, err
-			}
-			v := new(big.Int).SetUint64(b.TxSigs[txIdx].V)
-			r := b.TxSigs[txIdx].R.ToBig()
-			s := b.TxSigs[txIdx].S.ToBig()
-			tx, err := spanBatchTx.ConvertToFullTx(v, r, s)
-			if err != nil {
-				return nil, err
-			}
-			encodedTx, err := tx.MarshalBinary()
-			if err != nil {
-				return nil, err
-			}
-			singularBatch.Transactions = append(singularBatch.Transactions, encodedTx)
+		for j := 0; j < int(b.BlockTxCounts[i]); j++ {
+			singularBatch.Transactions = append(singularBatch.Transactions, txs[txIdx])
 			txIdx++
 		}
 		singularBatches[i] = &singularBatch
@@ -449,7 +372,7 @@ func (b *SpanBatch) SplitSpanBatchCheckValidation(l1Origins []eth.L1BlockRef, sa
 	return singularBatches, nil
 }
 
-func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64) {
+func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64, chainId *big.Int) {
 	b.BatchTimestamp = b.RelTimestamp + genesisTimestamp
 	b.BlockTimestamps = make([]uint64, b.BlockCount)
 	b.BlockOriginNums = make([]uint64, b.BlockCount)
@@ -462,6 +385,9 @@ func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64) {
 			l1OriginBlockNumber--
 		}
 	}
+
+	b.Txs.ChainID = chainId
+	b.Txs.RecoverV()
 	b.IsDerived = true
 }
 
@@ -476,28 +402,9 @@ func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
 	b.L1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
 	b.BlockTxCounts = append(b.BlockTxCounts, uint64(len(singularBatch.Transactions)))
 	for _, rawTx := range singularBatch.Transactions {
-		// below segment may be generalized
-		var tx types.Transaction
-		if err := tx.UnmarshalBinary(rawTx); err != nil {
-			return errors.New("failed to decode tx")
-		}
-		var txSig SpanBatchSignature
-		v, r, s := tx.RawSignatureValues()
-		R, _ := uint256.FromBig(r)
-		S, _ := uint256.FromBig(s)
-		txSig.V = v.Uint64()
-		txSig.R = R
-		txSig.S = S
-		b.TxSigs = append(b.TxSigs, txSig)
-		spanBatchTx, err := NewSpanBatchTx(tx)
-		if err != nil {
+		if err := b.Txs.AppendTx(rawTx); err != nil {
 			return err
 		}
-		txData, err := spanBatchTx.MarshalBinary()
-		if err != nil {
-			return err
-		}
-		b.TxDatas = append(b.TxDatas, txData)
 	}
 	b.BlockTimestamps = append(b.BlockTimestamps, singularBatch.Timestamp)
 	b.BlockOriginNums = append(b.BlockOriginNums, uint64(singularBatch.EpochNum))
@@ -507,13 +414,15 @@ func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
 type SpanBatchBuilder struct {
 	parentEpochHash  common.Hash
 	genesisTimestamp uint64
+	chainId          *big.Int
 	spanBatch        *SpanBatch
 }
 
-func NewSpanBatchBuilder(parentEpochHash common.Hash, genesisTimestamp uint64) *SpanBatchBuilder {
+func NewSpanBatchBuilder(parentEpochHash common.Hash, genesisTimestamp uint64, chainId *big.Int) *SpanBatchBuilder {
 	return &SpanBatchBuilder{
 		parentEpochHash:  parentEpochHash,
 		genesisTimestamp: genesisTimestamp,
+		chainId:          chainId,
 		spanBatch:        &SpanBatch{},
 	}
 }
@@ -524,7 +433,7 @@ func (b *SpanBatchBuilder) AppendSingularBatch(singularBatch *SingularBatch) err
 		if singularBatch.EpochHash != b.parentEpochHash {
 			originChangedBit = 1
 		}
-		return b.spanBatch.MergeSingularBatches([]*SingularBatch{singularBatch}, uint(originChangedBit), b.genesisTimestamp)
+		return b.spanBatch.MergeSingularBatches([]*SingularBatch{singularBatch}, uint(originChangedBit), b.genesisTimestamp, b.chainId)
 	}
 	return b.spanBatch.AppendSingularBatch(singularBatch)
 }
@@ -542,25 +451,26 @@ func (b *SpanBatchBuilder) Reset() {
 }
 
 // ReadTxData reads raw RLP tx data from reader
-func ReadTxData(r *bytes.Reader) ([]byte, error) {
+func ReadTxData(r *bytes.Reader) ([]byte, int, error) {
 	var txData []byte
 	offset, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+		return nil, 0, fmt.Errorf("failed to seek tx reader: %w", err)
 	}
 	b, err := r.ReadByte()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read tx initial byte: %w", err)
+		return nil, 0, fmt.Errorf("failed to read tx initial byte: %w", err)
 	}
+	txType := byte(0)
 	if int(b) <= 0x7F {
 		// EIP-2718: non legacy tx so write tx type
-		txType := byte(b)
+		txType = byte(b)
 		txData = append(txData, txType)
 	} else {
 		// legacy tx: seek back single byte to read prefix again
 		_, err = r.Seek(offset, io.SeekStart)
 		if err != nil {
-			return nil, fmt.Errorf("failed to seek tx reader: %w", err)
+			return nil, 0, fmt.Errorf("failed to seek tx reader: %w", err)
 		}
 	}
 	// TODO: set maximum inputLimit
@@ -569,14 +479,14 @@ func ReadTxData(r *bytes.Reader) ([]byte, error) {
 	kind, _, err := s.Kind()
 	switch {
 	case err != nil:
-		return nil, fmt.Errorf("failed to read tx RLP prefix: %w", err)
+		return nil, 0, fmt.Errorf("failed to read tx RLP prefix: %w", err)
 	case kind == rlp.List:
 		if txPayload, err = s.Raw(); err != nil {
-			return nil, fmt.Errorf("failed to read tx RLP payload: %w", err)
+			return nil, 0, fmt.Errorf("failed to read tx RLP payload: %w", err)
 		}
 	default:
-		return nil, errors.New("tx RLP prefix type must be list")
+		return nil, 0, errors.New("tx RLP prefix type must be list")
 	}
 	txData = append(txData, txPayload...)
-	return txData, nil
+	return txData, int(txType), nil
 }

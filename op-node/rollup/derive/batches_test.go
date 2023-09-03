@@ -556,7 +556,8 @@ func TestValidSpanBatch(t *testing.T) {
 	}
 
 	rng := rand.New(rand.NewSource(1234))
-	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
+	chainId := new(big.Int).SetUint64(rng.Uint64())
+	signer := types.NewLondonSigner(chainId)
 	randTx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 	randTxData, _ := randTx.MarshalBinary()
 	l1A := testutils.RandomBlockRef(rng)
@@ -1183,9 +1184,9 @@ func TestValidSpanBatch(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			var spanBatch SpanBatch
-			require.NoError(t, spanBatch.MergeSingularBatches(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time))
+			require.NoError(t, spanBatch.MergeSingularBatches(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time, chainId))
 			if testCase.TxData != nil {
-				spanBatch.TxDatas = testCase.TxData
+				spanBatch.Txs.TxDatas = testCase.TxData
 			}
 			input := BatchWithL1InclusionBlock{
 				L1InclusionBlock: testCase.L1InclusionBlock,

@@ -275,7 +275,7 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 	}
 
 	// We can do this check earlier, but it's a more intensive one, so we do this last.
-	for i, txData := range batch.TxDatas {
+	for i, txData := range batch.Txs.TxDatas {
 		if len(txData) == 0 {
 			log.Warn("transaction data must not be empty, but found empty tx", "tx_index", i)
 			return BatchDrop

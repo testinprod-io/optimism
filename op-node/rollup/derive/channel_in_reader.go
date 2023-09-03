@@ -89,7 +89,7 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 	}
 	spanBatch, ok := batch.(*SpanBatch)
 	if ok {
-		spanBatch.DeriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time)
+		spanBatch.DeriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
 	}
 	return batch, nil
 }
