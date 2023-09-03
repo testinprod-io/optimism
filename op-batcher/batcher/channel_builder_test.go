@@ -887,7 +887,7 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 	require.Zero(cb.InputBytes())
 
 	var l int
-	var spanBatch derive.SpanBatch
+	var spanBatch *derive.SpanBatch
 	for i := 0; i < 5; i++ {
 		block := newMiniL2Block(rng.Intn(32))
 		if batchType == derive.SingularBatchType {
@@ -896,11 +896,12 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 			singularBatch, _, err := derive.BlockToSingularBatch(block)
 			require.NoError(err)
 			if i == 0 {
-				spanBatch.MergeSingularBatches([]*derive.SingularBatch{singularBatch}, 0, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+				spanBatch, err = derive.NewSpanBatch([]*derive.SingularBatch{singularBatch}, 0, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+				require.NoError(err)
 			} else {
 				spanBatch.AppendSingularBatch(singularBatch)
 			}
-			batch := derive.NewSpanBatchData(spanBatch)
+			batch := derive.NewSpanBatchData(*spanBatch)
 			var buf bytes.Buffer
 			require.NoError(batch.EncodeRLP(&buf))
 			l = buf.Len()

@@ -38,7 +38,7 @@ type SpanBatchPayload struct {
 }
 
 type SpanBatchDerivedFields struct {
-	IsDerived       bool
+	isDerived       bool
 	BatchTimestamp  uint64
 	BlockTimestamps []uint64
 	BlockOriginNums []uint64
@@ -55,14 +55,14 @@ func (b *SpanBatch) GetBatchType() int {
 }
 
 func (b *SpanBatch) GetTimestamp() uint64 {
-	if !b.IsDerived {
+	if !b.isDerived {
 		panic("Span batch fields are not derived yet")
 	}
 	return b.BatchTimestamp
 }
 
 func (b *SpanBatch) GetEpochNum() rollup.Epoch {
-	if !b.IsDerived {
+	if !b.isDerived {
 		panic("Span batch fields are not derived yet")
 	}
 	return rollup.Epoch(b.BlockOriginNums[0])
@@ -261,11 +261,12 @@ func (b *SpanBatch) EncodeBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// MergeSingularBatches merges SingularBatch List and initialize single SpanBatch
-func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, originChangedBit uint, genesisTimestamp uint64, chainId *big.Int) error {
+// NewSpanBatch merges SingularBatch List and initialize single SpanBatch
+func NewSpanBatch(singularBatches []*SingularBatch, originChangedBit uint, genesisTimestamp uint64, chainId *big.Int) (*SpanBatch, error) {
 	if len(singularBatches) == 0 {
-		return errors.New("cannot merge empty singularBatch list")
+		return nil, errors.New("cannot merge empty singularBatch list")
 	}
+	b := SpanBatch{}
 	// Sort by timestamp of L2 block
 	sort.Slice(singularBatches, func(i, j int) bool {
 		return singularBatches[i].Timestamp < singularBatches[j].Timestamp
@@ -306,19 +307,22 @@ func (b *SpanBatch) MergeSingularBatches(singularBatches []*SingularBatch, origi
 	b.BlockTxCounts = blockTxCounts
 	spanBatchTxs, err := NewSpanBatchTxs(txs, chainId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	b.Txs = spanBatchTxs
 	b.BatchTimestamp = blockTimstamps[0]
 	b.BlockTimestamps = blockTimstamps
 	b.BlockOriginNums = blockOriginNums
-	b.IsDerived = true
-	return nil
+	b.isDerived = true
+	return &b, nil
 }
 
 // SplitSpanBatch splits single SpanBatch and initialize SingularBatch lists
 // Cannot fill every SingularBatch parent hash
 func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch, error) {
+	if !b.isDerived {
+		panic("Span batch fields are not derived yet")
+	}
 	singularBatches := make([]*SingularBatch, b.BlockCount)
 	originIdx := -1
 	for i := 0; i < len(l1Origins); i++ {
@@ -353,25 +357,6 @@ func (b *SpanBatch) SplitSpanBatch(l1Origins []eth.L1BlockRef) ([]*SingularBatch
 	return singularBatches, nil
 }
 
-// SplitSpanBatchCheckValidation splits single SpanBatch and initialize SingularBatch lists and validates ParentCheck and L1OriginCheck
-// Cannot fill in SingularBatch parent hash except the first SingularBatch because we cannot trust other L2s yet.
-func (b *SpanBatch) SplitSpanBatchCheckValidation(l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef) ([]*SingularBatch, error) {
-	singularBatches, err := b.SplitSpanBatch(l1Origins)
-	if err != nil {
-		return nil, err
-	}
-	// set only the first singularBatch's parent hash
-	singularBatches[0].ParentHash = safeL2Head.Hash
-	if !bytes.Equal(safeL2Head.Hash.Bytes()[:20], b.ParentCheck) {
-		return nil, errors.New("parent hash mismatch")
-	}
-	l1OriginBlockHash := singularBatches[len(singularBatches)-1].EpochHash
-	if !bytes.Equal(l1OriginBlockHash[:20], b.L1OriginCheck) {
-		return nil, errors.New("l1 origin hash mismatch")
-	}
-	return singularBatches, nil
-}
-
 func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64, chainId *big.Int) {
 	b.BatchTimestamp = b.RelTimestamp + genesisTimestamp
 	b.BlockTimestamps = make([]uint64, b.BlockCount)
@@ -388,7 +373,7 @@ func (b *SpanBatch) DeriveSpanBatchFields(blockTime, genesisTimestamp uint64, ch
 
 	b.Txs.ChainID = chainId
 	b.Txs.RecoverV()
-	b.IsDerived = true
+	b.isDerived = true
 }
 
 func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) error {
@@ -433,7 +418,12 @@ func (b *SpanBatchBuilder) AppendSingularBatch(singularBatch *SingularBatch) err
 		if singularBatch.EpochHash != b.parentEpochHash {
 			originChangedBit = 1
 		}
-		return b.spanBatch.MergeSingularBatches([]*SingularBatch{singularBatch}, uint(originChangedBit), b.genesisTimestamp, b.chainId)
+		spanBatch, err := NewSpanBatch([]*SingularBatch{singularBatch}, uint(originChangedBit), b.genesisTimestamp, b.chainId)
+		if err != nil {
+			return err
+		}
+		b.spanBatch = spanBatch
+		return nil
 	}
 	return b.spanBatch.AppendSingularBatch(singularBatch)
 }

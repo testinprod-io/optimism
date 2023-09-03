@@ -70,7 +70,6 @@ func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*S
 	var spanBatches []Batch
 	idx := 0
 	for i, count := range blockCounts {
-		var span SpanBatch
 		originChangedBit := 0
 		var parentOriginNum rollup.Epoch
 		if i == 0 {
@@ -81,9 +80,9 @@ func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*S
 		if parentOriginNum != singularBatches[idx].EpochNum {
 			originChangedBit = 1
 		}
-		err := span.MergeSingularBatches(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp, chainId)
+		span, err := NewSpanBatch(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp, chainId)
 		require.NoError(t, err)
-		spanBatches = append(spanBatches, &span)
+		spanBatches = append(spanBatches, span)
 		idx += count
 	}
 	return spanBatches

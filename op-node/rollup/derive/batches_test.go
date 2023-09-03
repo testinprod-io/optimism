@@ -1183,14 +1183,14 @@ func TestValidSpanBatch(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			var spanBatch SpanBatch
-			require.NoError(t, spanBatch.MergeSingularBatches(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time, chainId))
+			spanBatch, err := NewSpanBatch(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time, chainId)
+			require.NoError(t, err)
 			if testCase.TxData != nil {
 				spanBatch.Txs.TxDatas = testCase.TxData
 			}
 			input := BatchWithL1InclusionBlock{
 				L1InclusionBlock: testCase.L1InclusionBlock,
-				Batch:            &spanBatch,
+				Batch:            spanBatch,
 			}
 			validity := CheckBatch(&conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &input)
 			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
