@@ -74,11 +74,10 @@ Notation:
 Where:
 
 - `prefix = rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check`
-  - `rel_timestamp`: relative time since genesis, i.e. `span_start.timestamp - config.genesis.timestamp`.
-  - `l1_origin_num`: `uvarint` number of l1 origin number.
+  - `rel_timestamp`: `uvarint` relative timestamp since L2 genesis, i.e. `span_start.timestamp - config.genesis.timestamp`.
+  - `l1_origin_num`: `uvarint` number of last l1 origin number. i.e. `span_end.l1_origin.number`
   - `parent_check`: first 20 bytes of parent hash, the hash is truncated to 20 bytes for efficiency, i.e. `span_start.parent_hash[:20]`.
-  - `l1_origin_check`: to ensure the intended L1 origins of this span of
-    L2 blocks are consistent with the L1 chain, the blockhash of the last L1 origin is referenced.
+  - `l1_origin_check`: the block hash of the last L1 origin is referenced.
     The hash is truncated to 20 bytes for efficiency, i.e. `span_end.l1_origin.hash[:20]`.
 - `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs`:
   - `block_count`: `uvarint` number of L2 blocks.
@@ -116,8 +115,8 @@ Where:
 - `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs ++ fee_recipients`:
   - Every field definition identical to `batch_version` 1 except that `fee_recipients` is added to support decentralized sequencer.
   - `fee_recipients = fee_recipients_idxs + fee_recipients_set`
-    - `fee_recipients_sets`: concatenated list of unique L2 fee recipient address.
-    - `fee_recipients_idxs`: for each block, `uvarint` number of index to decode fee recipients from `fee_recipients_sets`.
+    - `fee_recipients_set`: concatenated list of unique L2 fee recipient address.
+    - `fee_recipients_idxs`: for each block, `uvarint` number of index to decode fee recipients from `fee_recipients_set`.
 
 [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 
@@ -143,7 +142,7 @@ Every transaction has chain id. We do not need to include chain id in span batch
 
 ### Reorganization of constant length transaction fields
 
-`signature`, `nonce`, `gaslimit`, `to` field are constant size, so these were split up completely and are grouped into individual arrays. This adds more complexity, but organizes data for improved compression.
+`signature`, `nonce`, `gaslimit`, `to` field are constant size, so these were split up completely and are grouped into individual arrays. This adds more complexity, but organizes data for improved compression by grouping data with similar data pattern.
 
 ### RLP encoding for only variable length fields
 
@@ -168,31 +167,24 @@ Let `K` := number of unique fee recipients(cardinality) per span batch. Let `N` 
 we thought sequencer rotation happens not much often, so assumed that `K` will be much lesser than `N`. The assumption makes upper inequality to hold. Therefore we decided to manage `fee_recipients_idxs` and `fee_recipients_set` separately. More complexity but less data size.
 
 ## How derivation works with Span Batch?
-1. Check if this batch is acceptable with the BatchQueue's rule.
-2. Prepare a
-```python
-# We already checked if the batch is acceptable
-l2_blocks = [L2Block() for _ in range(payload.block_count)]
-current_l1_origin = prefix.l1_origin_num - sum(payload.origin_bits)
-current_l2_timestamp = prefix.rel_timestamp + config.genesis.timestamp
-
-tx_count = 0
-for l2_block in enumerate(block_idx, l2_blocks):
-  l2_block.set_blocktime(current_l2_timestamp)
-  current_l2_timestamp += config.blocktime
-
-  for _ in payload.block_tx_counts[block_idx]:
-    l2_block.add_transaction(txs[tx_count])
-    tx_count += 1
-
-  if payload.origin_bits[block_idx] == 1:
-    # This L2 block is affected by the L1
-    l2_block.process_inbox_by_l1_number(current_l1_origin)
-    current_l1_origin += 1
-
-  # this L2 block is ready.
-  l2_block.send_to_engine()
-```
+- Block Timestamp
+  - The first L2 block's block timestamp is `rel_timestamp + L2Genesis.Timestamp`.
+  - Then we can derive other blocks timestamp by adding L2 block time for each.
+- L1 Origin Number
+  - The parent of the first L2 block's L1 origin number is `l1_origin_num - sum(origin_bits)`
+  - Then we can derive other blocks' L1 origin number with `origin_bits`
+  - `ith block's L1 origin number = (i-1)th block's L1 origin number + (oribin_bits[i] ? 1 : 0)`
+- L1 Origin Hash
+  - We only need the `l1_origin_check`, the truncated L1 origin hash of the last L2 block of Span Batch.
+  - If the last block references canonical L1 chain as its origin, we can ensure the all other blocks' origins are consistent with the canonical L1 chain.
+- Parent hash
+  - In V0 Batch spec, we need batch's parent hash to validate if batch's parent is consistent with current L2 safe head.
+  - But in the case of Span Batch, because it contains consecutive L2 blocks in the span, we don't need to validate all blocks' parent hash except the first block.
+- Transactions
+  - Deposit transactions can be derived from its L1 origin, identical with V0 batch.
+  - User transactions can be derived by following way:
+    - Recover `V` value of TX signature from `y_parity_bits` and L2 chainId, as described in optimization strategies.
+    - When parsing `tx_tos`, `contract_creation_bits` is used to determine if the TX has `to` value or not.
 
 ## Integration
 
@@ -200,11 +192,7 @@ for l2_block in enumerate(block_idx, l2_blocks):
 
 The Channel Reader decodes the span-batch, as described in the [span-batch format](#span-batch-format).
 
-A set of derived attributes is computed, cached with the decoded result:
-
-- `l2_blocks_count`: number of L2 blocks in the span-batch
-- `start_timestamp`: `config.genesis.timestamp + batch.rel_timestamp`
-- `epoch_end`:
+A set of derived attributes is computed as described above. Then cached with the decoded result:
 
 ### Batch Queue
 
@@ -230,40 +218,43 @@ Span-batch rules, in validation order:
     which makes the later L2 blocks invalid.
   - Variables:
     - `origin_changed_bit = origin_bits[0]`: `true` if the first L2 block changed its L1 origin, `false` otherwise.
-    - `start_epoch_num = safe_l2_head.origin.block_number + (origin_changed_bit ? 1 : 0)`
-    - `end_epoch_num = safe_l2_head.origin.block_number + sum(origin_bits)`: block number of last referenced L1 origin
+    - `start_epoch_num = batch.l1_origin_num - sum(origin_bits) + (origin_changed_bit ? 1 : 0)`
+    - `end_epoch_num = batch.l1_origin_num`
   - Rules:
     - `start_epoch_num + sequence_window_size < inclusion_block_number` -> `drop`:
       i.e. the batch must be included timely.
-    - `end_epoch_num < epoch.number` -> `future`: i.e. all referenced L1 epochs must be there.
-    - `end_epoch_num == epoch.number`:
-      - If `batch.l1_origin_check != epoch.hash[:20]` -> `drop`: verify the batch is intended for this L1 chain.
-    - `end_epoch_num > epoch.number` -> `drop`: must have been duplicate batch,
-      we may be past this L1 block in the safe L2 chain.
+    - `start_epoch_num > epoch.number + 1` -> `drop`:
+      i.e. the L1 origin cannot change by more than one L1 block per L2 block.
+    - If `batch.l1_origin_check` does not match the canonical L1 chain at `end_epoch_num` -> `drop`:
+      verify the batch is intended for this L1 chain.
+      - After `l1_origin_check` is passed, we don't need check if the origin is past `inclusion_block_number` because following invariant.
+      - Invariant: the epoch-num in the batch is always less than the inclusion block number, if and only if the L1 epoch hash is correct.
+    - `start_epoch_num < epoch.number` -> `drop`: must have been duplicate batch,
+      we may be past this L1 block in the safe L2 chain. If a span-batch overlaps with older information,
+      it is dropped, since partially valid span-batches are not accepted.
 - Max Sequencer time-drift checks:
   - Note: The max time-drift is enforced for the *batch as a whole*, to keep the possible output variants small.
   - Variables:
     - `block_input`: an L2 block from the span-batch,
       with L1 origin as derived from the `origin_bits` and now established canonical L1 chain.
-    - `next_epoch` is relative to the `block_input`,
-      and may reach to the next origin outside of the L1 origins of the span.
+    - `next_epoch`: `block_input.origin`'s next L1 block. it may reach to the next origin outside of the L1 origins of the span.
   - Rules:
     - For each `block_input` that can be read from the span-batch:
       - `block_input.timestamp < block_input.origin.time` -> `drop`: enforce the min L2 timestamp rule.
       - `block_input.timestamp > block_input.origin.time + max_sequencer_drift`: enforce the L2 timestamp drift rule,
         but with exceptions to preserve above min L2 timestamp invariant:
         - `len(block_input.transactions) == 0`:
-          - `epoch.number == batch.epoch_num`:
-            this implies the batch does not already advance the L1 origin,
+          - `origin_bits[i] == 0`: `i` is the index of `block_input` in the span batch.
+            So this implies the block_input did not advance the L1 origin,
             and must thus be checked against `next_epoch`.
             - If `next_epoch` is not known -> `undecided`:
               without the next L1 origin we cannot yet determine if time invariant could have been kept.
-            - If `batch.timestamp >= next_epoch.time` -> `drop`:
+            - If `block_input.timestamp >= next_epoch.time` -> `drop`:
               the batch could have adopted the next L1 origin without breaking the `L2 time >= L1 time` invariant.
-        - `len(batch.transactions) > 0`: -> `drop`:
+        - `len(block_input.transactions) > 0`: -> `drop`:
           when exceeding the sequencer time drift, never allow the sequencer to include transactions.
 - And for all transactions:
-  - `drop` if the `batch.transactions` list contains a transaction
+  - `drop` if the `batch.tx_data` list contains a transaction
     that is invalid or derived by other means exclusively:
     - any transaction that is empty (zero length `tx_data`)
     - any [deposited transactions][g-deposit-tx-type] (identified by the transaction type prefix byte in `tx_data`)
