@@ -254,7 +254,7 @@ Span-batch rules, in validation order:
         - `len(block_input.transactions) > 0`: -> `drop`:
           when exceeding the sequencer time drift, never allow the sequencer to include transactions.
 - And for all transactions:
-  - `drop` if the `batch.tx_data` list contains a transaction
+  - `drop` if the `batch.tx_datas` list contains a transaction
     that is invalid or derived by other means exclusively:
     - any transaction that is empty (zero length `tx_data`)
     - any [deposited transactions][g-deposit-tx-type] (identified by the transaction type prefix byte in `tx_data`)
