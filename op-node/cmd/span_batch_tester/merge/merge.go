@@ -2,6 +2,7 @@ package merge
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,9 @@ type Result struct {
 	BatchV1sUncompressedSize  int
 	SpanBatchUncompressedSize int
 
+	BatchV1sCompressedSize  int
+	SpanBatchCompressedSize int
+
 	BatchV1sMetadataSize int // every data size except tx
 	BatchV1sTxSize       int
 
@@ -39,6 +43,7 @@ type Result struct {
 	SpanBatchPayloadSize int
 
 	UncompressedSizeReductionPercent float64
+	CompressedReductionPercent       float64
 
 	L2TxCount int
 
@@ -85,6 +90,22 @@ func writeResult(r MergeResult, filename string) error {
 	return enc.Encode(r)
 }
 
+func calcCompressedSize(data []byte) int {
+	var buf bytes.Buffer
+	w, err := zlib.NewWriterLevel(&buf, zlib.BestCompression)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = w.Write(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return buf.Len()
+}
+
 func (r *Result) AnalyzeBatchV1s(batchV1s *[]derive.BatchV1, i int, prevUncompressedSize int) error {
 	var buf bytes.Buffer
 	if err := rlp.Encode(&buf, (*batchV1s)[i]); err != nil {
@@ -93,17 +114,29 @@ func (r *Result) AnalyzeBatchV1s(batchV1s *[]derive.BatchV1, i int, prevUncompre
 	batchV1sUncompressedSize := prevUncompressedSize + buf.Len()
 	buf.Reset()
 	r.BatchV1sUncompressedSize = batchV1sUncompressedSize
+
+	var batchV1sEncoded []byte
 	for _, batchV1 := range (*batchV1s)[:i+1] {
+		batchData := derive.BatchData{
+			BatchV1: batchV1,
+		}
+		batchV1Encoded, err := batchData.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		batchV1sEncoded = append(batchV1sEncoded, batchV1Encoded...)
 		for _, tx := range batchV1.Transactions {
 			r.BatchV1sTxSize += len(tx)
 		}
 	}
+	r.BatchV1sCompressedSize = calcCompressedSize(batchV1sEncoded)
 	r.BatchV1sMetadataSize = r.BatchV1sUncompressedSize - r.BatchV1sTxSize
 	return nil
 }
 
 func (r *Result) AnalyzeBatchV2(batchV2 *derive.BatchV2) error {
 	batchV2Encoded, err := batchV2.EncodeBytes()
+	r.SpanBatchCompressedSize = calcCompressedSize(batchV2Encoded)
 	if err != nil {
 		return err
 	}
@@ -132,6 +165,7 @@ func (r *Result) AnalyzeBatch(config Config, batchV2 *derive.BatchV2, batchV1s *
 		return err
 	}
 	r.UncompressedSizeReductionPercent = 100 * (1.0 - float64(r.SpanBatchUncompressedSize)/float64(r.BatchV1sUncompressedSize))
+	r.CompressedReductionPercent = 100 * (1.0 - float64(r.SpanBatchCompressedSize)/float64(r.BatchV1sCompressedSize))
 	r.L2StartNum = config.Start
 	r.L2EndNum = config.Start + uint64(i)
 	r.L2BlockCount = uint64(i + 1)

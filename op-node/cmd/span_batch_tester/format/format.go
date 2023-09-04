@@ -105,7 +105,7 @@ func Format(config Config) {
 	for i, spanBatchFile := range spanBatchFiles {
 		batchV2Filename := path.Join(config.InSpanBatchDirectory, spanBatchFile.Name())
 		// always reset perm to pass span batch hash check
-		derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 3, 4, 5, 6}
+		derive.BatchV2TxsV3FieldPerm = []int{0, 1, 2, 5, 6, 3, 4}
 		batchV2 := analyze.LoadSpanBatch(batchV2Filename)
 		delta, originalCompressedSize := Compare(&config.Permutation, batchV2)
 		deltas = append(deltas, delta)
