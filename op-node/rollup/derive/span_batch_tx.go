@@ -12,32 +12,32 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type SpanBatchTxData interface {
+type spanBatchTxData interface {
 	txType() byte // returns the type ID
 }
 
-type SpanBatchTx struct {
-	inner SpanBatchTxData
+type spanBatchTx struct {
+	inner spanBatchTxData
 }
 
-type SpanBatchLegacyTxData struct {
+type spanBatchLegacyTxData struct {
 	Value    *big.Int // wei amount
 	GasPrice *big.Int // wei per gas
 	Data     []byte
 }
 
-func (txData SpanBatchLegacyTxData) txType() byte { return types.LegacyTxType }
+func (txData spanBatchLegacyTxData) txType() byte { return types.LegacyTxType }
 
-type SpanBatchAccessListTxData struct {
+type spanBatchAccessListTxData struct {
 	Value      *big.Int // wei amount
 	GasPrice   *big.Int // wei per gas
 	Data       []byte
 	AccessList types.AccessList // EIP-2930 access list
 }
 
-func (txData SpanBatchAccessListTxData) txType() byte { return types.AccessListTxType }
+func (txData spanBatchAccessListTxData) txType() byte { return types.AccessListTxType }
 
-type SpanBatchDynamicFeeTxData struct {
+type spanBatchDynamicFeeTxData struct {
 	Value      *big.Int
 	GasTipCap  *big.Int // a.k.a. maxPriorityFeePerGas
 	GasFeeCap  *big.Int // a.k.a. maxFeePerGas
@@ -45,15 +45,15 @@ type SpanBatchDynamicFeeTxData struct {
 	AccessList types.AccessList
 }
 
-func (txData SpanBatchDynamicFeeTxData) txType() byte { return types.DynamicFeeTxType }
+func (txData spanBatchDynamicFeeTxData) txType() byte { return types.DynamicFeeTxType }
 
 // Type returns the transaction type.
-func (tx *SpanBatchTx) Type() uint8 {
+func (tx *spanBatchTx) Type() uint8 {
 	return tx.inner.txType()
 }
 
 // encodeTyped writes the canonical encoding of a typed transaction to w.
-func (tx *SpanBatchTx) encodeTyped(w *bytes.Buffer) error {
+func (tx *spanBatchTx) encodeTyped(w *bytes.Buffer) error {
 	w.WriteByte(tx.Type())
 	return rlp.Encode(w, tx.inner)
 }
@@ -61,7 +61,7 @@ func (tx *SpanBatchTx) encodeTyped(w *bytes.Buffer) error {
 // MarshalBinary returns the canonical encoding of the transaction.
 // For legacy transactions, it returns the RLP encoding. For EIP-2718 typed
 // transactions, it returns the type and payload.
-func (tx *SpanBatchTx) MarshalBinary() ([]byte, error) {
+func (tx *spanBatchTx) MarshalBinary() ([]byte, error) {
 	if tx.Type() == types.LegacyTxType {
 		return rlp.EncodeToBytes(tx.inner)
 	}
@@ -71,7 +71,7 @@ func (tx *SpanBatchTx) MarshalBinary() ([]byte, error) {
 }
 
 // EncodeRLP implements rlp.Encoder
-func (tx *SpanBatchTx) EncodeRLP(w io.Writer) error {
+func (tx *spanBatchTx) EncodeRLP(w io.Writer) error {
 	if tx.Type() == types.LegacyTxType {
 		return rlp.Encode(w, tx.inner)
 	}
@@ -86,22 +86,22 @@ func (tx *SpanBatchTx) EncodeRLP(w io.Writer) error {
 }
 
 // setDecoded sets the inner transaction after decoding.
-func (tx *SpanBatchTx) setDecoded(inner SpanBatchTxData, size uint64) {
+func (tx *spanBatchTx) setDecoded(inner spanBatchTxData, size uint64) {
 	tx.inner = inner
 }
 
 // decodeTyped decodes a typed transaction from the canonical format.
-func (tx *SpanBatchTx) decodeTyped(b []byte) (SpanBatchTxData, error) {
+func (tx *spanBatchTx) decodeTyped(b []byte) (spanBatchTxData, error) {
 	if len(b) <= 1 {
 		return nil, errors.New("typed transaction too short")
 	}
 	switch b[0] {
 	case types.AccessListTxType:
-		var inner SpanBatchAccessListTxData
+		var inner spanBatchAccessListTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
 	case types.DynamicFeeTxType:
-		var inner SpanBatchDynamicFeeTxData
+		var inner spanBatchDynamicFeeTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
 	default:
@@ -110,14 +110,14 @@ func (tx *SpanBatchTx) decodeTyped(b []byte) (SpanBatchTxData, error) {
 }
 
 // DecodeRLP implements rlp.Decoder
-func (tx *SpanBatchTx) DecodeRLP(s *rlp.Stream) error {
+func (tx *spanBatchTx) DecodeRLP(s *rlp.Stream) error {
 	kind, size, err := s.Kind()
 	switch {
 	case err != nil:
 		return err
 	case kind == rlp.List:
 		// It's a legacy transaction.
-		var inner SpanBatchLegacyTxData
+		var inner spanBatchLegacyTxData
 		err := s.Decode(&inner)
 		if err == nil {
 			tx.setDecoded(&inner, rlp.ListSize(size))
@@ -139,10 +139,10 @@ func (tx *SpanBatchTx) DecodeRLP(s *rlp.Stream) error {
 
 // UnmarshalBinary decodes the canonical encoding of transactions.
 // It supports legacy RLP transactions and EIP2718 typed transactions.
-func (tx *SpanBatchTx) UnmarshalBinary(b []byte) error {
+func (tx *spanBatchTx) UnmarshalBinary(b []byte) error {
 	if len(b) > 0 && b[0] > 0x7f {
 		// It's a legacy transaction.
-		var data SpanBatchLegacyTxData
+		var data spanBatchLegacyTxData
 		err := rlp.DecodeBytes(b, &data)
 		if err != nil {
 			return err
@@ -159,12 +159,12 @@ func (tx *SpanBatchTx) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-// ConvertToFullTx takes values and convert SpanBatchTx to types.Transaction
-func (tx SpanBatchTx) ConvertToFullTx(nonce, gas uint64, to *common.Address, chainID, V, R, S *big.Int) (*types.Transaction, error) {
+// convertToFullTx takes values and convert spanBatchTx to types.Transaction
+func (tx spanBatchTx) convertToFullTx(nonce, gas uint64, to *common.Address, chainID, V, R, S *big.Int) (*types.Transaction, error) {
 	var inner types.TxData
 	switch tx.Type() {
 	case types.LegacyTxType:
-		batchTxInner := tx.inner.(*SpanBatchLegacyTxData)
+		batchTxInner := tx.inner.(*spanBatchLegacyTxData)
 		inner = &types.LegacyTx{
 			Nonce:    nonce,
 			GasPrice: batchTxInner.GasPrice,
@@ -177,7 +177,7 @@ func (tx SpanBatchTx) ConvertToFullTx(nonce, gas uint64, to *common.Address, cha
 			S:        S,
 		}
 	case types.AccessListTxType:
-		batchTxInner := tx.inner.(*SpanBatchAccessListTxData)
+		batchTxInner := tx.inner.(*spanBatchAccessListTxData)
 		inner = &types.AccessListTx{
 			ChainID:    chainID,
 			Nonce:      nonce,
@@ -192,7 +192,7 @@ func (tx SpanBatchTx) ConvertToFullTx(nonce, gas uint64, to *common.Address, cha
 			S:          S,
 		}
 	case types.DynamicFeeTxType:
-		batchTxInner := tx.inner.(*SpanBatchDynamicFeeTxData)
+		batchTxInner := tx.inner.(*spanBatchDynamicFeeTxData)
 		inner = &types.DynamicFeeTx{
 			ChainID:    chainID,
 			Nonce:      nonce,
@@ -213,24 +213,24 @@ func (tx SpanBatchTx) ConvertToFullTx(nonce, gas uint64, to *common.Address, cha
 	return types.NewTx(inner), nil
 }
 
-func NewSpanBatchTx(tx types.Transaction) (*SpanBatchTx, error) {
-	var inner SpanBatchTxData
+func newSpanBatchTx(tx types.Transaction) (*spanBatchTx, error) {
+	var inner spanBatchTxData
 	switch tx.Type() {
 	case types.LegacyTxType:
-		inner = SpanBatchLegacyTxData{
+		inner = spanBatchLegacyTxData{
 			GasPrice: tx.GasPrice(),
 			Value:    tx.Value(),
 			Data:     tx.Data(),
 		}
 	case types.AccessListTxType:
-		inner = SpanBatchAccessListTxData{
+		inner = spanBatchAccessListTxData{
 			GasPrice:   tx.GasPrice(),
 			Value:      tx.Value(),
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
 		}
 	case types.DynamicFeeTxType:
-		inner = SpanBatchDynamicFeeTxData{
+		inner = spanBatchDynamicFeeTxData{
 			GasTipCap:  tx.GasTipCap(),
 			GasFeeCap:  tx.GasFeeCap(),
 			Value:      tx.Value(),
@@ -240,5 +240,5 @@ func NewSpanBatchTx(tx types.Transaction) (*SpanBatchTx, error) {
 	default:
 		return nil, fmt.Errorf("invalid tx type: %d", tx.Type())
 	}
-	return &SpanBatchTx{inner: inner}, nil
+	return &spanBatchTx{inner: inner}, nil
 }

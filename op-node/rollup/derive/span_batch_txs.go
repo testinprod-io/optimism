@@ -14,37 +14,37 @@ import (
 	"github.com/holiman/uint256"
 )
 
-type SpanBatchTxs struct {
+type spanBatchTxs struct {
 	// these two fields must be manually set
-	TotalBlockTxCount uint64
-	ChainID           *big.Int
+	totalBlockTxCount uint64
+	chainID           *big.Int
 
 	// 7 fields
-	ContractCreationBits *big.Int
-	YParityBits          *big.Int
-	TxSigs               []SpanBatchSignature
-	TxNonces             []uint64
-	TxGases              []uint64
-	TxTos                []common.Address
-	TxDatas              []hexutil.Bytes
+	contractCreationBits *big.Int
+	yParityBits          *big.Int
+	txSigs               []spanBatchSignature
+	txNonces             []uint64
+	txGases              []uint64
+	txTos                []common.Address
+	txDatas              []hexutil.Bytes
 
 	txTypes []int
 }
 
-func (btx *SpanBatchTxs) EncodeContractCreationBits(w io.Writer) error {
-	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
+func (btx *spanBatchTxs) encodeContractCreationBits(w io.Writer) error {
+	contractCreationBitBufferLen := btx.totalBlockTxCount / 8
+	if btx.totalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
 	}
 	contractCreationBitBuffer := make([]byte, contractCreationBitBufferLen)
-	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
+	for i := 0; i < int(btx.totalBlockTxCount); i += 8 {
 		end := i + 8
-		if end < int(btx.TotalBlockTxCount) {
-			end = int(btx.TotalBlockTxCount)
+		if end < int(btx.totalBlockTxCount) {
+			end = int(btx.totalBlockTxCount)
 		}
 		var bits uint = 0
 		for j := i; j < end; j++ {
-			bits |= btx.ContractCreationBits.Bit(j) << (j - i)
+			bits |= btx.contractCreationBits.Bit(j) << (j - i)
 		}
 		contractCreationBitBuffer[i/8] = byte(bits)
 	}
@@ -54,9 +54,9 @@ func (btx *SpanBatchTxs) EncodeContractCreationBits(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeContractCreationBits(r *bytes.Reader) error {
-	contractCreationBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
+func (btx *spanBatchTxs) decodeContractCreationBits(r *bytes.Reader) error {
+	contractCreationBitBufferLen := btx.totalBlockTxCount / 8
+	if btx.totalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
 	}
 	contractCreationBitBuffer := make([]byte, contractCreationBitBufferLen)
@@ -65,10 +65,10 @@ func (btx *SpanBatchTxs) DecodeContractCreationBits(r *bytes.Reader) error {
 		return fmt.Errorf("failed to read contract creation bits: %w", err)
 	}
 	contractCreationBits := new(big.Int)
-	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
+	for i := 0; i < int(btx.totalBlockTxCount); i += 8 {
 		end := i + 8
-		if end < int(btx.TotalBlockTxCount) {
-			end = int(btx.TotalBlockTxCount)
+		if end < int(btx.totalBlockTxCount) {
+			end = int(btx.totalBlockTxCount)
 		}
 		bits := contractCreationBitBuffer[i/8]
 		for j := i; j < end; j++ {
@@ -76,17 +76,17 @@ func (btx *SpanBatchTxs) DecodeContractCreationBits(r *bytes.Reader) error {
 			contractCreationBits.SetBit(contractCreationBits, j, bit)
 		}
 	}
-	btx.ContractCreationBits = contractCreationBits
+	btx.contractCreationBits = contractCreationBits
 	return nil
 }
 
-func (btx *SpanBatchTxs) ContractCreationCount() uint64 {
-	if btx.ContractCreationBits == nil {
+func (btx *spanBatchTxs) contractCreationCount() uint64 {
+	if btx.contractCreationBits == nil {
 		panic("contract creation bits not set")
 	}
 	var result uint64 = 0
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		bit := btx.ContractCreationBits.Bit(i)
+	for i := 0; i < int(btx.totalBlockTxCount); i++ {
+		bit := btx.contractCreationBits.Bit(i)
 		if bit == 1 {
 			result++
 		}
@@ -94,20 +94,20 @@ func (btx *SpanBatchTxs) ContractCreationCount() uint64 {
 	return result
 }
 
-func (btx *SpanBatchTxs) EncodeYParityBits(w io.Writer) error {
-	yParityBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
+func (btx *spanBatchTxs) encodeYParityBits(w io.Writer) error {
+	yParityBitBufferLen := btx.totalBlockTxCount / 8
+	if btx.totalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
 	}
 	yParityBitBuffer := make([]byte, yParityBitBufferLen)
-	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
+	for i := 0; i < int(btx.totalBlockTxCount); i += 8 {
 		end := i + 8
-		if end < int(btx.TotalBlockTxCount) {
-			end = int(btx.TotalBlockTxCount)
+		if end < int(btx.totalBlockTxCount) {
+			end = int(btx.totalBlockTxCount)
 		}
 		var bits uint = 0
 		for j := i; j < end; j++ {
-			bits |= btx.YParityBits.Bit(j) << (j - i)
+			bits |= btx.yParityBits.Bit(j) << (j - i)
 		}
 		yParityBitBuffer[i/8] = byte(bits)
 	}
@@ -117,13 +117,13 @@ func (btx *SpanBatchTxs) EncodeYParityBits(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) EncodeTxSigs(w io.Writer) error {
-	for _, txSig := range btx.TxSigs {
-		rBuf := txSig.R.Bytes32()
+func (btx *spanBatchTxs) encodeTxSigs(w io.Writer) error {
+	for _, txSig := range btx.txSigs {
+		rBuf := txSig.r.Bytes32()
 		if _, err := w.Write(rBuf[:]); err != nil {
 			return fmt.Errorf("cannot write tx sig r: %w", err)
 		}
-		sBuf := txSig.S.Bytes32()
+		sBuf := txSig.s.Bytes32()
 		if _, err := w.Write(sBuf[:]); err != nil {
 			return fmt.Errorf("cannot write tx sig s: %w", err)
 		}
@@ -131,9 +131,9 @@ func (btx *SpanBatchTxs) EncodeTxSigs(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) EncodeTxNonces(w io.Writer) error {
+func (btx *spanBatchTxs) encodeTxNonces(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
-	for _, txNonce := range btx.TxNonces {
+	for _, txNonce := range btx.txNonces {
 		n := binary.PutUvarint(buf[:], txNonce)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write tx nonce: %w", err)
@@ -142,9 +142,9 @@ func (btx *SpanBatchTxs) EncodeTxNonces(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) EncodeTxGases(w io.Writer) error {
+func (btx *spanBatchTxs) encodeTxGases(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
-	for _, txGas := range btx.TxGases {
+	for _, txGas := range btx.txGases {
 		n := binary.PutUvarint(buf[:], txGas)
 		if _, err := w.Write(buf[:n]); err != nil {
 			return fmt.Errorf("cannot write tx gas: %w", err)
@@ -153,8 +153,8 @@ func (btx *SpanBatchTxs) EncodeTxGases(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) EncodeTxTos(w io.Writer) error {
-	for _, txTo := range btx.TxTos {
+func (btx *spanBatchTxs) encodeTxTos(w io.Writer) error {
+	for _, txTo := range btx.txTos {
 		if _, err := w.Write(txTo.Bytes()); err != nil {
 			return fmt.Errorf("cannot write tx to address: %w", err)
 		}
@@ -162,8 +162,8 @@ func (btx *SpanBatchTxs) EncodeTxTos(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) EncodeTxDatas(w io.Writer) error {
-	for _, txData := range btx.TxDatas {
+func (btx *spanBatchTxs) encodeTxDatas(w io.Writer) error {
+	for _, txData := range btx.txDatas {
 		if _, err := w.Write(txData); err != nil {
 			return fmt.Errorf("cannot write tx data: %w", err)
 		}
@@ -171,9 +171,9 @@ func (btx *SpanBatchTxs) EncodeTxDatas(w io.Writer) error {
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeYParityBits(r *bytes.Reader) error {
-	yParityBitBufferLen := btx.TotalBlockTxCount / 8
-	if btx.TotalBlockTxCount%8 != 0 {
+func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
+	yParityBitBufferLen := btx.totalBlockTxCount / 8
+	if btx.totalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
 	}
 	yParityBitBuffer := make([]byte, yParityBitBufferLen)
@@ -182,10 +182,10 @@ func (btx *SpanBatchTxs) DecodeYParityBits(r *bytes.Reader) error {
 		return fmt.Errorf("failed to read y parity bits: %w", err)
 	}
 	yParityBits := new(big.Int)
-	for i := 0; i < int(btx.TotalBlockTxCount); i += 8 {
+	for i := 0; i < int(btx.totalBlockTxCount); i += 8 {
 		end := i + 8
-		if end < int(btx.TotalBlockTxCount) {
-			end = int(btx.TotalBlockTxCount)
+		if end < int(btx.totalBlockTxCount) {
+			end = int(btx.totalBlockTxCount)
 		}
 		bits := yParityBitBuffer[i/8]
 		for j := i; j < end; j++ {
@@ -193,77 +193,77 @@ func (btx *SpanBatchTxs) DecodeYParityBits(r *bytes.Reader) error {
 			yParityBits.SetBit(yParityBits, j, bit)
 		}
 	}
-	btx.YParityBits = yParityBits
+	btx.yParityBits = yParityBits
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeTxSigs(r *bytes.Reader) error {
-	txSigs := make([]SpanBatchSignature, btx.TotalBlockTxCount)
+func (btx *spanBatchTxs) decodeTxSigs(r *bytes.Reader) error {
+	txSigs := make([]spanBatchSignature, btx.totalBlockTxCount)
 	var sigBuffer [32]byte
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
-		var txSig SpanBatchSignature
+	for i := 0; i < int(btx.totalBlockTxCount); i++ {
+		var txSig spanBatchSignature
 		_, err := io.ReadFull(r, sigBuffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to read tx sig r: %w", err)
 		}
-		txSig.R, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		txSig.r, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
 		_, err = io.ReadFull(r, sigBuffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to read tx sig s: %w", err)
 		}
-		txSig.S, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
+		txSig.s, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
 		txSigs[i] = txSig
 	}
-	btx.TxSigs = txSigs
+	btx.txSigs = txSigs
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeTxNonces(r *bytes.Reader) error {
-	txNonces := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+func (btx *spanBatchTxs) decodeTxNonces(r *bytes.Reader) error {
+	txNonces := make([]uint64, btx.totalBlockTxCount)
+	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txNonce, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read tx nonce: %w", err)
 		}
 		txNonces[i] = txNonce
 	}
-	btx.TxNonces = txNonces
+	btx.txNonces = txNonces
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeTxGases(r *bytes.Reader) error {
-	txGases := make([]uint64, btx.TotalBlockTxCount)
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+func (btx *spanBatchTxs) decodeTxGases(r *bytes.Reader) error {
+	txGases := make([]uint64, btx.totalBlockTxCount)
+	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txGas, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read tx gas: %w", err)
 		}
 		txGases[i] = txGas
 	}
-	btx.TxGases = txGases
+	btx.txGases = txGases
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeTxTos(r *bytes.Reader) error {
+func (btx *spanBatchTxs) decodeTxTos(r *bytes.Reader) error {
 	var txTos []common.Address
 	txToBuffer := make([]byte, common.AddressLength)
-	contractCreationCount := btx.ContractCreationCount()
-	for i := 0; i < int(btx.TotalBlockTxCount-contractCreationCount); i++ {
+	contractCreationCount := btx.contractCreationCount()
+	for i := 0; i < int(btx.totalBlockTxCount-contractCreationCount); i++ {
 		_, err := io.ReadFull(r, txToBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to read tx to address: %w", err)
 		}
 		txTos = append(txTos, common.BytesToAddress(txToBuffer))
 	}
-	btx.TxTos = txTos
+	btx.txTos = txTos
 	return nil
 }
 
-func (btx *SpanBatchTxs) DecodeTxDatas(r *bytes.Reader) error {
-	txDatas := make([]hexutil.Bytes, btx.TotalBlockTxCount)
-	txTypes := make([]int, btx.TotalBlockTxCount)
+func (btx *spanBatchTxs) decodeTxDatas(r *bytes.Reader) error {
+	txDatas := make([]hexutil.Bytes, btx.totalBlockTxCount)
+	txTypes := make([]int, btx.totalBlockTxCount)
 	// Do not need txDataHeader because RLP byte stream already includes length info
-	for i := 0; i < int(btx.TotalBlockTxCount); i++ {
+	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txData, txType, err := ReadTxData(r)
 		if err != nil {
 			return err
@@ -271,22 +271,22 @@ func (btx *SpanBatchTxs) DecodeTxDatas(r *bytes.Reader) error {
 		txDatas[i] = txData
 		txTypes[i] = txType
 	}
-	btx.TxDatas = txDatas
+	btx.txDatas = txDatas
 	btx.txTypes = txTypes
 	return nil
 }
 
-func (btx *SpanBatchTxs) RecoverV() {
-	if len(btx.txTypes) != len(btx.TxSigs) {
+func (btx *spanBatchTxs) recoverV() {
+	if len(btx.txTypes) != len(btx.txSigs) {
 		panic("tx type length and tx sigs length mismatch")
 	}
 	for idx, txType := range btx.txTypes {
-		bit := uint64(btx.YParityBits.Bit(idx))
+		bit := uint64(btx.yParityBits.Bit(idx))
 		var v uint64
 		switch txType {
 		case types.LegacyTxType:
 			// EIP155
-			v = btx.ChainID.Uint64()*2 + 35 + bit
+			v = btx.chainID.Uint64()*2 + 35 + bit
 		case types.AccessListTxType:
 			v = bit
 		case types.DynamicFeeTxType:
@@ -294,84 +294,84 @@ func (btx *SpanBatchTxs) RecoverV() {
 		default:
 			panic(fmt.Sprintf("invalid tx type: %d", txType))
 		}
-		btx.TxSigs[idx].V = v
+		btx.txSigs[idx].v = v
 	}
 }
 
-func (btx *SpanBatchTxs) Encode(w io.Writer) error {
-	if err := btx.EncodeContractCreationBits(w); err != nil {
+func (btx *spanBatchTxs) encode(w io.Writer) error {
+	if err := btx.encodeContractCreationBits(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeYParityBits(w); err != nil {
+	if err := btx.encodeYParityBits(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeTxSigs(w); err != nil {
+	if err := btx.encodeTxSigs(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeTxTos(w); err != nil {
+	if err := btx.encodeTxTos(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeTxDatas(w); err != nil {
+	if err := btx.encodeTxDatas(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeTxNonces(w); err != nil {
+	if err := btx.encodeTxNonces(w); err != nil {
 		return err
 	}
-	if err := btx.EncodeTxGases(w); err != nil {
+	if err := btx.encodeTxGases(w); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (btx *SpanBatchTxs) Decode(r *bytes.Reader) error {
-	if err := btx.DecodeContractCreationBits(r); err != nil {
+func (btx *spanBatchTxs) decode(r *bytes.Reader) error {
+	if err := btx.decodeContractCreationBits(r); err != nil {
 		return err
 	}
-	if err := btx.DecodeYParityBits(r); err != nil {
+	if err := btx.decodeYParityBits(r); err != nil {
 		return err
 	}
-	if err := btx.DecodeTxSigs(r); err != nil {
+	if err := btx.decodeTxSigs(r); err != nil {
 		return err
 	}
-	if err := btx.DecodeTxTos(r); err != nil {
+	if err := btx.decodeTxTos(r); err != nil {
 		return err
 	}
-	err := btx.DecodeTxDatas(r)
+	err := btx.decodeTxDatas(r)
 	if err != nil {
 		return err
 	}
-	if err := btx.DecodeTxNonces(r); err != nil {
+	if err := btx.decodeTxNonces(r); err != nil {
 		return err
 	}
-	if err := btx.DecodeTxGases(r); err != nil {
+	if err := btx.decodeTxGases(r); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (btx *SpanBatchTxs) FullTxs() ([][]byte, error) {
+func (btx *spanBatchTxs) fullTxs() ([][]byte, error) {
 	var txs [][]byte
 	toIdx := 0
-	for idx := 0; idx < int(btx.TotalBlockTxCount); idx++ {
-		var spanBatchTx SpanBatchTx
-		if err := spanBatchTx.UnmarshalBinary(btx.TxDatas[idx]); err != nil {
+	for idx := 0; idx < int(btx.totalBlockTxCount); idx++ {
+		var stx spanBatchTx
+		if err := stx.UnmarshalBinary(btx.txDatas[idx]); err != nil {
 			return nil, err
 		}
-		nonce := btx.TxNonces[idx]
-		gas := btx.TxGases[idx]
+		nonce := btx.txNonces[idx]
+		gas := btx.txGases[idx]
 		var to *common.Address = nil
-		bit := btx.ContractCreationBits.Bit(idx)
+		bit := btx.contractCreationBits.Bit(idx)
 		if bit == 0 {
-			if len(btx.TxTos) <= toIdx {
+			if len(btx.txTos) <= toIdx {
 				return nil, errors.New("tx to not enough")
 			}
-			to = &btx.TxTos[toIdx]
+			to = &btx.txTos[toIdx]
 			toIdx++
 		}
-		v := new(big.Int).SetUint64(btx.TxSigs[idx].V)
-		r := btx.TxSigs[idx].R.ToBig()
-		s := btx.TxSigs[idx].S.ToBig()
-		tx, err := spanBatchTx.ConvertToFullTx(nonce, gas, to, btx.ChainID, v, r, s)
+		v := new(big.Int).SetUint64(btx.txSigs[idx].v)
+		r := btx.txSigs[idx].r.ToBig()
+		s := btx.txSigs[idx].s.ToBig()
+		tx, err := stx.convertToFullTx(nonce, gas, to, btx.chainID, v, r, s)
 		if err != nil {
 			return nil, err
 		}
@@ -384,44 +384,44 @@ func (btx *SpanBatchTxs) FullTxs() ([][]byte, error) {
 	return txs, nil
 }
 
-func (btx *SpanBatchTxs) AppendTx(txBytes []byte) error {
-	btx.TotalBlockTxCount += 1
+func (btx *spanBatchTxs) appendTx(txBytes []byte) error {
+	btx.totalBlockTxCount += 1
 
 	var tx types.Transaction
 	if err := tx.UnmarshalBinary(txBytes); err != nil {
 		return errors.New("failed to decode tx")
 	}
-	var txSig SpanBatchSignature
+	var txSig spanBatchSignature
 	v, r, s := tx.RawSignatureValues()
 	R, _ := uint256.FromBig(r)
 	S, _ := uint256.FromBig(s)
-	txSig.V = v.Uint64()
-	txSig.R = R
-	txSig.S = S
-	btx.TxSigs = append(btx.TxSigs, txSig)
+	txSig.v = v.Uint64()
+	txSig.r = R
+	txSig.s = S
+	btx.txSigs = append(btx.txSigs, txSig)
 	contractCreationBit := uint(1)
 	if tx.To() != nil {
-		btx.TxTos = append(btx.TxTos, *tx.To())
+		btx.txTos = append(btx.txTos, *tx.To())
 		contractCreationBit = uint(0)
 	}
-	btx.ContractCreationBits.SetBit(btx.ContractCreationBits, int(btx.TotalBlockTxCount-1), contractCreationBit)
-	yParityBit := ConvertVToYParity(txSig.V, int(tx.Type()))
-	btx.YParityBits.SetBit(btx.YParityBits, int(btx.TotalBlockTxCount-1), yParityBit)
-	btx.TxNonces = append(btx.TxNonces, tx.Nonce())
-	btx.TxGases = append(btx.TxGases, tx.Gas())
-	spanBatchTx, err := NewSpanBatchTx(tx)
+	btx.contractCreationBits.SetBit(btx.contractCreationBits, int(btx.totalBlockTxCount-1), contractCreationBit)
+	yParityBit := convertVToYParity(txSig.v, int(tx.Type()))
+	btx.yParityBits.SetBit(btx.yParityBits, int(btx.totalBlockTxCount-1), yParityBit)
+	btx.txNonces = append(btx.txNonces, tx.Nonce())
+	btx.txGases = append(btx.txGases, tx.Gas())
+	stx, err := newSpanBatchTx(tx)
 	if err != nil {
 		return err
 	}
-	txData, err := spanBatchTx.MarshalBinary()
+	txData, err := stx.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	btx.TxDatas = append(btx.TxDatas, txData)
+	btx.txDatas = append(btx.txDatas, txData)
 	return nil
 }
 
-func ConvertVToYParity(v uint64, txType int) uint {
+func convertVToYParity(v uint64, txType int) uint {
 	var yParityBit uint
 	switch txType {
 	case types.LegacyTxType:
@@ -438,9 +438,9 @@ func ConvertVToYParity(v uint64, txType int) uint {
 	return yParityBit
 }
 
-func NewSpanBatchTxs(txs [][]byte, chainId *big.Int) (*SpanBatchTxs, error) {
+func newSpanBatchTxs(txs [][]byte, chainId *big.Int) (*spanBatchTxs, error) {
 	totalBlockTxCount := uint64(len(txs))
-	var txSigs []SpanBatchSignature
+	var txSigs []spanBatchSignature
 	var txTos []common.Address
 	var txNonces []uint64
 	var txGases []uint64
@@ -453,13 +453,13 @@ func NewSpanBatchTxs(txs [][]byte, chainId *big.Int) (*SpanBatchTxs, error) {
 		if err := tx.UnmarshalBinary(txs[idx]); err != nil {
 			return nil, errors.New("failed to decode tx")
 		}
-		var txSig SpanBatchSignature
+		var txSig spanBatchSignature
 		v, r, s := tx.RawSignatureValues()
 		R, _ := uint256.FromBig(r)
 		S, _ := uint256.FromBig(s)
-		txSig.V = v.Uint64()
-		txSig.R = R
-		txSig.S = S
+		txSig.v = v.Uint64()
+		txSig.r = R
+		txSig.s = S
 		txSigs = append(txSigs, txSig)
 		contractCreationBit := uint(1)
 		if tx.To() != nil {
@@ -467,31 +467,31 @@ func NewSpanBatchTxs(txs [][]byte, chainId *big.Int) (*SpanBatchTxs, error) {
 			contractCreationBit = uint(0)
 		}
 		contractCreationBits.SetBit(contractCreationBits, idx, contractCreationBit)
-		yParityBit := ConvertVToYParity(txSig.V, int(tx.Type()))
+		yParityBit := convertVToYParity(txSig.v, int(tx.Type()))
 		yParityBits.SetBit(yParityBits, idx, yParityBit)
 		txNonces = append(txNonces, tx.Nonce())
 		txGases = append(txGases, tx.Gas())
-		spanBatchTx, err := NewSpanBatchTx(tx)
+		stx, err := newSpanBatchTx(tx)
 		if err != nil {
 			return nil, err
 		}
-		txData, err := spanBatchTx.MarshalBinary()
+		txData, err := stx.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
 		txDatas = append(txDatas, txData)
 		txTypes = append(txTypes, int(tx.Type()))
 	}
-	return &SpanBatchTxs{
-		TotalBlockTxCount:    totalBlockTxCount,
-		ChainID:              chainId,
-		ContractCreationBits: contractCreationBits,
-		YParityBits:          yParityBits,
-		TxSigs:               txSigs,
-		TxNonces:             txNonces,
-		TxGases:              txGases,
-		TxTos:                txTos,
-		TxDatas:              txDatas,
+	return &spanBatchTxs{
+		totalBlockTxCount:    totalBlockTxCount,
+		chainID:              chainId,
+		contractCreationBits: contractCreationBits,
+		yParityBits:          yParityBits,
+		txSigs:               txSigs,
+		txNonces:             txNonces,
+		txGases:              txGases,
+		txTos:                txTos,
+		txDatas:              txDatas,
 		txTypes:              txTypes,
 	}, nil
 }

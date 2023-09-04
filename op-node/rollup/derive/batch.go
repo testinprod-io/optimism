@@ -79,7 +79,7 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 		return rlp.Encode(buf, &b.SingularBatch)
 	case SpanBatchType, SpanBatchV2Type:
 		buf.WriteByte(byte(b.BatchType))
-		return b.SpanBatch.Encode(buf)
+		return b.SpanBatch.encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
 	}
@@ -116,7 +116,7 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	case SpanBatchType, SpanBatchV2Type:
 		b.BatchType = int(data[0])
 		b.SpanBatch.batchType = int(data[0])
-		return b.SpanBatch.DecodeBytes(data[1:])
+		return b.SpanBatch.decodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
 	}

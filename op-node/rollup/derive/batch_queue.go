@@ -129,7 +129,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	}
 	spanBatch, ok := batch.(*SpanBatch)
 	if ok {
-		nextSpan, err := spanBatch.SplitSpanBatch(bq.l1Blocks)
+		nextSpan, err := spanBatch.splitSpanBatch(bq.l1Blocks)
 		if err != nil {
 			return nil, err
 		}

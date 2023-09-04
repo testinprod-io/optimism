@@ -1186,7 +1186,7 @@ func TestValidSpanBatch(t *testing.T) {
 			spanBatch, err := NewSpanBatch(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time, chainId)
 			require.NoError(t, err)
 			if testCase.TxData != nil {
-				spanBatch.Txs.TxDatas = testCase.TxData
+				spanBatch.txs.txDatas = testCase.TxData
 			}
 			input := BatchWithL1InclusionBlock{
 				L1InclusionBlock: testCase.L1InclusionBlock,
