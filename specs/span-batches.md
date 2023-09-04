@@ -173,7 +173,7 @@ we thought sequencer rotation happens not much often, so assumed that `K` will b
 - L1 Origin Number
   - The parent of the first L2 block's L1 origin number is `l1_origin_num - sum(origin_bits)`
   - Then we can derive other blocks' L1 origin number with `origin_bits`
-  - `ith block's L1 origin number = (i-1)th block's L1 origin number + (oribin_bits[i] ? 1 : 0)`
+  - `ith block's L1 origin number = (i-1)th block's L1 origin number + (origin_bits[i] ? 1 : 0)`
 - L1 Origin Hash
   - We only need the `l1_origin_check`, the truncated L1 origin hash of the last L2 block of Span Batch.
   - If the last block references canonical L1 chain as its origin, we can ensure the all other blocks' origins are consistent with the canonical L1 chain.
