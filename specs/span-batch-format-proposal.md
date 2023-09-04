@@ -1,6 +1,6 @@
 ## Span batch format
 
-Note that span-batches, unlike previous V0 batches,
+Note that span-batches, unlike previous singular batches,
 encode *a range of consecutive* L2 blocks at the same time.
 
 Introduce version `1` to the [batch-format](./derivation.md#batch-format) table:
@@ -52,6 +52,22 @@ Where:
     - `1`: ([EIP-2930]): `gasLimit`
     - `2`: ([EIP-1559]): `gas_limit`
 
+Introduce version `2` to the [batch-format](./derivation.md#batch-format) table:
+
+| `batch_version` | `content`           |
+|-----------------|---------------------|
+| 2               | `prefix ++ payload` |
+
+Where:
+
+- `prefix = rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check`:
+  - Identical to `batch_version` 1
+- `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs ++ fee_recipients`:
+  - Every field definition identical to `batch_version` 1 except that `fee_recipients` is added to support decentralized sequencer.
+  - `fee_recipients = fee_recipients_idxs + fee_recipients_set`
+    - `fee_recipients_sets`: concatenated list of unique L2 fee recipient address.
+    - `fee_recipients_idxs`: for each block, `uvarint` number of index to decode fee recipients from `fee_recipients_sets`.
+
 [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 
 [EIP-2930]: https://eips.ethereum.org/EIPS/eip-2930
@@ -87,3 +103,9 @@ This optimization will benefit more when ratio between number of legacy type tra
 #### Adjust `txs` Data Layout for Better Compression
 
 There are (7 choose 2) * 5! = 2520 permutations of ordering fields of `txs`. It is not 7! because `contract_creation_bits` must be first decoded in order to decode `tx_tos`. We experimented to find out the best layout for compression. It turned out placing random data together(`TxSigs`, `TxTos`, `TxDatas`), then placing leftovers helped gzip to gain more size reduction.
+
+### `fee_recipients` Encoding Scheme
+
+Let `K` := number of unique fee recipients(cardinality) per span batch. Let `N` := number of L2 blocks. If we naively encode each fee recipients by concating every fee recipients, it will need `20 * N` bytes. If we manage `fee_recipients_idxs` and `fee_recipients_set`, It will need at most `max uvarint size * N = 8 * N`, `20 * K` bytes each. If `20 * N > 8 * N + 20 * K` then maintaining index of fee recipients is better in size.
+
+we thought sequencer rotation happens not much often, so assumed that `K` will be much lesser than `N`. The assumption makes upper inequality to hold. Therefore we decided to manage `fee_recipients_idxs` and `fee_recipients_set` separately. More complexity but less data size.
