@@ -227,7 +227,7 @@ Span-batch rules, in validation order:
       i.e. the L1 origin cannot change by more than one L1 block per L2 block.
     - If `batch.l1_origin_check` does not match the canonical L1 chain at `end_epoch_num` -> `drop`:
       verify the batch is intended for this L1 chain.
-      - After `l1_origin_check` is passed, we don't need check if the origin is past `inclusion_block_number` because following invariant.
+      - After upper `l1_origin_check` check is passed, we don't need to check if the origin is past `inclusion_block_number` because of the following invariant.
       - Invariant: the epoch-num in the batch is always less than the inclusion block number, if and only if the L1 epoch hash is correct.
     - `start_epoch_num < epoch.number` -> `drop`: must have been duplicate batch,
       we may be past this L1 block in the safe L2 chain. If a span-batch overlaps with older information,
