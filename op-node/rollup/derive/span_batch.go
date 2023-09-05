@@ -398,6 +398,9 @@ func (b *SpanBatch) GetBlockCount() int {
 func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) {
 	b.batches = append(b.batches, singularBatchToElement(singularBatch))
 	b.l1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
+	if len(b.batches) == 1 {
+		b.parentCheck = singularBatch.ParentHash.Bytes()[:20]
+	}
 }
 
 // ToRawSpanBatch merges SingularBatch List and initialize single RawSpanBatch
