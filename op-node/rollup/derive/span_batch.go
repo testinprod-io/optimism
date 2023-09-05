@@ -307,7 +307,7 @@ func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainId *big.I
 		return nil, err
 	}
 
-	spanBatch := SpanBatch{}
+	spanBatch := SpanBatch{batchType: b.batchType}
 	txIdx := 0
 	for i := 0; i < int(b.blockCount); i++ {
 		singularBatch := SingularBatch{}
