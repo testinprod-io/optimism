@@ -144,7 +144,7 @@ func (ch *Channel) Reader() io.Reader {
 
 // BatchReader provides a function that iteratively consumes batches from the reader.
 // The L1Inclusion block is also provided at creation time.
-func BatchReader(r io.Reader) (func() (Batch, error), error) {
+func BatchReader(r io.Reader) (func() (*BatchData, error), error) {
 	// Setup decompressor stage + RLP reader
 	zr, err := zlib.NewReader(r)
 	if err != nil {
@@ -152,12 +152,11 @@ func BatchReader(r io.Reader) (func() (Batch, error), error) {
 	}
 	rlpReader := rlp.NewStream(zr, MaxRLPBytesPerChannel)
 	// Read each batch iteratively
-	return func() (Batch, error) {
+	return func() (*BatchData, error) {
 		batchData := BatchData{}
-		err := rlpReader.Decode(&batchData)
-		if err != nil {
+		if err = rlpReader.Decode(&batchData); err != nil {
 			return nil, err
 		}
-		return batchData.GetBatch()
+		return &batchData, nil
 	}, nil
 }

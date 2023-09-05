@@ -19,7 +19,7 @@ type ChannelInReader struct {
 	log log.Logger
 	cfg *rollup.Config
 
-	nextBatchFn func() (Batch, error)
+	nextBatchFn func() (*BatchData, error)
 
 	prev *ChannelBank
 
@@ -78,7 +78,7 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 
 	// TODO: can batch be non nil while err == io.EOF
 	// This depends on the behavior of rlp.Stream
-	batch, err := cr.nextBatchFn()
+	batchData, err := cr.nextBatchFn()
 	if err == io.EOF {
 		cr.NextChannel()
 		return nil, NotEnoughData
@@ -87,11 +87,15 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 		cr.NextChannel()
 		return nil, NotEnoughData
 	}
-	spanBatch, ok := batch.(*SpanBatch)
-	if ok {
-		spanBatch.deriveSpanBatchFields(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
+	if batchData.BatchType == SingularBatchType {
+		return &batchData.SingularBatch, nil
+	} else {
+		spanBatch, err := batchData.RawSpanBatch.derive(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
+		if err != nil {
+			return nil, err
+		}
+		return spanBatch, nil
 	}
-	return batch, nil
 }
 
 func (cr *ChannelInReader) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.SystemConfig) error {

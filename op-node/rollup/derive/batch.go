@@ -50,7 +50,7 @@ type Batch interface {
 type BatchData struct {
 	BatchType int
 	SingularBatch
-	SpanBatch
+	RawSpanBatch
 	// batches may contain additional data with new upgrades
 }
 
@@ -79,7 +79,7 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 		return rlp.Encode(buf, &b.SingularBatch)
 	case SpanBatchType, SpanBatchV2Type:
 		buf.WriteByte(byte(b.BatchType))
-		return b.SpanBatch.encode(buf)
+		return b.RawSpanBatch.encode(buf)
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
 	}
@@ -115,21 +115,10 @@ func (b *BatchData) decodeTyped(data []byte) error {
 		return rlp.DecodeBytes(data[1:], &b.SingularBatch)
 	case SpanBatchType, SpanBatchV2Type:
 		b.BatchType = int(data[0])
-		b.SpanBatch.batchType = int(data[0])
-		return b.SpanBatch.decodeBytes(data[1:])
+		b.RawSpanBatch.batchType = int(data[0])
+		return b.RawSpanBatch.decodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
-	}
-}
-
-func (b *BatchData) GetBatch() (Batch, error) {
-	switch b.BatchType {
-	case SingularBatchType:
-		return &b.SingularBatch, nil
-	case SpanBatchType, SpanBatchV2Type:
-		return &b.SpanBatch, nil
-	default:
-		return nil, fmt.Errorf("unrecognized batch type: %d", b.BatchType)
 	}
 }
 
@@ -140,9 +129,9 @@ func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 	}
 }
 
-func NewSpanBatchData(spanBatch SpanBatch, batchType int) *BatchData {
+func NewSpanBatchData(spanBatch RawSpanBatch, batchType int) *BatchData {
 	return &BatchData{
-		BatchType: batchType,
-		SpanBatch: spanBatch,
+		BatchType:    batchType,
+		RawSpanBatch: spanBatch,
 	}
 }

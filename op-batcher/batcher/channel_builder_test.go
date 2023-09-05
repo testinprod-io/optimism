@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"math"
 	"math/big"
 	"math/rand"
@@ -15,6 +14,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	dtest "github.com/ethereum-optimism/optimism/op-node/rollup/derive/test"
+	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
@@ -887,7 +887,7 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 	require.Zero(cb.InputBytes())
 
 	var l int
-	var spanBatch *derive.SpanBatch
+	spanBatchBuilder := derive.NewSpanBatchBuilder(rcfg.Genesis.L2.Hash, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	for i := 0; i < 5; i++ {
 		block := newMiniL2Block(rng.Intn(32))
 		if batchType == derive.SingularBatchType {
@@ -895,18 +895,14 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 		} else {
 			singularBatch, _, err := derive.BlockToSingularBatch(block)
 			require.NoError(err)
-			if i == 0 {
-				spanBatch, err = derive.NewSpanBatch([]*derive.SingularBatch{singularBatch}, 0, rcfg.Genesis.L2Time, rcfg.L2ChainID)
-				require.NoError(err)
-			} else {
-				spanBatch.AppendSingularBatch(singularBatch)
-			}
-			batch := derive.NewSpanBatchData(*spanBatch, derive.SpanBatchType)
+			spanBatchBuilder.AppendSingularBatch(singularBatch)
+			rawSpanBatch, err := spanBatchBuilder.GetRawSpanBatch()
+			require.NoError(err)
+			batch := derive.NewSpanBatchData(*rawSpanBatch, derive.SpanBatchType)
 			var buf bytes.Buffer
 			require.NoError(batch.EncodeRLP(&buf))
 			l = buf.Len()
 		}
-
 		_, err := cb.AddBlock(block)
 		require.NoError(err)
 		require.Equal(cb.InputBytes(), l)

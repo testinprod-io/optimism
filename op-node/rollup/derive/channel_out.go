@@ -186,10 +186,12 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		return 0, co.fullErr
 	}
 	var buf bytes.Buffer
-	if err := co.spanBatchBuilder.AppendSingularBatch(batch); err != nil {
+	co.spanBatchBuilder.AppendSingularBatch(batch)
+	rawSpanBatch, err := co.spanBatchBuilder.GetRawSpanBatch()
+	if err != nil {
 		return 0, err
 	}
-	if err := rlp.Encode(&buf, NewSpanBatchData(*co.spanBatchBuilder.GetSpanBatch(), SpanBatchType)); err != nil {
+	if err := rlp.Encode(&buf, NewSpanBatchData(*rawSpanBatch, SpanBatchType)); err != nil {
 		return 0, err
 	}
 	co.rlpLength = 0

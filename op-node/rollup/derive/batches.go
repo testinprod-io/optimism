@@ -169,11 +169,11 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 
 	nextTimestamp := l2SafeHead.Time + cfg.BlockTime
 
-	if batch.batchTimestamp > nextTimestamp {
+	if batch.GetTimestamp() > nextTimestamp {
 		log.Trace("received out-of-order batch for future processing after next batch", "next_timestamp", nextTimestamp)
 		return BatchFuture
 	}
-	if batch.batchTimestamp < nextTimestamp {
+	if batch.GetTimestamp() < nextTimestamp {
 		log.Warn("dropping batch with old timestamp", "min_timestamp", nextTimestamp)
 		return BatchDrop
 	}
@@ -184,7 +184,7 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		return BatchDrop
 	}
 
-	start_epoch_num := batch.blockOriginNums[0]
+	start_epoch_num := uint64(batch.GetEpochNum())
 
 	// Filter out batches that were included too late.
 	if start_epoch_num+cfg.SeqWindowSize < l1InclusionBlock.Number {
@@ -198,7 +198,7 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		return BatchDrop
 	}
 
-	end_epoch_num := batch.blockOriginNums[len(batch.blockOriginNums)-1]
+	end_epoch_num := uint64(batch.GetBlockOriginNum(batch.GetBlockCount() - 1))
 	if end_epoch_num >= l1InclusionBlock.Number {
 		log.Warn("the end of the span batch cannot past the L1 block it was included in")
 		return BatchDrop
@@ -230,10 +230,10 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		originAdvanced = true
 	}
 
-	for i := uint64(0); i < batch.blockCount; i++ {
+	for i := 0; i < batch.GetBlockCount(); i++ {
 		if i > 0 {
 			originAdvanced = false
-			if batch.blockOriginNums[i] > batch.blockOriginNums[i-1] {
+			if batch.GetBlockOriginNum(i) > batch.GetBlockOriginNum(i-1) {
 				originAdvanced = true
 			}
 		}
@@ -241,7 +241,7 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 			originIdx += 1
 		}
 		l1Origin := l1Blocks[originIdx]
-		blockTimestamp := batch.blockTimestamps[i]
+		blockTimestamp := batch.GetBlockTimestamp(i)
 		if blockTimestamp < l1Origin.Time {
 			log.Warn("block timestamp is less than L1 origin timestamp", "l2_timestamp", blockTimestamp, "l1_timestamp", l1Origin.Time, "origin", l1Origin.ID())
 			return BatchDrop
@@ -249,7 +249,7 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 
 		// Check if we ran out of sequencer time drift
 		if max := l1Origin.Time + cfg.MaxSequencerDrift; blockTimestamp > max {
-			if batch.blockTxCounts[i] == 0 {
+			if len(batch.GetBlockTransactions(i)) == 0 {
 				// If the sequencer is co-operating by producing an empty batch,
 				// then allow the batch if it was the right thing to do to maintain the L2 time >= L1 time invariant.
 				// We only check batches that do not advance the epoch, to ensure epoch advancement regardless of time drift is allowed.
@@ -272,19 +272,17 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 				return BatchDrop
 			}
 		}
-	}
 
-	// We can do this check earlier, but it's a more intensive one, so we do this last.
-	for i, txData := range batch.txs.txDatas {
-		if len(txData) == 0 {
-			log.Warn("transaction data must not be empty, but found empty tx", "tx_index", i)
-			return BatchDrop
-		}
-		if txData[0] == types.DepositTxType {
-			log.Warn("sequencers may not embed any deposits into batch data, but found tx that has one", "tx_index", i)
-			return BatchDrop
+		for i, txBytes := range batch.GetBlockTransactions(i) {
+			if len(txBytes) == 0 {
+				log.Warn("transaction data must not be empty, but found empty tx", "tx_index", i)
+				return BatchDrop
+			}
+			if txBytes[0] == types.DepositTxType {
+				log.Warn("sequencers may not embed any deposits into batch data, but found tx that has one", "tx_index", i)
+				return BatchDrop
+			}
 		}
 	}
-
 	return BatchAccept
 }

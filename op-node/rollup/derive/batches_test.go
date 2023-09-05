@@ -33,7 +33,7 @@ type ValidSpanBatchTestCase struct {
 	OriginChangedBit uint
 	SingularBatches  []*SingularBatch
 	L1InclusionBlock eth.L1BlockRef
-	TxData           []hexutil.Bytes
+	TxData           [][]hexutil.Bytes
 	Expected         BatchValidity
 }
 
@@ -1077,8 +1077,8 @@ func TestValidSpanBatch(t *testing.T) {
 				},
 			},
 			L1InclusionBlock: l1B,
-			TxData: []hexutil.Bytes{
-				[]byte{}, // empty tx data
+			TxData: [][]hexutil.Bytes{
+				{[]byte{}}, // empty tx data
 			},
 			Expected: BatchDrop,
 		},
@@ -1096,8 +1096,8 @@ func TestValidSpanBatch(t *testing.T) {
 				},
 			},
 			L1InclusionBlock: l1B,
-			TxData: []hexutil.Bytes{
-				[]byte{types.DepositTxType, 0}, // piece of data alike to a deposit
+			TxData: [][]hexutil.Bytes{
+				{[]byte{types.DepositTxType, 0}}, // piece of data alike to a deposit
 			},
 			Expected: BatchDrop,
 		},
@@ -1183,11 +1183,13 @@ func TestValidSpanBatch(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			spanBatch, err := NewSpanBatch(testCase.SingularBatches, testCase.OriginChangedBit, conf.Genesis.L2Time, chainId)
-			require.NoError(t, err)
 			if testCase.TxData != nil {
-				spanBatch.txs.txDatas = testCase.TxData
+				for i, txs := range testCase.TxData {
+					testCase.SingularBatches[i].Transactions = txs
+				}
 			}
+			spanBatch := NewSpanBatch(SpanBatchType, testCase.SingularBatches)
+
 			input := BatchWithL1InclusionBlock{
 				L1InclusionBlock: testCase.L1InclusionBlock,
 				Batch:            spanBatch,

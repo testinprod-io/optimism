@@ -19,26 +19,32 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-// splitAndValidation splits single SpanBatch and initialize SingularBatch lists and validates parentCheck and l1OriginCheck
-func splitAndValidation(spanBatch *SpanBatch, l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef) ([]*SingularBatch, error) {
-	singularBatches, err := spanBatch.splitSpanBatch(l1Origins)
+// splitAndValidation splits single RawSpanBatch and initialize SingularBatch lists and validates parentCheck and l1OriginCheck
+func splitAndValidation(rawSpanBatch *RawSpanBatch, l1Origins []eth.L1BlockRef, safeL2Head eth.L2BlockRef, blockTime uint64, genesisTimestamp uint64, chainId *big.Int) ([]*SingularBatch, error) {
+	spanBatch, err := rawSpanBatch.derive(blockTime, genesisTimestamp, chainId)
 	if err != nil {
 		return nil, err
 	}
+	err = spanBatch.SetL1OriginHashes(l1Origins)
+	if err != nil {
+		return nil, err
+	}
+	singularBatches := spanBatch.singularBatches
 	// set only the first singularBatch's parent hash
 	singularBatches[0].ParentHash = safeL2Head.Hash
-	if !spanBatch.CheckParentHash(safeL2Head.Hash) {
+	if !bytes.Equal(rawSpanBatch.parentCheck, safeL2Head.Hash.Bytes()[:20]) {
 		return nil, errors.New("parent hash mismatch")
 	}
 	l1OriginBlockHash := singularBatches[len(singularBatches)-1].EpochHash
-	if !spanBatch.CheckOriginHash(l1OriginBlockHash) {
+	if !bytes.Equal(rawSpanBatch.l1OriginCheck, l1OriginBlockHash[:20]) {
 		return nil, errors.New("l1 origin hash mismatch")
 	}
 	return singularBatches, nil
 }
 
-func RandomSpanBatch(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, chainId *big.Int) *SpanBatch {
-	blockCount := uint64(1 + rng.Int()&0xFF)
+func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
+	//blockCount := uint64(1 + rng.Int()&0xFF)
+	blockCount := uint64(10)
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i++ {
 		bit := uint(0)
@@ -68,10 +74,10 @@ func RandomSpanBatch(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, 
 	if err != nil {
 		panic(err.Error())
 	}
-	spanBatch := SpanBatch{
+	rawSpanBatch := RawSpanBatch{
 		batchType: SpanBatchType,
 		spanBatchPrefix: spanBatchPrefix{
-			relTimestamp:  rng.Uint64(),
+			relTimestamp:  uint64(rng.Uint32()),
 			l1OriginNum:   rng.Uint64(),
 			parentCheck:   testutils.RandomData(rng, 20),
 			l1OriginCheck: testutils.RandomData(rng, 20),
@@ -83,15 +89,14 @@ func RandomSpanBatch(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, 
 			txs:           spanBatchTxs,
 		},
 	}
-	spanBatch.deriveSpanBatchFields(blockTime, genesisTimestamp, chainId)
-	return &spanBatch
+	return &rawSpanBatch
 }
 
-func RandomSpanBatchWithFeeRecipients(rng *rand.Rand, blockTime uint64, genesisTimestamp uint64, chainId *big.Int) *SpanBatch {
-	spanBatch := RandomSpanBatch(rng, blockTime, genesisTimestamp, chainId)
-	spanBatch.batchType = SpanBatchV2Type
+func RandomRawSpanBatchWithFeeRecipients(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
+	rawSpanBatch := RandomRawSpanBatch(rng, chainId)
+	rawSpanBatch.batchType = SpanBatchV2Type
 	// FeeRecipent length
-	N := int(spanBatch.blockCount)
+	N := int(rawSpanBatch.blockCount)
 	// cardinality of FeeRecipent
 	K := 1 + rng.Intn(5)
 	var addressSet []common.Address
@@ -104,8 +109,8 @@ func RandomSpanBatchWithFeeRecipients(rng *rand.Rand, blockTime uint64, genesisT
 		addressIdx := uint64(rand.Intn(len(addressSet)))
 		addressList = append(addressList, addressSet[addressIdx])
 	}
-	spanBatch.feeRecipients = addressList
-	return spanBatch
+	rawSpanBatch.feeRecipients = addressList
+	return rawSpanBatch
 }
 
 func RandomSingularBatch(rng *rand.Rand, txCount int) *SingularBatch {
@@ -148,8 +153,8 @@ func TestBatchRoundTrip(t *testing.T) {
 		},
 		NewSingularBatchData(*RandomSingularBatch(rng, 5)),
 		NewSingularBatchData(*RandomSingularBatch(rng, 7)),
-		NewSpanBatchData(*RandomSpanBatch(rng, blockTime, genesisTimestamp, chainId), SpanBatchType),
-		NewSpanBatchData(*RandomSpanBatchWithFeeRecipients(rng, blockTime, genesisTimestamp, chainId), SpanBatchV2Type),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainId), SpanBatchType),
+		NewSpanBatchData(*RandomRawSpanBatchWithFeeRecipients(rng, chainId), SpanBatchV2Type),
 	}
 
 	for i, batch := range batches {
@@ -159,7 +164,7 @@ func TestBatchRoundTrip(t *testing.T) {
 		err = dec.UnmarshalBinary(enc)
 		assert.NoError(t, err)
 		if dec.BatchType == SpanBatchType || dec.BatchType == SpanBatchV2Type {
-			dec.SpanBatch.deriveSpanBatchFields(blockTime, genesisTimestamp, chainId)
+			dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainId)
 		}
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}
@@ -190,59 +195,61 @@ func TestSpanBatchMerge(t *testing.T) {
 		singularBatchs[i].Timestamp = singularBatchs[i-1].Timestamp + l2BlockTime
 	}
 
-	spanBatch, err := NewSpanBatch(singularBatchs, uint(0), genesisTimeStamp, chainId)
+	spanBatch := NewSpanBatch(SpanBatchType, singularBatchs)
+	rawSpanBatch, err := spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	assert.NoError(t, err)
-	assert.Equal(t, spanBatch.parentCheck, singularBatchs[0].ParentHash.Bytes()[:20], "invalid parent check")
-	assert.Equal(t, spanBatch.l1OriginCheck, singularBatchs[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
-	assert.Equal(t, spanBatch.relTimestamp, singularBatchs[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
+	assert.Equal(t, rawSpanBatch.parentCheck, singularBatchs[0].ParentHash.Bytes()[:20], "invalid parent check")
+	assert.Equal(t, rawSpanBatch.l1OriginCheck, singularBatchs[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
+	assert.Equal(t, rawSpanBatch.relTimestamp, singularBatchs[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
 	for i := 1; i < blockCount; i++ {
-		if spanBatch.originBits.Bit(i) == 1 {
+		if rawSpanBatch.originBits.Bit(i) == 1 {
 			assert.True(t, singularBatchs[i].EpochNum == singularBatchs[i-1].EpochNum+1)
 		}
 	}
 	for i := 0; i < len(singularBatchs); i++ {
 		txCount := len(singularBatchs[i].Transactions)
-		assert.True(t, txCount == int(spanBatch.blockTxCounts[i]))
+		assert.True(t, txCount == int(rawSpanBatch.blockTxCounts[i]))
 	}
 
 	// set invalid tx type to make tx unmarshaling fail
 	singularBatchs[0].Transactions[0][0] = 0x33
-	_, err = NewSpanBatch(singularBatchs, uint(0), genesisTimeStamp, chainId)
+	spanBatch = NewSpanBatch(SpanBatchType, singularBatchs)
+	_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	require.ErrorContains(t, err, "failed to decode tx")
 
 	var singularBatchsEmpty []*SingularBatch
-	_, err = NewSpanBatch(singularBatchsEmpty, uint(0), genesisTimeStamp, chainId)
+	spanBatch = NewSpanBatch(SpanBatchType, singularBatchsEmpty)
+	_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	require.ErrorContains(t, err, "cannot merge empty singularBatch list")
 }
 
-func prepareSplitBatch(rng *rand.Rand, l2BlockTime uint64, chainId *big.Int) ([]eth.L1BlockRef, *SpanBatch, eth.L2BlockRef, uint64) {
-	genesisTimeStamp := rng.Uint64()
-	spanBatch := RandomSpanBatch(rng, l2BlockTime, genesisTimestamp, chainId)
+func prepareSplitBatch(rng *rand.Rand, l2BlockTime uint64, chainId *big.Int) ([]eth.L1BlockRef, *RawSpanBatch, eth.L2BlockRef, uint64) {
+	genesisTimeStamp := uint64(rng.Uint32())
+	rawSpanBatch := RandomRawSpanBatch(rng, chainId)
 	// recover parentHash
-	var parentHash []byte = append(spanBatch.parentCheck, testutils.RandomData(rng, 12)...)
+	var parentHash []byte = append(rawSpanBatch.parentCheck, testutils.RandomData(rng, 12)...)
 	originBitSum := uint64(0)
-	for i := 0; i < int(spanBatch.blockCount); i++ {
-		if spanBatch.originBits.Bit(i) == 1 {
+	for i := 0; i < int(rawSpanBatch.blockCount); i++ {
+		if rawSpanBatch.originBits.Bit(i) == 1 {
 			originBitSum++
 		}
 	}
 	safeHeadOrigin := testutils.RandomBlockRef(rng)
-	safeHeadOrigin.Number = spanBatch.l1OriginNum - originBitSum
+	safeHeadOrigin.Number = rawSpanBatch.l1OriginNum - originBitSum
 	l1Origins := []eth.L1BlockRef{safeHeadOrigin}
 	for i := 0; i < int(originBitSum); i++ {
 		l1Origins = append(l1Origins, testutils.NextRandomRef(rng, l1Origins[i]))
 	}
-	spanBatch.l1OriginNum = l1Origins[originBitSum].Number
-	spanBatch.l1OriginCheck = l1Origins[originBitSum].Hash.Bytes()[:20]
+	rawSpanBatch.l1OriginNum = l1Origins[originBitSum].Number
+	rawSpanBatch.l1OriginCheck = l1Origins[originBitSum].Hash.Bytes()[:20]
 
 	safeL2head := testutils.RandomL2BlockRef(rng)
 	safeL2head.Hash = common.BytesToHash(parentHash)
 	safeL2head.L1Origin = safeHeadOrigin.ID()
 	// safeL2head must be parent so subtract l2BlockTime
-	safeL2head.Time = genesisTimeStamp + spanBatch.relTimestamp - l2BlockTime
+	safeL2head.Time = genesisTimeStamp + rawSpanBatch.relTimestamp - l2BlockTime
 
-	spanBatch.deriveSpanBatchFields(l2BlockTime, genesisTimeStamp, chainId)
-	return l1Origins, spanBatch, safeL2head, genesisTimeStamp
+	return l1Origins, rawSpanBatch, safeL2head, genesisTimeStamp
 }
 
 func TestSpanBatchSplit(t *testing.T) {
@@ -250,12 +257,15 @@ func TestSpanBatchSplit(t *testing.T) {
 
 	chainId := new(big.Int).SetUint64(rng.Uint64())
 	l2BlockTime := uint64(2)
-	l1Origins, spanBatch, _, _ := prepareSplitBatch(rng, l2BlockTime, chainId)
+	l1Origins, rawSpanBatch, _, _ := prepareSplitBatch(rng, l2BlockTime, chainId)
 
-	singularBatchs, err := spanBatch.splitSpanBatch(l1Origins)
+	spanBatch, err := rawSpanBatch.derive(l2BlockTime, genesisTimestamp, chainId)
 	assert.NoError(t, err)
+	err = spanBatch.SetL1OriginHashes(l1Origins)
+	assert.NoError(t, err)
+	singularBatchs := spanBatch.singularBatches
 
-	assert.True(t, len(singularBatchs) == int(spanBatch.blockCount))
+	assert.True(t, len(singularBatchs) == int(rawSpanBatch.blockCount))
 
 	for i := 1; i < len(singularBatchs); i++ {
 		assert.True(t, singularBatchs[i].Timestamp == singularBatchs[i-1].Timestamp+l2BlockTime)
@@ -263,7 +273,7 @@ func TestSpanBatchSplit(t *testing.T) {
 
 	l1OriginBlockNumber := singularBatchs[0].EpochNum
 	for i := 1; i < len(singularBatchs); i++ {
-		if spanBatch.originBits.Bit(i) == 1 {
+		if rawSpanBatch.originBits.Bit(i) == 1 {
 			l1OriginBlockNumber++
 		}
 		assert.True(t, singularBatchs[i].EpochNum == l1OriginBlockNumber)
@@ -271,7 +281,7 @@ func TestSpanBatchSplit(t *testing.T) {
 
 	for i := 0; i < len(singularBatchs); i++ {
 		txCount := len(singularBatchs[i].Transactions)
-		assert.True(t, txCount == int(spanBatch.blockTxCounts[i]))
+		assert.True(t, txCount == int(rawSpanBatch.blockTxCounts[i]))
 	}
 }
 
@@ -280,22 +290,22 @@ func TestSpanBatchSplitValidation(t *testing.T) {
 
 	chainId := new(big.Int).SetUint64(rng.Uint64())
 	l2BlockTime := uint64(2)
-	l1Origins, spanBatch, safeL2head, _ := prepareSplitBatch(rng, l2BlockTime, chainId)
+	l1Origins, rawSpanBatch, safeL2head, _ := prepareSplitBatch(rng, l2BlockTime, chainId)
 	// above datas are sane. Now contaminate with wrong datas
 
 	// set invalid l1 origin check
-	spanBatch.l1OriginCheck = testutils.RandomData(rng, 20)
-	_, err := splitAndValidation(spanBatch, l1Origins, safeL2head)
+	rawSpanBatch.l1OriginCheck = testutils.RandomData(rng, 20)
+	_, err := splitAndValidation(rawSpanBatch, l1Origins, safeL2head, l2BlockTime, genesisTimestamp, chainId)
 	require.ErrorContains(t, err, "l1 origin hash mismatch")
 
 	// set invalid parent check
-	spanBatch.parentCheck = testutils.RandomData(rng, 20)
-	_, err = splitAndValidation(spanBatch, l1Origins, safeL2head)
+	rawSpanBatch.parentCheck = testutils.RandomData(rng, 20)
+	_, err = splitAndValidation(rawSpanBatch, l1Origins, safeL2head, l2BlockTime, genesisTimestamp, chainId)
 	require.ErrorContains(t, err, "parent hash mismatch")
 
 	// set invalid tx type to make tx marshaling fail
-	spanBatch.txs.txDatas[0][0] = 0x33
-	_, err = splitAndValidation(spanBatch, l1Origins, safeL2head)
+	rawSpanBatch.txs.txDatas[0][0] = 0x33
+	_, err = splitAndValidation(rawSpanBatch, l1Origins, safeL2head, l2BlockTime, genesisTimestamp, chainId)
 	require.ErrorContains(t, err, types.ErrTxTypeNotSupported.Error())
 }
 
@@ -304,24 +314,25 @@ func TestSpanBatchSplitMerge(t *testing.T) {
 
 	chainId := new(big.Int).SetUint64(rng.Uint64())
 	l2BlockTime := uint64(2)
-	l1Origins, spanBatch, safeL2head, genesisTimeStamp := prepareSplitBatch(rng, l2BlockTime, chainId)
-	originChangedBit := spanBatch.originBits.Bit(0)
-	originBitSum := spanBatch.l1OriginNum - safeL2head.L1Origin.Number
+	l1Origins, rawSpanBatch, safeL2head, genesisTimeStamp := prepareSplitBatch(rng, l2BlockTime, chainId)
+	originChangedBit := rawSpanBatch.originBits.Bit(0)
+	originBitSum := rawSpanBatch.l1OriginNum - safeL2head.L1Origin.Number
 
-	singularBatchs, err := splitAndValidation(spanBatch, l1Origins, safeL2head)
-	assert.NoError(t, err)
+	singularBatchs, err := splitAndValidation(rawSpanBatch, l1Origins, safeL2head, l2BlockTime, genesisTimeStamp, chainId)
+	require.NoError(t, err)
 
-	spanBatchMerged, err := NewSpanBatch(singularBatchs, originChangedBit, genesisTimeStamp, chainId)
-	assert.NoError(t, err)
+	spanBatch := NewSpanBatch(SpanBatchType, singularBatchs)
+	rawSpanBatchMerged, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainId)
+	require.NoError(t, err)
 
-	assert.Equal(t, spanBatch, spanBatchMerged, "SpanBatch not equal")
+	assert.Equal(t, rawSpanBatch, rawSpanBatchMerged, "RawSpanBatch not equal")
 
 	// check invariants
-	// start_epoch_num = safe_l2_head.origin.block_number + (origin_changed_bit ? 1 : 0)
+	//start_epoch_num = safe_l2_head.origin.block_number + (origin_changed_bit ? 1 : 0)
 	startEpochNum := uint64(singularBatchs[0].EpochNum)
 	assert.True(t, startEpochNum == safeL2head.L1Origin.Number+uint64(originChangedBit))
 	// end_epoch_num = safe_l2_head.origin.block_number + sum(origin_bits)
-	endEpochNum := spanBatch.l1OriginNum
+	endEpochNum := rawSpanBatch.l1OriginNum
 	assert.True(t, endEpochNum == safeL2head.L1Origin.Number+originBitSum)
 	assert.True(t, endEpochNum == uint64(singularBatchs[len(singularBatchs)-1].EpochNum))
 }
@@ -330,27 +341,27 @@ func TestSpsanBatchFeeRecipentsRoundTrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xcafe1338))
 
 	chainId := new(big.Int).SetUint64(rng.Uint64())
-	l2BlockTime := uint64(2)
-	genesisTimestamp := uint64(0)
+	//l2BlockTime := uint64(2)
+	//genesisTimestamp := uint64(0)
 	buf := new(bytes.Buffer)
 	for i := 0; i < 8; i++ {
-		spanBatch := RandomSpanBatchWithFeeRecipients(rng, l2BlockTime, genesisTimestamp, chainId)
+		rawSpanBatch := RandomRawSpanBatchWithFeeRecipients(rng, chainId)
 
-		err := spanBatch.encodeFeeRecipients(buf)
+		err := rawSpanBatch.encodeFeeRecipients(buf)
 		assert.NoError(t, err)
 
 		feeRecipentsEncoded := buf.Bytes()
 		buf.Reset()
 
-		originalFeeRecipents := spanBatch.feeRecipients[:]
+		originalFeeRecipents := rawSpanBatch.feeRecipients[:]
 		// remove field
-		spanBatch.feeRecipients = spanBatch.feeRecipients[:0]
+		rawSpanBatch.feeRecipients = rawSpanBatch.feeRecipients[:0]
 		r := bytes.NewReader(feeRecipentsEncoded)
 
-		err = spanBatch.decodeFeeRecipients(r)
+		err = rawSpanBatch.decodeFeeRecipients(r)
 		assert.NoError(t, err)
 
 		// check repopulated field is consistent
-		assert.Equal(t, originalFeeRecipents, spanBatch.feeRecipients, "fee recipents not equal")
+		assert.Equal(t, originalFeeRecipents, rawSpanBatch.feeRecipients, "fee recipents not equal")
 	}
 }

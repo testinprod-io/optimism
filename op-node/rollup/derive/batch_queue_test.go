@@ -69,19 +69,8 @@ func b(chainId *big.Int, timestamp uint64, epoch eth.L1BlockRef) *SingularBatch 
 func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*SingularBatch, blockCounts []int, chainId *big.Int) []Batch {
 	var spanBatches []Batch
 	idx := 0
-	for i, count := range blockCounts {
-		originChangedBit := 0
-		var parentOriginNum rollup.Epoch
-		if i == 0 {
-			parentOriginNum = rollup.Epoch(parent.L1Origin.Number)
-		} else {
-			parentOriginNum = singularBatches[idx-1].EpochNum
-		}
-		if parentOriginNum != singularBatches[idx].EpochNum {
-			originChangedBit = 1
-		}
-		span, err := NewSpanBatch(singularBatches[idx:idx+count], uint(originChangedBit), genesisTimestamp, chainId)
-		require.NoError(t, err)
+	for _, count := range blockCounts {
+		span := NewSpanBatch(SpanBatchType, singularBatches[idx:idx+count])
 		spanBatches = append(spanBatches, span)
 		idx += count
 	}
