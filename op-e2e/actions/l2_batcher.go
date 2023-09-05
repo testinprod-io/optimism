@@ -149,7 +149,7 @@ func (s *L2Batcher) Buffer(t Testing) error {
 			var spanBatchBuilder *derive.SpanBatchBuilder = nil
 			if s.rollupCfg.IsSpanBatch(block.Time()) {
 				batchType = derive.SpanBatchType
-				spanBatchBuilder = derive.NewSpanBatchBuilder(s.l2BufferedBlock.L1Origin.Hash, s.rollupCfg.Genesis.L2Time, s.rollupCfg.L2ChainID)
+				spanBatchBuilder = derive.NewSpanBatchBuilder(s.l2BufferedBlock.L1Origin.Number, s.rollupCfg.Genesis.L2Time, s.rollupCfg.L2ChainID)
 			}
 			ch, err = derive.NewChannelOut(c, batchType, spanBatchBuilder)
 		}

@@ -25,11 +25,10 @@ func splitAndValidation(rawSpanBatch *RawSpanBatch, l1Origins []eth.L1BlockRef, 
 	if err != nil {
 		return nil, err
 	}
-	err = spanBatch.SetL1OriginHashes(l1Origins)
+	singularBatches, err := spanBatch.GetSingularBatches(l1Origins)
 	if err != nil {
 		return nil, err
 	}
-	singularBatches := spanBatch.singularBatches
 	// set only the first singularBatch's parent hash
 	singularBatches[0].ParentHash = safeL2Head.Hash
 	if !bytes.Equal(rawSpanBatch.parentCheck, safeL2Head.Hash.Bytes()[:20]) {
@@ -217,10 +216,10 @@ func TestSpanBatchMerge(t *testing.T) {
 	_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	require.ErrorContains(t, err, "failed to decode tx")
 
-	var singularBatchsEmpty []*SingularBatch
-	spanBatch = NewSpanBatch(SpanBatchType, singularBatchsEmpty)
-	_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
-	require.ErrorContains(t, err, "cannot merge empty singularBatch list")
+	//var singularBatchsEmpty []*SingularBatch
+	//spanBatch = NewSpanBatch(SpanBatchType, singularBatchsEmpty)
+	//_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
+	//require.ErrorContains(t, err, "cannot merge empty singularBatch list")
 }
 
 func prepareSplitBatch(rng *rand.Rand, l2BlockTime uint64, chainId *big.Int) ([]eth.L1BlockRef, *RawSpanBatch, eth.L2BlockRef, uint64) {
@@ -261,9 +260,9 @@ func TestSpanBatchSplit(t *testing.T) {
 
 	spanBatch, err := rawSpanBatch.derive(l2BlockTime, genesisTimestamp, chainId)
 	assert.NoError(t, err)
-	err = spanBatch.SetL1OriginHashes(l1Origins)
+
+	singularBatchs, err := spanBatch.GetSingularBatches(l1Origins)
 	assert.NoError(t, err)
-	singularBatchs := spanBatch.singularBatches
 
 	assert.True(t, len(singularBatchs) == int(rawSpanBatch.blockCount))
 

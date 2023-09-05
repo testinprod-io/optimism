@@ -129,11 +129,12 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	}
 	spanBatch, ok := batch.(*SpanBatch)
 	if ok {
-		if err = spanBatch.SetL1OriginHashes(bq.l1Blocks); err != nil {
+		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
+		if err != nil {
 			return nil, err
 		}
-		nextBatch := spanBatch.singularBatches[0]
-		bq.nextSpan = spanBatch.singularBatches[1:]
+		nextBatch := singularBatches[0]
+		bq.nextSpan = singularBatches[1:]
 		nextBatch.ParentHash = safeL2Head.Hash
 		return nextBatch, nil
 	}

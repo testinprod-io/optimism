@@ -307,34 +307,44 @@ func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainId *big.I
 		return nil, err
 	}
 
-	spanBatch := SpanBatch{batchType: b.batchType}
+	spanBatch := SpanBatch{
+		batchType:     b.batchType,
+		parentCheck:   b.parentCheck,
+		l1OriginCheck: b.l1OriginCheck,
+	}
 	txIdx := 0
 	for i := 0; i < int(b.blockCount); i++ {
-		singularBatch := SingularBatch{}
-		singularBatch.Timestamp = genesisTimestamp + b.relTimestamp + blockTime*uint64(i)
-		singularBatch.EpochNum = rollup.Epoch(blockOriginNums[i])
-
+		batch := spanBatchElement{}
+		batch.Timestamp = genesisTimestamp + b.relTimestamp + blockTime*uint64(i)
+		batch.EpochNum = rollup.Epoch(blockOriginNums[i])
 		for j := 0; j < int(b.blockTxCounts[i]); j++ {
-			singularBatch.Transactions = append(singularBatch.Transactions, fullTxs[txIdx])
+			batch.Transactions = append(batch.Transactions, fullTxs[txIdx])
 			txIdx++
 		}
-		if i == 0 {
-			parentHash := append(b.parentCheck, make([]byte, 12)...)
-			singularBatch.ParentHash = common.BytesToHash(parentHash)
-		}
-		if i == int(b.blockCount)-1 {
-			epochHash := append(b.l1OriginCheck, make([]byte, 12)...)
-			singularBatch.EpochHash = common.BytesToHash(epochHash)
-		}
-
-		spanBatch.singularBatches = append(spanBatch.singularBatches, &singularBatch)
+		spanBatch.batches = append(spanBatch.batches, &batch)
 	}
 	return &spanBatch, nil
 }
 
+type spanBatchElement struct {
+	EpochNum     rollup.Epoch // aka l1 num
+	Timestamp    uint64
+	Transactions []hexutil.Bytes
+}
+
+func singularBatchToElement(singularBatch *SingularBatch) *spanBatchElement {
+	return &spanBatchElement{
+		EpochNum:     singularBatch.EpochNum,
+		Timestamp:    singularBatch.Timestamp,
+		Transactions: singularBatch.Transactions,
+	}
+}
+
 type SpanBatch struct {
-	batchType       int
-	singularBatches []*SingularBatch
+	batchType     int
+	parentCheck   []byte
+	l1OriginCheck []byte
+	batches       []*spanBatchElement
 }
 
 func (b *SpanBatch) GetBatchType() int {
@@ -342,79 +352,80 @@ func (b *SpanBatch) GetBatchType() int {
 }
 
 func (b *SpanBatch) GetTimestamp() uint64 {
-	return b.singularBatches[0].Timestamp
+	return b.batches[0].Timestamp
 }
 
 func (b *SpanBatch) GetEpochNum() rollup.Epoch {
-	return b.singularBatches[0].EpochNum
+	return b.batches[0].EpochNum
 }
 
 func (b *SpanBatch) GetLogContext(log log.Logger) log.Logger {
-	lastBlock := b.singularBatches[len(b.singularBatches)-1]
+	lastBlock := b.batches[len(b.batches)-1]
 	return log.New(
-		"batch_timestamp", b.singularBatches[0].Timestamp,
-		"parent_check", b.singularBatches[0].ParentHash,
-		"origin_check", lastBlock.EpochHash,
+		"batch_timestamp", b.batches[0].Timestamp,
+		"parent_check", b.parentCheck,
+		"origin_check", b.l1OriginCheck,
 		"origin_number", lastBlock.EpochNum,
 		"epoch_number", b.GetEpochNum(),
-		"block_count", len(b.singularBatches),
+		"block_count", len(b.batches),
 	)
 }
 
 func (b *SpanBatch) CheckOriginHash(hash common.Hash) bool {
-	return bytes.Equal(b.singularBatches[len(b.singularBatches)-1].EpochHash.Bytes()[:20], hash.Bytes()[:20])
+	return bytes.Equal(b.l1OriginCheck, hash.Bytes()[:20])
 }
 
 func (b *SpanBatch) CheckParentHash(hash common.Hash) bool {
-	return bytes.Equal(b.singularBatches[0].ParentHash.Bytes()[:20], hash.Bytes()[:20])
+	return bytes.Equal(b.parentCheck, hash.Bytes()[:20])
 }
 
 func (b *SpanBatch) GetBlockOriginNum(i int) rollup.Epoch {
-	return b.singularBatches[i].EpochNum
+	return b.batches[i].EpochNum
 }
 
 func (b *SpanBatch) GetBlockTimestamp(i int) uint64 {
-	return b.singularBatches[i].Timestamp
+	return b.batches[i].Timestamp
 }
 
 func (b *SpanBatch) GetBlockTransactions(i int) []hexutil.Bytes {
-	return b.singularBatches[i].Transactions
+	return b.batches[i].Transactions
 }
 
 func (b *SpanBatch) GetBlockCount() int {
-	return len(b.singularBatches)
+	return len(b.batches)
 }
 
 func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) {
-	b.singularBatches = append(b.singularBatches, singularBatch)
+	b.batches = append(b.batches, singularBatchToElement(singularBatch))
+	b.l1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
 }
 
 // ToRawSpanBatch merges SingularBatch List and initialize single RawSpanBatch
 func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint64, chainId *big.Int) (*RawSpanBatch, error) {
-	if len(b.singularBatches) == 0 {
+	if len(b.batches) == 0 {
 		return nil, errors.New("cannot merge empty singularBatch list")
 	}
 	raw := RawSpanBatch{batchType: SpanBatchType}
 	// Sort by timestamp of L2 block
-	sort.Slice(b.singularBatches, func(i, j int) bool {
-		return b.singularBatches[i].Timestamp < b.singularBatches[j].Timestamp
+	sort.Slice(b.batches, func(i, j int) bool {
+		return b.batches[i].Timestamp < b.batches[j].Timestamp
 	})
 	// spanBatchPrefix
-	span_start := b.singularBatches[0]
-	span_end := b.singularBatches[len(b.singularBatches)-1]
+	span_start := b.batches[0]
+	span_end := b.batches[len(b.batches)-1]
 	raw.relTimestamp = span_start.Timestamp - genesisTimestamp
 	raw.l1OriginNum = uint64(span_end.EpochNum)
 	raw.parentCheck = make([]byte, 20)
-	copy(raw.parentCheck, span_start.ParentHash[:20])
+	copy(raw.parentCheck, b.parentCheck)
 	raw.l1OriginCheck = make([]byte, 20)
-	copy(raw.l1OriginCheck, span_end.EpochHash[:20])
+	copy(raw.l1OriginCheck, b.l1OriginCheck)
 	// spanBatchPayload
-	raw.blockCount = uint64(len(b.singularBatches))
+	raw.blockCount = uint64(len(b.batches))
 	raw.originBits = new(big.Int)
 	raw.originBits.SetBit(raw.originBits, 0, originChangedBit)
-	for i := 1; i < len(b.singularBatches); i++ {
+	for i := 1; i < len(b.batches); i++ {
 		bit := uint(0)
-		if b.singularBatches[i-1].EpochNum < b.singularBatches[i].EpochNum {
+		if b.batches[i-1].EpochNum < b.batches[i].EpochNum {
 			bit = 1
 		}
 		raw.originBits.SetBit(raw.originBits, i, bit)
@@ -423,12 +434,12 @@ func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint6
 	var txs [][]byte
 	var blockTimstamps []uint64
 	var blockOriginNums []uint64
-	for _, singularBatch := range b.singularBatches {
-		blockTxCount := uint64(len(singularBatch.Transactions))
+	for _, batch := range b.batches {
+		blockTxCount := uint64(len(batch.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		blockTimstamps = append(blockTimstamps, singularBatch.Timestamp)
-		blockOriginNums = append(blockOriginNums, uint64(singularBatch.EpochNum))
-		for _, rawTx := range singularBatch.Transactions {
+		blockTimstamps = append(blockTimstamps, batch.Timestamp)
+		blockOriginNums = append(blockOriginNums, uint64(batch.EpochNum))
+		for _, rawTx := range batch.Transactions {
 			txs = append(txs, rawTx)
 		}
 	}
@@ -441,12 +452,18 @@ func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint6
 	return &raw, nil
 }
 
-func (b *SpanBatch) SetL1OriginHashes(l1Origins []eth.L1BlockRef) error {
+func (b *SpanBatch) GetSingularBatches(l1Origins []eth.L1BlockRef) ([]*SingularBatch, error) {
+	var singularBatches []*SingularBatch
 	originIdx := 0
-	for _, singularBatch := range b.singularBatches {
+	for _, batch := range b.batches {
+		singularBatch := SingularBatch{
+			EpochNum:     batch.EpochNum,
+			Timestamp:    batch.Timestamp,
+			Transactions: batch.Transactions,
+		}
 		originFound := false
 		for i := originIdx; i < len(l1Origins); i++ {
-			if l1Origins[i].Number == uint64(singularBatch.EpochNum) {
+			if l1Origins[i].Number == uint64(batch.EpochNum) {
 				originIdx = i
 				singularBatch.EpochHash = l1Origins[i].Hash
 				originFound = true
@@ -454,33 +471,38 @@ func (b *SpanBatch) SetL1OriginHashes(l1Origins []eth.L1BlockRef) error {
 			}
 		}
 		if !originFound {
-			return fmt.Errorf("cannot find L1 origin")
+			return nil, fmt.Errorf("cannot find L1 origin")
 		}
+		singularBatches = append(singularBatches, &singularBatch)
 	}
-	return nil
+	return singularBatches, nil
 }
 
 func NewSpanBatch(batchType int, singularBatches []*SingularBatch) *SpanBatch {
 	spanBatch := SpanBatch{
-		batchType:       batchType,
-		singularBatches: singularBatches,
+		batchType:     batchType,
+		parentCheck:   singularBatches[0].ParentHash.Bytes()[:20],
+		l1OriginCheck: singularBatches[len(singularBatches)-1].EpochHash.Bytes()[:20],
+	}
+	for _, singularBatch := range singularBatches {
+		spanBatch.batches = append(spanBatch.batches, singularBatchToElement(singularBatch))
 	}
 	return &spanBatch
 }
 
 type SpanBatchBuilder struct {
-	parentEpochHash  common.Hash
+	parentEpoch      uint64
 	genesisTimestamp uint64
 	chainId          *big.Int
 	spanBatch        *SpanBatch
 }
 
-func NewSpanBatchBuilder(parentEpochHash common.Hash, genesisTimestamp uint64, chainId *big.Int) *SpanBatchBuilder {
+func NewSpanBatchBuilder(parentEpoch uint64, genesisTimestamp uint64, chainId *big.Int) *SpanBatchBuilder {
 	return &SpanBatchBuilder{
-		parentEpochHash:  parentEpochHash,
+		parentEpoch:      parentEpoch,
 		genesisTimestamp: genesisTimestamp,
 		chainId:          chainId,
-		spanBatch:        &SpanBatch{SpanBatchType, []*SingularBatch{}},
+		spanBatch:        &SpanBatch{batchType: SpanBatchType},
 	}
 }
 
@@ -490,7 +512,7 @@ func (b *SpanBatchBuilder) AppendSingularBatch(singularBatch *SingularBatch) {
 
 func (b *SpanBatchBuilder) GetRawSpanBatch() (*RawSpanBatch, error) {
 	originChangedBit := 0
-	if b.spanBatch.singularBatches[0].EpochHash != b.parentEpochHash {
+	if uint64(b.spanBatch.GetEpochNum()) != b.parentEpoch {
 		originChangedBit = 1
 	}
 	raw, err := b.spanBatch.ToRawSpanBatch(uint(originChangedBit), b.genesisTimestamp, b.chainId)
@@ -501,7 +523,7 @@ func (b *SpanBatchBuilder) GetRawSpanBatch() (*RawSpanBatch, error) {
 }
 
 func (b *SpanBatchBuilder) GetBlockCount() int {
-	return len(b.spanBatch.singularBatches)
+	return len(b.spanBatch.batches)
 }
 
 func (b *SpanBatchBuilder) Reset() {

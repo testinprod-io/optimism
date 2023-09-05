@@ -502,7 +502,7 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 	// to construct a single frame
 	c, err := channelConfig.CompressorConfig.NewCompressor()
 	require.NoError(t, err)
-	spanBatchBuilder := derive.NewSpanBatchBuilder(channelConfig.ParentRef.Hash, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+	spanBatchBuilder := derive.NewSpanBatchBuilder(channelConfig.ParentRef.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	co, err := derive.NewChannelOut(c, derive.SingularBatchType, spanBatchBuilder)
 	require.NoError(t, err)
 	var buf bytes.Buffer
@@ -887,7 +887,7 @@ func ChannelBuilder_InputBytes(t *testing.T, batchType int, rcfg *rollup.Config)
 	require.Zero(cb.InputBytes())
 
 	var l int
-	spanBatchBuilder := derive.NewSpanBatchBuilder(rcfg.Genesis.L2.Hash, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+	spanBatchBuilder := derive.NewSpanBatchBuilder(rcfg.Genesis.L2.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	for i := 0; i < 5; i++ {
 		block := newMiniL2Block(rng.Intn(32))
 		if batchType == derive.SingularBatchType {
