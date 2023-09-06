@@ -25,32 +25,35 @@ const (
 	BatchFuture
 )
 
+// CheckBatch checks if the given batch can be applied on top of the given l2SafeHead, given the contextual L1 blocks the batch was included in.
+// The first entry of the l1Blocks should match the origin of the l2SafeHead. One or more consecutive l1Blocks should be provided.
+// In case of only a single L1 block, the decision whether a batch is valid may have to stay undecided.
 func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
 	switch batch.Batch.GetBatchType() {
 	case SingularBatchType:
 		if cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
+			log.Warn("received SingularBatch after SpanBatch hard fork")
 			return BatchDrop
 		}
 		singularBatch, _ := batch.Batch.(*SingularBatch)
-		return CheckSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
+		return checkSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
 	case SpanBatchType, SpanBatchV2Type:
 		spanBatch, _ := batch.Batch.(*SpanBatch)
 		if !cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
+			log.Warn("received SpanBatch before SpanBatch hard fork")
 			return BatchDrop
 		}
-		return CheckSpanBatch(cfg, log, l1Blocks, l2SafeHead, spanBatch, batch.L1InclusionBlock)
+		return checkSpanBatch(cfg, log, l1Blocks, l2SafeHead, spanBatch, batch.L1InclusionBlock)
 	default:
 		log.Warn("unrecognized batch type: %d", batch.Batch.GetBatchType())
 		return BatchDrop
 	}
 }
 
-// CheckBatch checks if the given batch can be applied on top of the given l2SafeHead, given the contextual L1 blocks the batch was included in.
-// The first entry of the l1Blocks should match the origin of the l2SafeHead. One or more consecutive l1Blocks should be provided.
-// In case of only a single L1 block, the decision whether a batch is valid may have to stay undecided.
-func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SingularBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
+// checkSingularBatch implements SingularBatch validation rule.
+func checkSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SingularBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
 	// add details to the log
-	log = batch.GetLogContext(log)
+	log = batch.LogContext(log)
 
 	// sanity check we have consistent inputs
 	if len(l1Blocks) == 0 {
@@ -157,8 +160,10 @@ func CheckSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 	return BatchAccept
 }
 
-func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SpanBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
-	log = batch.GetLogContext(log)
+// checkSingularBatch implements SpanBatch validation rule.
+func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SpanBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
+	// add details to the log
+	log = batch.LogContext(log)
 
 	// sanity check we have consistent inputs
 	if len(l1Blocks) == 0 {
@@ -184,29 +189,24 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		return BatchDrop
 	}
 
-	start_epoch_num := uint64(batch.GetEpochNum())
+	startEpochNum := uint64(batch.GetEpochNum())
 
 	// Filter out batches that were included too late.
-	if start_epoch_num+cfg.SeqWindowSize < l1InclusionBlock.Number {
+	if startEpochNum+cfg.SeqWindowSize < l1InclusionBlock.Number {
 		log.Warn("batch was included too late, sequence window expired")
 		return BatchDrop
 	}
 
 	// Check the L1 origin of the batch
-	if start_epoch_num > epoch.Number+1 {
+	if startEpochNum > epoch.Number+1 {
 		log.Warn("batch is for future epoch too far ahead, while it has the next timestamp, so it must be invalid", "current_epoch", epoch.ID())
 		return BatchDrop
 	}
 
-	end_epoch_num := uint64(batch.GetBlockOriginNum(batch.GetBlockCount() - 1))
-	if end_epoch_num >= l1InclusionBlock.Number {
-		log.Warn("the end of the span batch cannot past the L1 block it was included in")
-		return BatchDrop
-	}
-
+	endEpochNum := uint64(batch.GetBlockOriginNum(batch.GetBlockCount() - 1))
 	originChecked := false
 	for _, l1Block := range l1Blocks {
-		if l1Block.Number == end_epoch_num {
+		if l1Block.Number == endEpochNum {
 			if !batch.CheckOriginHash(l1Block.Hash) {
 				log.Warn("batch is for different L1 chain, epoch hash does not match", "expected", l1Block.Hash)
 				return BatchDrop
@@ -219,14 +219,14 @@ func CheckSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		return BatchUndecided
 	}
 
-	if start_epoch_num < epoch.Number {
+	if startEpochNum < epoch.Number {
 		log.Warn("dropped batch, epoch is too old", "minimum", epoch.ID())
 		return BatchDrop
 	}
 
 	originIdx := 0
 	originAdvanced := false
-	if start_epoch_num == epoch.Number+1 {
+	if startEpochNum == epoch.Number+1 {
 		originAdvanced = true
 	}
 

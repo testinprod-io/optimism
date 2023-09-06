@@ -16,42 +16,42 @@ import (
 // Batch format
 // first byte is type followed by bytestring.
 //
-// SingularBatchType := 0
-// singularBatch := SingularBatchType ++ RLP([epoch, timestamp, transaction_list]
-//
 // An empty input is not a valid batch.
 //
 // Note: the type system is based on L1 typed transactions.
-// SpanBatchType := 1
-// spanBatch := SpanBatchType ++ prefix ++ payload
-// prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
-// payload := block_count ++ origin_bits ++ block_tx_counts ++ tx_data ++ tx_sigs
-
+//
 // encodeBufferPool holds temporary encoder buffers for batch encoding
 var encodeBufferPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
 }
 
 const (
+	// SingularBatchType is the first version of Batch format, representing a single L2 block.
 	SingularBatchType = iota
+	// SpanBatchType is the Batch version used after SpanBatch hard fork, representing a span of L2 blocks.
 	SpanBatchType
+	// SpanBatchV2Type is the extension of SpanBatch that includes Fee recipients of each block.
 	SpanBatchV2Type
 )
 
+// Batch contains information to build one or multiple L2 blocks.
+// Batcher converts L2 blocks into Batch and writes encoded bytes to Channel.
+// Derivation pipeline decodes Batch from Channel, and converts to one or multiple payload attributes.
 type Batch interface {
 	GetBatchType() int
 	GetTimestamp() uint64
 	GetEpochNum() rollup.Epoch
-	GetLogContext(log.Logger) log.Logger
+	LogContext(log.Logger) log.Logger
 	CheckOriginHash(common.Hash) bool
 	CheckParentHash(common.Hash) bool
 }
 
+// BatchData is a composition type that contains raw data of each batch version.
+// It has encoding & decoding methods to implement typed encoding.
 type BatchData struct {
 	BatchType int
 	SingularBatch
 	RawSpanBatch
-	// batches may contain additional data with new upgrades
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -72,6 +72,7 @@ func (b *BatchData) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+// encodeTyped encodes batch type and payload for each batch type.
 func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	switch b.BatchType {
 	case SingularBatchType:
@@ -105,6 +106,7 @@ func (b *BatchData) UnmarshalBinary(data []byte) error {
 	return b.decodeTyped(data)
 }
 
+// decodeTyped decodes batch type and payload for each batch type.
 func (b *BatchData) decodeTyped(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("batch too short")
@@ -129,6 +131,7 @@ func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 	}
 }
 
+// NewSpanBatchData creates new BatchData with SpanBatch
 func NewSpanBatchData(spanBatch RawSpanBatch, batchType int) *BatchData {
 	return &BatchData{
 		BatchType:    batchType,

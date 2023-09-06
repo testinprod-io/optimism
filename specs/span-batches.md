@@ -114,7 +114,7 @@ Where:
   - Identical to `batch_version` 1
 - `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs ++ fee_recipients`:
   - Every field definition identical to `batch_version` 1 except that `fee_recipients` is added to support decentralized sequencer.
-  - `fee_recipients = fee_recipients_idxs + fee_recipients_set`
+  - `fee_recipients = fee_recipients_idxs ++ fee_recipients_set`
     - `fee_recipients_set`: concatenated list of unique L2 fee recipient address.
     - `fee_recipients_idxs`: for each block, `uvarint` number of index to decode fee recipients from `fee_recipients_set`.
 

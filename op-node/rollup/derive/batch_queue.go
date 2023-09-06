@@ -167,7 +167,7 @@ func (bq *BatchQueue) AddBatch(batch Batch, l2SafeHead eth.L2BlockRef) {
 	if validity == BatchDrop {
 		return // if we do drop the batch, CheckBatch will log the drop reason with WARN level.
 	}
-	batch.GetLogContext(bq.log).Debug("Adding batch")
+	batch.LogContext(bq.log).Debug("Adding batch")
 	bq.batches[batch.GetTimestamp()] = append(bq.batches[batch.GetTimestamp()], &data)
 }
 
@@ -206,7 +206,7 @@ batchLoop:
 		case BatchFuture:
 			return nil, NewCriticalError(fmt.Errorf("found batch with timestamp %d marked as future batch, but expected timestamp %d", batch.Batch.GetTimestamp(), nextTimestamp))
 		case BatchDrop:
-			batch.Batch.GetLogContext(bq.log).Warn("dropping batch",
+			batch.Batch.LogContext(bq.log).Warn("dropping batch",
 				"l2_safe_head", l2SafeHead.ID(),
 				"l2_safe_head_time", l2SafeHead.Time,
 			)
