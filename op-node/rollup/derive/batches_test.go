@@ -1188,7 +1188,7 @@ func TestValidSpanBatch(t *testing.T) {
 					testCase.SingularBatches[i].Transactions = txs
 				}
 			}
-			spanBatch := NewSpanBatch(SpanBatchType, testCase.SingularBatches)
+			spanBatch := NewSpanBatch(testCase.SingularBatches)
 
 			input := BatchWithL1InclusionBlock{
 				L1InclusionBlock: testCase.L1InclusionBlock,

@@ -37,7 +37,7 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 		}
 		singularBatch, _ := batch.Batch.(*SingularBatch)
 		return checkSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
-	case SpanBatchType, SpanBatchV2Type:
+	case SpanBatchType:
 		spanBatch, _ := batch.Batch.(*SpanBatch)
 		if !cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			log.Warn("received SpanBatch before SpanBatch hard fork")

@@ -70,7 +70,7 @@ func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*S
 	var spanBatches []Batch
 	idx := 0
 	for _, count := range blockCounts {
-		span := NewSpanBatch(SpanBatchType, singularBatches[idx:idx+count])
+		span := NewSpanBatch(singularBatches[idx : idx+count])
 		spanBatches = append(spanBatches, span)
 		idx += count
 	}

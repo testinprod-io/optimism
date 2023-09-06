@@ -24,11 +24,6 @@ import (
 // prefix := rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check
 // payload := payload = block_count ++ origin_bits ++ block_tx_counts ++ txs
 // txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_tos ++ tx_datas ++ tx_nonces ++ tx_gases
-//
-// SpanBatchV2Type := 2
-// prefix and txs is identical to SpanBatchType
-// payload = block_count ++ origin_bits ++ block_tx_counts ++ txs ++ fee_recipients
-// fee_recipients = fee_recipients_idxs ++ fee_recipients_set
 
 type spanBatchPrefix struct {
 	relTimestamp  uint64 // Relative timestamp of the first block
@@ -44,16 +39,14 @@ type spanBatchSignature struct {
 }
 
 type spanBatchPayload struct {
-	blockCount    uint64           // Number of L2 block in the span
-	originBits    *big.Int         // Bitlist of blockCount bits. Each bit indicates if the L1 origin is changed at the L2 block.
-	blockTxCounts []uint64         // List of transaction counts for each L2 block
-	txs           *spanBatchTxs    // Transactions encoded in SpanBatch specs
-	feeRecipients []common.Address // List of fee recipient addresses for each L2 block
+	blockCount    uint64        // Number of L2 block in the span
+	originBits    *big.Int      // Bitlist of blockCount bits. Each bit indicates if the L1 origin is changed at the L2 block.
+	blockTxCounts []uint64      // List of transaction counts for each L2 block
+	txs           *spanBatchTxs // Transactions encoded in SpanBatch specs
 }
 
 // RawSpanBatch is another representation of SpanBatch, that encodes data according to SpanBatch specs.
 type RawSpanBatch struct {
-	batchType int
 	spanBatchPrefix
 	spanBatchPayload
 }
@@ -72,39 +65,6 @@ func (b *spanBatchPayload) decodeOriginBits(originBitBuffer []byte, blockCount u
 		}
 	}
 	b.originBits = originBits
-}
-
-func (b *RawSpanBatch) decodeFeeRecipients(r *bytes.Reader) error {
-	if b.batchType < SpanBatchV2Type {
-		return nil
-	}
-	var idxs []uint64
-	cardinalFeeRecipientsCount := uint64(0)
-	for i := 0; i < int(b.blockCount); i++ {
-		idx, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("failed to read fee recipent index: %w", err)
-		}
-		idxs = append(idxs, idx)
-		if cardinalFeeRecipientsCount < idx+1 {
-			cardinalFeeRecipientsCount = idx + 1
-		}
-	}
-	var cardinalFeeRecipients []common.Address
-	for i := 0; i < int(cardinalFeeRecipientsCount); i++ {
-		feeRecipient := make([]byte, common.AddressLength)
-		_, err := io.ReadFull(r, feeRecipient)
-		if err != nil {
-			return fmt.Errorf("failed to read fee recipent address: %w", err)
-		}
-		cardinalFeeRecipients = append(cardinalFeeRecipients, common.BytesToAddress(feeRecipient))
-	}
-	b.feeRecipients = make([]common.Address, 0)
-	for _, idx := range idxs {
-		feeRecipient := cardinalFeeRecipients[idx]
-		b.feeRecipients = append(b.feeRecipients, feeRecipient)
-	}
-	return nil
 }
 
 // decodePrefix parses data into b.spanBatchPrefix
@@ -167,9 +127,6 @@ func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
 	if err = b.txs.decode(r); err != nil {
 		return err
 	}
-	if err = b.decodeFeeRecipients(r); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -224,39 +181,6 @@ func (b *spanBatchPayload) encodeOriginBits() []byte {
 	return originBitBuffer
 }
 
-// encodeFeeRecipients parses data into b.feeRecipients
-func (b *RawSpanBatch) encodeFeeRecipients(w io.Writer) error {
-	if b.batchType < SpanBatchV2Type {
-		return nil
-	}
-	var buf [binary.MaxVarintLen64]byte
-	acc := uint64(0)
-	indexs := make(map[common.Address]uint64)
-	var cardinalFeeRecipents []common.Address
-	for _, feeRecipent := range b.feeRecipients {
-		_, exists := indexs[feeRecipent]
-		if exists {
-			continue
-		}
-		cardinalFeeRecipents = append(cardinalFeeRecipents, feeRecipent)
-		indexs[feeRecipent] = acc
-		acc++
-	}
-	for _, feeReceipt := range b.feeRecipients {
-		idx := indexs[feeReceipt]
-		n := binary.PutUvarint(buf[:], idx)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write fee recipent index: %w", err)
-		}
-	}
-	for _, cardinalFeeReceipt := range cardinalFeeRecipents {
-		if _, err := w.Write(cardinalFeeReceipt[:]); err != nil {
-			return fmt.Errorf("cannot write fee recipent address: %w", err)
-		}
-	}
-	return nil
-}
-
 func (b *RawSpanBatch) encodePayload(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], b.blockCount)
@@ -274,9 +198,6 @@ func (b *RawSpanBatch) encodePayload(w io.Writer) error {
 		}
 	}
 	if err := b.txs.encode(w); err != nil {
-		return err
-	}
-	if err := b.encodeFeeRecipients(w); err != nil {
 		return err
 	}
 	return nil
@@ -324,7 +245,6 @@ func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainId *big.I
 	}
 
 	spanBatch := SpanBatch{
-		batchType:     b.batchType,
 		parentCheck:   b.parentCheck,
 		l1OriginCheck: b.l1OriginCheck,
 	}
@@ -363,7 +283,6 @@ func singularBatchToElement(singularBatch *SingularBatch) *spanBatchElement {
 // SpanBatch is an implementation of Batch interface,
 // containing the input to build a span of L2 blocks in derived form (spanBatchElement)
 type SpanBatch struct {
-	batchType     int                 // Batch type. must be one of SpanBatchType and SpanBatchV2Type.
 	parentCheck   []byte              // First 20 bytes of the first block's parent hash
 	l1OriginCheck []byte              // First 20 bytes of the last block's L1 origin hash
 	batches       []*spanBatchElement // List of block input in derived form
@@ -371,7 +290,7 @@ type SpanBatch struct {
 
 // GetBatchType returns its batch type (batch_version)
 func (b *SpanBatch) GetBatchType() int {
-	return b.batchType
+	return SpanBatchType
 }
 
 // GetTimestamp returns timestamp of the first block in the span
@@ -442,7 +361,7 @@ func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint6
 	if len(b.batches) == 0 {
 		return nil, errors.New("cannot merge empty singularBatch list")
 	}
-	raw := RawSpanBatch{batchType: SpanBatchType}
+	raw := RawSpanBatch{}
 	// Sort by timestamp of L2 block
 	sort.Slice(b.batches, func(i, j int) bool {
 		return b.batches[i].Timestamp < b.batches[j].Timestamp
@@ -519,9 +438,8 @@ func (b *SpanBatch) GetSingularBatches(l1Origins []eth.L1BlockRef) ([]*SingularB
 }
 
 // NewSpanBatch converts given singularBatches into spanBatchElements, and creates a new SpanBatch.
-func NewSpanBatch(batchType int, singularBatches []*SingularBatch) *SpanBatch {
+func NewSpanBatch(singularBatches []*SingularBatch) *SpanBatch {
 	spanBatch := SpanBatch{
-		batchType:     batchType,
 		parentCheck:   singularBatches[0].ParentHash.Bytes()[:20],
 		l1OriginCheck: singularBatches[len(singularBatches)-1].EpochHash.Bytes()[:20],
 	}
@@ -545,7 +463,7 @@ func NewSpanBatchBuilder(parentEpoch uint64, genesisTimestamp uint64, chainId *b
 		parentEpoch:      parentEpoch,
 		genesisTimestamp: genesisTimestamp,
 		chainId:          chainId,
-		spanBatch:        &SpanBatch{batchType: SpanBatchType},
+		spanBatch:        &SpanBatch{},
 	}
 }
 

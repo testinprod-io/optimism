@@ -74,7 +74,6 @@ func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
 		panic(err.Error())
 	}
 	rawSpanBatch := RawSpanBatch{
-		batchType: SpanBatchType,
 		spanBatchPrefix: spanBatchPrefix{
 			relTimestamp:  uint64(rng.Uint32()),
 			l1OriginNum:   rng.Uint64(),
@@ -89,27 +88,6 @@ func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
 		},
 	}
 	return &rawSpanBatch
-}
-
-func RandomRawSpanBatchWithFeeRecipients(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
-	rawSpanBatch := RandomRawSpanBatch(rng, chainId)
-	rawSpanBatch.batchType = SpanBatchV2Type
-	// FeeRecipent length
-	N := int(rawSpanBatch.blockCount)
-	// cardinality of FeeRecipent
-	K := 1 + rng.Intn(5)
-	var addressSet []common.Address
-	for i := 0; i < K; i++ {
-		address := testutils.RandomAddress(rng)
-		addressSet = append(addressSet, address)
-	}
-	var addressList []common.Address
-	for i := 0; i < N; i++ {
-		addressIdx := uint64(rand.Intn(len(addressSet)))
-		addressList = append(addressList, addressSet[addressIdx])
-	}
-	rawSpanBatch.feeRecipients = addressList
-	return rawSpanBatch
 }
 
 func RandomSingularBatch(rng *rand.Rand, txCount int) *SingularBatch {
@@ -152,8 +130,7 @@ func TestBatchRoundTrip(t *testing.T) {
 		},
 		NewSingularBatchData(*RandomSingularBatch(rng, 5)),
 		NewSingularBatchData(*RandomSingularBatch(rng, 7)),
-		NewSpanBatchData(*RandomRawSpanBatch(rng, chainId), SpanBatchType),
-		NewSpanBatchData(*RandomRawSpanBatchWithFeeRecipients(rng, chainId), SpanBatchV2Type),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainId)),
 	}
 
 	for i, batch := range batches {
@@ -162,7 +139,7 @@ func TestBatchRoundTrip(t *testing.T) {
 		var dec BatchData
 		err = dec.UnmarshalBinary(enc)
 		assert.NoError(t, err)
-		if dec.BatchType == SpanBatchType || dec.BatchType == SpanBatchV2Type {
+		if dec.BatchType == SpanBatchType {
 			dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainId)
 		}
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
@@ -194,7 +171,7 @@ func TestSpanBatchMerge(t *testing.T) {
 		singularBatchs[i].Timestamp = singularBatchs[i-1].Timestamp + l2BlockTime
 	}
 
-	spanBatch := NewSpanBatch(SpanBatchType, singularBatchs)
+	spanBatch := NewSpanBatch(singularBatchs)
 	rawSpanBatch, err := spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	assert.NoError(t, err)
 	assert.Equal(t, rawSpanBatch.parentCheck, singularBatchs[0].ParentHash.Bytes()[:20], "invalid parent check")
@@ -212,7 +189,7 @@ func TestSpanBatchMerge(t *testing.T) {
 
 	// set invalid tx type to make tx unmarshaling fail
 	singularBatchs[0].Transactions[0][0] = 0x33
-	spanBatch = NewSpanBatch(SpanBatchType, singularBatchs)
+	spanBatch = NewSpanBatch(singularBatchs)
 	_, err = spanBatch.ToRawSpanBatch(uint(0), genesisTimeStamp, chainId)
 	require.ErrorContains(t, err, "failed to decode tx")
 
@@ -320,7 +297,7 @@ func TestSpanBatchSplitMerge(t *testing.T) {
 	singularBatchs, err := splitAndValidation(rawSpanBatch, l1Origins, safeL2head, l2BlockTime, genesisTimeStamp, chainId)
 	require.NoError(t, err)
 
-	spanBatch := NewSpanBatch(SpanBatchType, singularBatchs)
+	spanBatch := NewSpanBatch(singularBatchs)
 	rawSpanBatchMerged, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainId)
 	require.NoError(t, err)
 
@@ -334,33 +311,4 @@ func TestSpanBatchSplitMerge(t *testing.T) {
 	endEpochNum := rawSpanBatch.l1OriginNum
 	assert.True(t, endEpochNum == safeL2head.L1Origin.Number+originBitSum)
 	assert.True(t, endEpochNum == uint64(singularBatchs[len(singularBatchs)-1].EpochNum))
-}
-
-func TestSpsanBatchFeeRecipentsRoundTrip(t *testing.T) {
-	rng := rand.New(rand.NewSource(0xcafe1338))
-
-	chainId := new(big.Int).SetUint64(rng.Uint64())
-	//l2BlockTime := uint64(2)
-	//genesisTimestamp := uint64(0)
-	buf := new(bytes.Buffer)
-	for i := 0; i < 8; i++ {
-		rawSpanBatch := RandomRawSpanBatchWithFeeRecipients(rng, chainId)
-
-		err := rawSpanBatch.encodeFeeRecipients(buf)
-		assert.NoError(t, err)
-
-		feeRecipentsEncoded := buf.Bytes()
-		buf.Reset()
-
-		originalFeeRecipents := rawSpanBatch.feeRecipients[:]
-		// remove field
-		rawSpanBatch.feeRecipients = rawSpanBatch.feeRecipients[:0]
-		r := bytes.NewReader(feeRecipentsEncoded)
-
-		err = rawSpanBatch.decodeFeeRecipients(r)
-		assert.NoError(t, err)
-
-		// check repopulated field is consistent
-		assert.Equal(t, originalFeeRecipents, rawSpanBatch.feeRecipients, "fee recipents not equal")
-	}
 }

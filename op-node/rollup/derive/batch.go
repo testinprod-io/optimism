@@ -30,8 +30,6 @@ const (
 	SingularBatchType = iota
 	// SpanBatchType is the Batch version used after SpanBatch hard fork, representing a span of L2 blocks.
 	SpanBatchType
-	// SpanBatchV2Type is the extension of SpanBatch that includes Fee recipients of each block.
-	SpanBatchV2Type
 )
 
 // Batch contains information to build one or multiple L2 blocks.
@@ -78,7 +76,7 @@ func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
 	case SingularBatchType:
 		buf.WriteByte(SingularBatchType)
 		return rlp.Encode(buf, &b.SingularBatch)
-	case SpanBatchType, SpanBatchV2Type:
+	case SpanBatchType:
 		buf.WriteByte(byte(b.BatchType))
 		return b.RawSpanBatch.encode(buf)
 	default:
@@ -115,9 +113,8 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	case SingularBatchType:
 		b.BatchType = SingularBatchType
 		return rlp.DecodeBytes(data[1:], &b.SingularBatch)
-	case SpanBatchType, SpanBatchV2Type:
+	case SpanBatchType:
 		b.BatchType = int(data[0])
-		b.RawSpanBatch.batchType = int(data[0])
 		return b.RawSpanBatch.decodeBytes(data[1:])
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
@@ -132,9 +129,9 @@ func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 }
 
 // NewSpanBatchData creates new BatchData with SpanBatch
-func NewSpanBatchData(spanBatch RawSpanBatch, batchType int) *BatchData {
+func NewSpanBatchData(spanBatch RawSpanBatch) *BatchData {
 	return &BatchData{
-		BatchType:    batchType,
+		BatchType:    SpanBatchType,
 		RawSpanBatch: spanBatch,
 	}
 }
