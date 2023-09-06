@@ -45,6 +45,7 @@ type BatchQueue struct {
 	// batches in order of when we've first seen them, grouped by L2 timestamp
 	batches map[uint64][]*BatchWithL1InclusionBlock
 
+	// nextSpan is cached SingularBatches derived from SpanBatch
 	nextSpan []*SingularBatch
 }
 
@@ -63,10 +64,13 @@ func (bq *BatchQueue) Origin() eth.L1BlockRef {
 
 func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*SingularBatch, error) {
 	if len(bq.nextSpan) > 0 {
+		// If there are cached singular batches, pop first one and return.
 		nextBatch := bq.nextSpan[0]
 		bq.nextSpan = bq.nextSpan[1:]
+		// Must set ParentHash before return. we can use safeL2Head because the parentCheck is verified in CheckBatch().
 		nextBatch.ParentHash = safeL2Head.Hash
 		if nextBatch.GetEpochNum() == rollup.Epoch(bq.l1Blocks[0].Number)+1 {
+			// advance epoch if necessary
 			bq.l1Blocks = bq.l1Blocks[1:]
 		}
 		return nextBatch, nil
@@ -129,12 +133,15 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	}
 	spanBatch, ok := batch.(*SpanBatch)
 	if ok {
+		// If next batch is SpanBatch, converts it to SingularBatches.
 		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
 		if err != nil {
 			return nil, err
 		}
+		// Pop first one and return
 		nextBatch := singularBatches[0]
 		bq.nextSpan = singularBatches[1:]
+		// Must set ParentHash before return.
 		nextBatch.ParentHash = safeL2Head.Hash
 		return nextBatch, nil
 	}

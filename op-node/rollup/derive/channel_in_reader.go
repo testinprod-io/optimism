@@ -90,6 +90,7 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 	if batchData.BatchType == SingularBatchType {
 		return &batchData.SingularBatch, nil
 	} else {
+		// If the batch type is Span batch, derive block inputs from RawSpanBatch.
 		spanBatch, err := batchData.RawSpanBatch.derive(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
 		if err != nil {
 			return nil, err

@@ -61,7 +61,9 @@ type ChannelConfig struct {
 	// CompressorConfig contains the configuration for creating new compressors.
 	CompressorConfig compressor.Config
 
+	// BatchType indicates whether the channel uses SingularBatch or SpanBatch.
 	BatchType int
+	// ParentRef is the parent L2 block of the channel.
 	ParentRef *eth.L2BlockRef
 }
 
@@ -137,6 +139,7 @@ func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder,
 	if err != nil {
 		return nil, err
 	}
+	// Creates a spanBatchBuilder contains information requires to build SpanBatch
 	spanBatchBuilder := derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	co, err := derive.NewChannelOut(c, cfg.BatchType, spanBatchBuilder)
 	if err != nil {

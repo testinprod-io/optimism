@@ -36,6 +36,7 @@ type channelManager struct {
 	// last block hash - for reorg detection
 	tip common.Hash
 
+	// last block added to channel. should be initialized as current L2 safe head
 	lastProcessedBlock *eth.L2BlockRef
 
 	// channel to write new block data to
@@ -62,6 +63,7 @@ func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig,
 
 // Clear clears the entire state of the channel manager.
 // It is intended to be used after an L2 reorg.
+// Must set lastProcessedBlock as current L2 safe head fetched from L2 node.
 func (s *channelManager) Clear(safeHead *eth.L2BlockRef) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -204,10 +206,12 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 
 	batchType := derive.SingularBatchType
 	if s.rcfg.IsSpanBatch(s.lastProcessedBlock.Time + s.rcfg.BlockTime) {
+		// Next channel uses SpanBatch
 		batchType = derive.SpanBatchType
 	}
 	channelCfg := s.cfg
 	channelCfg.BatchType = batchType
+	// Pass the current lastProcessedBlock as the parent
 	channelCfg.ParentRef = s.lastProcessedBlock
 	pc, err := newChannel(s.log, s.metr, channelCfg, s.rcfg)
 	if err != nil {
@@ -244,6 +248,7 @@ func (s *channelManager) processBlocks() error {
 	)
 	for i, block := range s.blocks {
 		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.SingularBatchType {
+			// SpanBatch hardfork is activated. Close SingularBatch channel
 			s.currentChannel.Close()
 			break
 		}

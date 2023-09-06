@@ -64,15 +64,15 @@ type ChannelOut struct {
 
 	// Compressor stage. Write input data to it
 	compress Compressor
-
+	// closed indicates if the channel is closed
 	closed bool
-
+	// batchType indicates whether this channel uses SingularBatch or SpanBatch
 	batchType int
-
+	// spanBatchBuilder contains information requires to build SpanBatch
 	spanBatchBuilder *SpanBatchBuilder
-
+	// reader contains compressed data for making output frames
 	reader ChannelOutReader
-
+	// fullErr is the reason for the channel being full.
 	fullErr error
 }
 
@@ -178,23 +178,28 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 }
 
 // writeSpanBatch appends a SingularBatch to the channel's SpanBatch.
-// It resets channel contents and rewrites the entire SpanBatch because a channel can have only one SpanBatch.
-// Because the prefix of SpanBatch will be changed when appending new blocks, compressed results must be written to reader after the channel is closed.
-// So we can only get frames once the channel is full or closed, in case of SpanBatch.
+// A channel can have only one SpanBatch. And compressed results should not be accessible until the channel is closed, since the prefix can be changed.
+// So it resets channel contents and rewrites the entire SpanBatch each time, and compressed results are copied to reader after the channel is closed.
+// It makes we can only get frames once the channel is full or closed, in the case of SpanBatch.
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	if co.fullErr != nil {
+		// channel is already full
 		return 0, co.fullErr
 	}
 	var buf bytes.Buffer
+	// Append Singular batch to its span batch builder
 	co.spanBatchBuilder.AppendSingularBatch(batch)
+	// Convert Span batch to RawSpanBatch
 	rawSpanBatch, err := co.spanBatchBuilder.GetRawSpanBatch()
 	if err != nil {
 		return 0, err
 	}
+	// Encode RawSpanBatch into bytes
 	if err := rlp.Encode(&buf, NewSpanBatchData(*rawSpanBatch)); err != nil {
 		return 0, err
 	}
 	co.rlpLength = 0
+	// Ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
 	if co.rlpLength+buf.Len() > MaxRLPBytesPerChannel {
 		co.fullErr = fmt.Errorf("could not add %d bytes to channel of %d bytes, max is %d. err: %w",
 			buf.Len(), co.rlpLength, MaxRLPBytesPerChannel, ErrTooManyRLPBytes)
@@ -203,7 +208,7 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	co.rlpLength = buf.Len()
 
 	if co.spanBatchBuilder.GetBlockCount() > 1 {
-		// Flush compressed data to the ready buffer
+		// Flush compressed data into reader to preserve current result.
 		// If the channel is full after this block is appended, we should use preserved data.
 		if err := co.compress.Flush(); err != nil {
 			return 0, err
@@ -223,8 +228,11 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		err = co.fullErr
 		if co.spanBatchBuilder.GetBlockCount() == 1 {
 			// Do not return CompressorFullErr for the first block in the batch
+			// In this case, reader must be empty. then the contents of compressor will be copied to reader when the channel is closed.
 			err = nil
 		}
+		// If there are more than one blocks in the channel, reader should have data that preserves previous compression result before adding this block.
+		// So, as a result, this block is not added to the channel and the channel will be closed.
 		return uint64(written), err
 	}
 
