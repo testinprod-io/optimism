@@ -52,7 +52,7 @@ var (
 	defaultNumConfirmations          = uint64(10)
 	defaultSafeAbortNonceTooLowCount = uint64(3)
 	defaultResubmissionTimeout       = 48 * time.Second
-	defaultNetworkTimeout            = 2 * time.Second
+	defaultNetworkTimeout            = 10 * time.Second
 	defaultTxSendTimeout             = 0 * time.Second
 	defaultTxNotInMempoolTimeout     = 2 * time.Minute
 	defaultReceiptQueryInterval      = 12 * time.Second
@@ -289,4 +289,35 @@ type Config struct {
 	// Signer is used to sign transactions when the gas price is increased.
 	Signer opcrypto.SignerFn
 	From   common.Address
+}
+
+func (m Config) Check() error {
+	if m.Backend == nil {
+		return errors.New("must provide the Backend")
+	}
+	if m.NumConfirmations == 0 {
+		return errors.New("NumConfirmations must not be 0")
+	}
+	if m.NetworkTimeout == 0 {
+		return errors.New("must provide NetworkTimeout")
+	}
+	if m.ResubmissionTimeout == 0 {
+		return errors.New("must provide ResubmissionTimeout")
+	}
+	if m.ReceiptQueryInterval == 0 {
+		return errors.New("must provide ReceiptQueryInterval")
+	}
+	if m.TxNotInMempoolTimeout == 0 {
+		return errors.New("must provide TxNotInMempoolTimeout")
+	}
+	if m.SafeAbortNonceTooLowCount == 0 {
+		return errors.New("SafeAbortNonceTooLowCount must not be 0")
+	}
+	if m.Signer == nil {
+		return errors.New("must provide the Signer")
+	}
+	if m.ChainID == nil {
+		return errors.New("must provide the ChainID")
+	}
+	return nil
 }

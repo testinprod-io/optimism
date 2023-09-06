@@ -9,6 +9,16 @@
 
 - [Introduction](#introduction)
 - [Span batch format](#span-batch-format)
+- [Optimization Strategies](#optimization-strategies)
+  - [Truncating information and storing only necessary data](#truncating-information-and-storing-only-necessary-data)
+  - [`tx_data_headers` removal from initial specs](#tx_data_headers-removal-from-initial-specs)
+  - [`Chain ID` removal from initial specs](#chain-id-removal-from-initial-specs)
+  - [Reorganization of constant length transaction fields](#reorganization-of-constant-length-transaction-fields)
+  - [RLP encoding for only variable length fields](#rlp-encoding-for-only-variable-length-fields)
+  - [Store `y_parity` instead of `v`](#store-y_parity-instead-of-v)
+  - [Adjust `txs` Data Layout for Better Compression](#adjust-txs-data-layout-for-better-compression)
+  - [`fee_recipients` Encoding Scheme](#fee_recipients-encoding-scheme)
+- [How derivation works with Span Batch?](#how-derivation-works-with-span-batch)
 - [Integration](#integration)
   - [Channel Reader (Batch Decoding)](#channel-reader-batch-decoding)
   - [Batch Queue](#batch-queue)
@@ -63,20 +73,24 @@ Introduce version `1` to the [batch-format](./derivation.md#batch-format) table:
 | 1               | `prefix ++ payload` |
 
 Notation:
+
 - `++`: concatenation of byte-strings
 - `span_start`: first L2 block in the span
 - `span_end`: last L2 block in the span
 - `uvarint`: unsigned Base128 varint, as defined in [protobuf spec]
-- `rlp_encode`: a function that encodes a batch according to the [RLP format], and `[x, y, z]` denotes a list containing items `x`, `y` and `z`
+- `rlp_encode`: a function that encodes a batch according to the [RLP format],
+  and `[x, y, z]` denotes a list containing items `x`, `y` and `z`
 
 [protobuf spec]: https://protobuf.dev/programming-guides/encoding/#varints
 
 Where:
 
 - `prefix = rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check`
-  - `rel_timestamp`: `uvarint` relative timestamp since L2 genesis, i.e. `span_start.timestamp - config.genesis.timestamp`.
+  - `rel_timestamp`: `uvarint` relative timestamp since L2 genesis,
+    i.e. `span_start.timestamp - config.genesis.timestamp`.
   - `l1_origin_num`: `uvarint` number of last l1 origin number. i.e. `span_end.l1_origin.number`
-  - `parent_check`: first 20 bytes of parent hash, the hash is truncated to 20 bytes for efficiency, i.e. `span_start.parent_hash[:20]`.
+  - `parent_check`: first 20 bytes of parent hash, the hash is truncated to 20 bytes for efficiency,
+    i.e. `span_start.parent_hash[:20]`.
   - `l1_origin_check`: the block hash of the last L1 origin is referenced.
     The hash is truncated to 20 bytes for efficiency, i.e. `span_end.l1_origin.hash[:20]`.
 - `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs`:
@@ -86,13 +100,16 @@ Where:
   - `block_tx_counts`: for each block, a `uvarint` of `len(block.transactions)`.
   - `txs`: L2 transactions which is reorganized and encoded as below.
 - `txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_tos ++ tx_datas ++ tx_nonces ++ tx_gases`
-  - `contract_creation_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating if transaction is a contract creation transaction.
-  - `y_parity_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits, 1 bit per L2 transactions, indicating the y parity value when recovering transaction sender address.
+  - `contract_creation_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits,
+    1 bit per L2 transactions, indicating if transaction is a contract creation transaction.
+  - `y_parity_bits`: bit list of `sum(block_tx_counts)` bits, right-padded to a multiple of 8 bits,
+    1 bit per L2 transactions, indicating the y parity value when recovering transaction sender address.
   - `tx_sigs`: concatenated list of transaction signatures
     - `r` is encoded as big-endian `uint256`
     - `s` is encoded as big-endian `uint256`
   - `tx_tos`: concatenated list of `to` field. `to` field in contract creation transaction will be `nil` and ignored.
-  - `tx_datas`: concatenated list of variable length rlp encoded data follwing [EIP-2718] encoded format using `TransactionType`.
+  - `tx_datas`: concatenated list of variable length rlp encoded data,
+    matching the encoding of the fields as in the [EIP-2718] format of the `TransactionType`.
     - `legacy`: `rlp_encode(value, gasPrice, data)`
     - `1`: ([EIP-2930]): `0x01 ++ rlp_encode(value, gasPrice, data, accessList)`
     - `2`: ([EIP-1559]): `0x02 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list)`
@@ -113,10 +130,12 @@ Where:
 - `prefix = rel_timestamp ++ l1_origin_num ++ parent_check ++ l1_origin_check`:
   - Identical to `batch_version` 1
 - `payload = block_count ++ origin_bits ++ block_tx_counts ++ txs ++ fee_recipients`:
-  - Every field definition identical to `batch_version` 1 except that `fee_recipients` is added to support decentralized sequencer.
-  - `fee_recipients = fee_recipients_idxs ++ fee_recipients_set`
+  - Every field definition identical to `batch_version` 1 except that `fee_recipients` is
+    added to support more decentralized sequencing.
+  - `fee_recipients = fee_recipients_idxs + fee_recipients_set`
     - `fee_recipients_set`: concatenated list of unique L2 fee recipient address.
-    - `fee_recipients_idxs`: for each block, `uvarint` number of index to decode fee recipients from `fee_recipients_set`.
+    - `fee_recipients_idxs`: for each block,
+      `uvarint` number of index to decode fee recipients from `fee_recipients_set`.
 
 [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 
@@ -124,49 +143,71 @@ Where:
 
 [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
 
-
 ## Optimization Strategies
 
 ### Truncating information and storing only necessary data
 
 The following fields stores truncated data:
+
 - `rel_timestamp`: We can save two bytes by storing `rel_timestamp` instead of the full `span_start.timestamp`.
-- `parent_check` and `l1_origin_check`: We can save twelve bytes by truncating twelve bytes from the full hash, while having enough safety.
+- `parent_check` and `l1_origin_check`: We can save twelve bytes by truncating twelve bytes from the full hash,
+  while having enough safety.
 
-### `tx_data_headers` removal from the initial span batch specs
+### `tx_data_headers` removal from initial specs
 
-We do not need to store length per each `tx_datas` elements even if those are variable length, because the elements itself is RLP encoded, containing their length in RLP prefix.
+We do not need to store length per each `tx_datas` elements even if those are variable length,
+because the elements itself is RLP encoded, containing their length in RLP prefix.
 
-### `Chain ID` removal from the initial span batch specs
-Every transaction has chain id. We do not need to include chain id in span batch because L2 already knows its chain id, and use its own value for processing span batches while derivation.
+### `Chain ID` removal from initial specs
+
+Every transaction has chain id. We do not need to include chain id in span batch because L2 already knows its chain id,
+and use its own value for processing span batches while derivation.
 
 ### Reorganization of constant length transaction fields
 
-`signature`, `nonce`, `gaslimit`, `to` field are constant size, so these were split up completely and are grouped into individual arrays. This adds more complexity, but organizes data for improved compression by grouping data with similar data pattern.
+`signature`, `nonce`, `gaslimit`, `to` field are constant size, so these were split up completely and
+are grouped into individual arrays.
+This adds more complexity, but organizes data for improved compression by grouping data with similar data pattern.
 
 ### RLP encoding for only variable length fields
 
-Further size optimization can be done by customly packing variable length fields, such as `access_list`. However doing this will introduce much more code complexity, comparing to benefitting by size reduction.
+Further size optimization can be done by packing variable length fields, such as `access_list`.
+However, doing this will introduce much more code complexity, comparing to benefiting by size reduction.
 
-Our goal is to find the sweet spot on code complexity - span batch size tradeoff. I decided that using RLP for all variable length fields will be the best option, not risking codebase with gnarly custom encoding/decoding implementations.
+Our goal is to find the sweet spot on code complexity - span batch size tradeoff.
+I decided that using RLP for all variable length fields will be the best option,
+not risking codebase with gnarly custom encoding/decoding implementations.
 
 ### Store `y_parity` instead of `v`
 
-For legacy type transactions, `v = 2 * ChainID + y_parity`. For other types of transactions, `v = y_parity`. We may only store `y_parity`, which is single bit per L2 transction.
+For legacy type transactions, `v = 2 * ChainID + y_parity`. For other types of transactions, `v = y_parity`.
+We may only store `y_parity`, which is single bit per L2 transaction.
 
-This optimization will benefit more when ratio between number of legacy type transactions over number of transactions excluding deposit tx is higher. Deposit transactions are excluded in batches and are never written at L1 so excluded while analyzing.
+This optimization will benefit more when ratio between number of legacy type transactions over number of transactions
+excluding deposit tx is higher.
+Deposit transactions are excluded in batches and are never written at L1 so excluded while analyzing.
 
 ### Adjust `txs` Data Layout for Better Compression
 
-There are (7 choose 2) * 5! = 2520 permutations of ordering fields of `txs`. It is not 7! because `contract_creation_bits` must be first decoded in order to decode `tx_tos`. We experimented to find out the best layout for compression. It turned out placing random data together(`TxSigs`, `TxTos`, `TxDatas`), then placing leftovers helped gzip to gain more size reduction.
+There are (7 choose 2) * 5! = 2520 permutations of ordering fields of `txs`.
+It is not 7! because `contract_creation_bits` must be first decoded in order to decode `tx_tos`.
+We experimented to find out the best layout for compression.
+It turned out placing random data together(`TxSigs`, `TxTos`, `TxDatas`),
+then placing leftovers helped gzip to gain more size reduction.
 
 ### `fee_recipients` Encoding Scheme
 
-Let `K` := number of unique fee recipients(cardinality) per span batch. Let `N` := number of L2 blocks. If we naively encode each fee recipients by concating every fee recipients, it will need `20 * N` bytes. If we manage `fee_recipients_idxs` and `fee_recipients_set`, It will need at most `max uvarint size * N = 8 * N`, `20 * K` bytes each. If `20 * N > 8 * N + 20 * K` then maintaining index of fee recipients is better in size.
+Let `K` := number of unique fee recipients(cardinality) per span batch. Let `N` := number of L2 blocks.
+If we naively encode each fee recipients by concatenating every fee recipients, it will need `20 * N` bytes.
+If we manage `fee_recipients_idxs` and `fee_recipients_set`, It will need at most `max uvarint size * N = 8 * N`,
+`20 * K` bytes each. If `20 * N > 8 * N + 20 * K` then maintaining an index of fee recipients is reduces the size.
 
-we thought sequencer rotation happens not much often, so assumed that `K` will be much lesser than `N`. The assumption makes upper inequality to hold. Therefore we decided to manage `fee_recipients_idxs` and `fee_recipients_set` separately. More complexity but less data size.
+we thought sequencer rotation happens not much often, so assumed that `K` will be much lesser than `N`.
+The assumption makes upper inequality to hold. Therefore, we decided to manage `fee_recipients_idxs` and
+`fee_recipients_set` separately. This adds complexity but reduces data.
 
 ## How derivation works with Span Batch?
+
 - Block Timestamp
   - The first L2 block's block timestamp is `rel_timestamp + L2Genesis.Timestamp`.
   - Then we can derive other blocks timestamp by adding L2 block time for each.
@@ -176,10 +217,12 @@ we thought sequencer rotation happens not much often, so assumed that `K` will b
   - `ith block's L1 origin number = (i-1)th block's L1 origin number + (origin_bits[i] ? 1 : 0)`
 - L1 Origin Hash
   - We only need the `l1_origin_check`, the truncated L1 origin hash of the last L2 block of Span Batch.
-  - If the last block references canonical L1 chain as its origin, we can ensure the all other blocks' origins are consistent with the canonical L1 chain.
+  - If the last block references canonical L1 chain as its origin,
+    we can ensure the all other blocks' origins are consistent with the canonical L1 chain.
 - Parent hash
   - In V0 Batch spec, we need batch's parent hash to validate if batch's parent is consistent with current L2 safe head.
-  - But in the case of Span Batch, because it contains consecutive L2 blocks in the span, we don't need to validate all blocks' parent hash except the first block.
+  - But in the case of Span Batch, because it contains consecutive L2 blocks in the span,
+    we do not need to validate all blocks' parent hash except the first block.
 - Transactions
   - Deposit transactions can be derived from its L1 origin, identical with V0 batch.
   - User transactions can be derived by following way:
@@ -227,8 +270,10 @@ Span-batch rules, in validation order:
       i.e. the L1 origin cannot change by more than one L1 block per L2 block.
     - If `batch.l1_origin_check` does not match the canonical L1 chain at `end_epoch_num` -> `drop`:
       verify the batch is intended for this L1 chain.
-      - After upper `l1_origin_check` check is passed, we don't need to check if the origin is past `inclusion_block_number` because of the following invariant.
-      - Invariant: the epoch-num in the batch is always less than the inclusion block number, if and only if the L1 epoch hash is correct.
+      - After upper `l1_origin_check` check is passed, we don't need to check if the origin
+        is past `inclusion_block_number` because of the following invariant.
+      - Invariant: the epoch-num in the batch is always less than the inclusion block number,
+        if and only if the L1 epoch hash is correct.
     - `start_epoch_num < epoch.number` -> `drop`: must have been duplicate batch,
       we may be past this L1 block in the safe L2 chain. If a span-batch overlaps with older information,
       it is dropped, since partially valid span-batches are not accepted.
@@ -237,7 +282,8 @@ Span-batch rules, in validation order:
   - Variables:
     - `block_input`: an L2 block from the span-batch,
       with L1 origin as derived from the `origin_bits` and now established canonical L1 chain.
-    - `next_epoch`: `block_input.origin`'s next L1 block. it may reach to the next origin outside of the L1 origins of the span.
+    - `next_epoch`: `block_input.origin`'s next L1 block.
+      It may reach to the next origin outside the L1 origins of the span.
   - Rules:
     - For each `block_input` that can be read from the span-batch:
       - `block_input.timestamp < block_input.origin.time` -> `drop`: enforce the min L2 timestamp rule.

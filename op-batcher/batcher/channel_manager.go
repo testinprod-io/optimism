@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"io"
+	"sync"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
-	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
+	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -22,8 +23,9 @@ var ErrReorg = errors.New("block does not extend existing chain")
 // For simplicity, it only creates a single pending channel at a time & waits for
 // the channel to either successfully be submitted or timeout before creating a new
 // channel.
-// Functions on channelManager are not safe for concurrent access.
+// Public functions on channelManager are safe for concurrent access.
 type channelManager struct {
+	mu   sync.Mutex
 	log  log.Logger
 	metr metrics.Metricer
 	cfg  ChannelConfig
@@ -61,6 +63,8 @@ func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig,
 // Clear clears the entire state of the channel manager.
 // It is intended to be used after an L2 reorg.
 func (s *channelManager) Clear(safeHead *eth.L2BlockRef) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.log.Trace("clearing channel manager state")
 	s.blocks = s.blocks[:0]
 	s.tip = common.Hash{}
@@ -74,6 +78,8 @@ func (s *channelManager) Clear(safeHead *eth.L2BlockRef) {
 // TxFailed records a transaction as failed. It will attempt to resubmit the data
 // in the failed transaction.
 func (s *channelManager) TxFailed(id txID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if channel, ok := s.txChannels[id]; ok {
 		delete(s.txChannels, id)
 		channel.TxFailed(id)
@@ -91,6 +97,8 @@ func (s *channelManager) TxFailed(id txID) {
 // resubmitted.
 // This function may reset the pending channel if the pending channel has timed out.
 func (s *channelManager) TxConfirmed(id txID, inclusionBlock eth.BlockID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if channel, ok := s.txChannels[id]; ok {
 		delete(s.txChannels, id)
 		done, blocks := channel.TxConfirmed(id, inclusionBlock)
@@ -141,6 +149,8 @@ func (s *channelManager) nextTxData(channel *channel) (txData, error) {
 // full, it only returns the remaining frames of this channel until it got
 // successfully fully sent to L1. It returns io.EOF if there's no pending frame.
 func (s *channelManager) TxData(l1Head eth.BlockID) (txData, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var firstWithFrame *channel
 	for _, ch := range s.channelQueue {
 		if ch.HasFrame() {
@@ -244,6 +254,8 @@ func (s *channelManager) processBlocks() error {
 		} else if err != nil {
 			return fmt.Errorf("adding block[%d] to channel builder: %w", i, err)
 		}
+		s.log.Debug("Added block to channel", "channel", s.currentChannel.ID(), "block", block)
+
 		blocksAdded += 1
 		latestL2ref = l2BlockRefFromBlockAndL1Info(block, l1info)
 		s.metr.RecordL2BlockInChannel(block)
@@ -315,6 +327,8 @@ func (s *channelManager) outputFrames() error {
 // if the block does not extend the last block loaded into the state. If no
 // blocks were added yet, the parent hash check is skipped.
 func (s *channelManager) AddL2Block(block *types.Block) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.tip != (common.Hash{}) && s.tip != block.ParentHash() {
 		return ErrReorg
 	}
@@ -341,6 +355,8 @@ func l2BlockRefFromBlockAndL1Info(block *types.Block, l1info derive.L1BlockInfo)
 // and prevents the creation of any new channels.
 // Any outputted frames still need to be published.
 func (s *channelManager) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return nil
 	}

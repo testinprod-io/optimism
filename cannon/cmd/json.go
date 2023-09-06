@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/ethereum-optimism/optimism/op-service/ioutil"
 )
 
 func loadJSON[X any](inputPath string) (*X, error) {
 	if inputPath == "" {
 		return nil, errors.New("no path specified")
 	}
-	f, err := os.OpenFile(inputPath, os.O_RDONLY, 0)
+	var f io.ReadCloser
+	f, err := ioutil.OpenDecompressed(inputPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %q: %w", inputPath, err)
 	}
@@ -27,7 +30,7 @@ func loadJSON[X any](inputPath string) (*X, error) {
 func writeJSON[X any](outputPath string, value X, outIfEmpty bool) error {
 	var out io.Writer
 	if outputPath != "" {
-		f, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		f, err := ioutil.OpenCompressed(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			return fmt.Errorf("failed to open output file: %w", err)
 		}

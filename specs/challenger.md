@@ -48,7 +48,7 @@ to each of the different game types. For specification of dispute game types, se
 
 ### `GameType.FAULT`
 
-> **Warning**  
+> **Warning**
 > The `FAULT` game type is not yet implemented. In the first iteration of Optimism's decentralization effort,
 > challengers will respond to `ATTESTATION` games only.
 
@@ -59,7 +59,7 @@ to each of the different game types. For specification of dispute game types, se
 
 **Events and Responses**
 
-- [`L2OutputOracle.OutputProposed`](../packages/contracts-bedrock/contracts/L1/L2OutputOracle.sol#L57-70)
+- [`L2OutputOracle.OutputProposed`](../packages/contracts-bedrock/src/L1/L2OutputOracle.sol#L57-70)
   The `L2OutputOracle` contract emits this event when a new output is proposed on the data availability
   layer. Each time an output is proposed, the Challenger should check to see if the output is equal
   the output given by the `optimism_outputAtBlock` endpoint of their `rollup-node`.
@@ -73,7 +73,7 @@ to each of the different game types. For specification of dispute game types, se
   created by the `DisputeGameFactory` is equal to the output root of their `rollup-node` at the game's `l2BlockNumber`.
   - If it is, the Challenger should sign the [EIP-712 typeHash](./dispute-game.md) of the struct containing the
     `AttestationDisputeGame`'s `rootClaim` and `l2BlockNumber`. The Challenger should then submit the abi-encoded
-    signature to the `AttetationDisputeGame`'s `challenge` function.
+    signature to the `AttestationDisputeGame`'s `challenge` function.
   - If it is not, the Challenger should do nothing in support of this dispute game.
   ![Attestation `DisputeGameCreated` Diagram](./assets/challenger_attestation_dispute_game_created.png)
 
@@ -85,7 +85,7 @@ A full diagram and lifecycle of the Challenger's role in the `ATTESTATION` game 
 
 **TODO**
 
-> **Warning**  
+> **Warning**
 > The `VALIDITY` game type is not yet implemented. In the first iteration of Optimism's decentralization effort,
 > challengers will respond to `ATTESTATION` games only. A validity proof based dispute game is a possibility,
 > but fault proof based dispute games will be the primary focus of the team in the near future.
