@@ -192,11 +192,11 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 	// Convert Span batch to RawSpanBatch
 	rawSpanBatch, err := co.spanBatchBuilder.GetRawSpanBatch()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to convert SpanBatch into RawSpanBatch: %w", err)
 	}
 	// Encode RawSpanBatch into bytes
-	if err := rlp.Encode(&buf, NewSpanBatchData(*rawSpanBatch)); err != nil {
-		return 0, err
+	if err = rlp.Encode(&buf, NewSpanBatchData(*rawSpanBatch)); err != nil {
+		return 0, fmt.Errorf("failed to encode RawSpanBatch into bytes: %w", err)
 	}
 	co.rlpLength = 0
 	// Ensure that the total size of all RLP elements is less than or equal to MAX_RLP_BYTES_PER_CHANNEL
@@ -211,11 +211,11 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		// Flush compressed data into reader to preserve current result.
 		// If the channel is full after this block is appended, we should use preserved data.
 		if err := co.compress.Flush(); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("failed to flush compressor: %w", err)
 		}
-		_, err := io.Copy(co.reader, co.compress)
+		_, err = io.Copy(co.reader, co.compress)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("failed to copy compressed data to reader: %w", err)
 		}
 	}
 
@@ -261,7 +261,7 @@ func (co *ChannelOut) Flush() error {
 	}
 	if co.batchType == SpanBatchType && co.closed && co.reader.Len() == 0 && co.compress.Len() > 0 {
 		_, err := io.Copy(co.reader, co.compress)
-		return err
+		return fmt.Errorf("failed to flush compressed data to reader: %w", err)
 	}
 	return nil
 }

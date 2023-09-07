@@ -136,7 +136,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		// If next batch is SpanBatch, converts it to SingularBatches.
 		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
 		if err != nil {
-			return nil, err
+			return nil, NewCriticalError(err)
 		}
 		// Pop first one and return
 		nextBatch := singularBatches[0]

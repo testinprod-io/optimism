@@ -430,7 +430,7 @@ func (b *SpanBatch) GetSingularBatches(l1Origins []eth.L1BlockRef) ([]*SingularB
 			}
 		}
 		if !originFound {
-			return nil, fmt.Errorf("cannot find L1 origin")
+			return nil, fmt.Errorf("cannot find L1 origin: %d", batch.EpochNum)
 		}
 		singularBatches = append(singularBatches, &singularBatch)
 	}

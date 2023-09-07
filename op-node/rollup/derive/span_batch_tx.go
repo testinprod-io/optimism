@@ -99,11 +99,11 @@ func (tx *spanBatchTx) decodeTyped(b []byte) (spanBatchTxData, error) {
 	case types.AccessListTxType:
 		var inner spanBatchAccessListTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
-		return &inner, err
+		return &inner, fmt.Errorf("failed to decode spanBatchAccessListTxData: %w", err)
 	case types.DynamicFeeTxType:
 		var inner spanBatchDynamicFeeTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
-		return &inner, err
+		return &inner, fmt.Errorf("failed to decode spanBatchDynamicFeeTxData: %w", err)
 	default:
 		return nil, types.ErrTxTypeNotSupported
 	}
@@ -118,11 +118,12 @@ func (tx *spanBatchTx) DecodeRLP(s *rlp.Stream) error {
 	case kind == rlp.List:
 		// It's a legacy transaction.
 		var inner spanBatchLegacyTxData
-		err := s.Decode(&inner)
-		if err == nil {
-			tx.setDecoded(&inner, rlp.ListSize(size))
+		err = s.Decode(&inner)
+		if err != nil {
+			return fmt.Errorf("failed to decode spanBatchLegacyTxData: %w", err)
 		}
-		return err
+		tx.setDecoded(&inner, rlp.ListSize(size))
+		return nil
 	default:
 		// It's an EIP-2718 typed TX envelope.
 		var b []byte
@@ -130,10 +131,11 @@ func (tx *spanBatchTx) DecodeRLP(s *rlp.Stream) error {
 			return err
 		}
 		inner, err := tx.decodeTyped(b)
-		if err == nil {
-			tx.setDecoded(inner, uint64(len(b)))
+		if err != nil {
+			return err
 		}
-		return err
+		tx.setDecoded(inner, uint64(len(b)))
+		return nil
 	}
 }
 
@@ -145,7 +147,7 @@ func (tx *spanBatchTx) UnmarshalBinary(b []byte) error {
 		var data spanBatchLegacyTxData
 		err := rlp.DecodeBytes(b, &data)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to decode spanBatchLegacyTxData: %w", err)
 		}
 		tx.setDecoded(&data, uint64(len(b)))
 		return nil

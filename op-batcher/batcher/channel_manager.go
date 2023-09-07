@@ -250,6 +250,7 @@ func (s *channelManager) processBlocks() error {
 		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.SingularBatchType {
 			// SpanBatch hardfork is activated. Close SingularBatch channel
 			s.currentChannel.Close()
+			s.log.Info("SpanBatch hard fork activated. Closed current channel", "channel", s.currentChannel.ID(), "timestamp", block.Time())
 			break
 		}
 		l1info, err := s.currentChannel.AddBlock(block)
