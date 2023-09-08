@@ -139,8 +139,11 @@ func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder,
 	if err != nil {
 		return nil, err
 	}
-	// Creates a spanBatchBuilder contains information requires to build SpanBatch
-	spanBatchBuilder := derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+	var spanBatchBuilder *derive.SpanBatchBuilder
+	if cfg.BatchType == derive.SpanBatchType {
+		// Creates a spanBatchBuilder contains information requires to build SpanBatch
+		spanBatchBuilder = derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
+	}
 	co, err := derive.NewChannelOut(c, cfg.BatchType, spanBatchBuilder)
 	if err != nil {
 		return nil, err

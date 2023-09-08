@@ -212,6 +212,7 @@ func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 				return BatchDrop
 			}
 			originChecked = true
+			break
 		}
 	}
 	if !originChecked {

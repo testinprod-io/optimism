@@ -133,7 +133,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	}
 	spanBatch, ok := batch.(*SpanBatch)
 	if ok {
-		// If next batch is SpanBatch, converts it to SingularBatches.
+		// If next batch is SpanBatch, convert it to SingularBatches.
 		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
 		if err != nil {
 			return nil, NewCriticalError(err)

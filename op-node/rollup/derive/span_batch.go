@@ -349,11 +349,11 @@ func (b *SpanBatch) GetBlockCount() int {
 // AppendSingularBatch appends a SingularBatch into the span batch
 // updates l1OriginCheck or parentCheck if needed.
 func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) {
-	b.batches = append(b.batches, singularBatchToElement(singularBatch))
-	b.l1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
-	if len(b.batches) == 1 {
+	if len(b.batches) == 0 {
 		b.parentCheck = singularBatch.ParentHash.Bytes()[:20]
 	}
+	b.batches = append(b.batches, singularBatchToElement(singularBatch))
+	b.l1OriginCheck = singularBatch.EpochHash.Bytes()[:20]
 }
 
 // ToRawSpanBatch merges SingularBatch List and initialize single RawSpanBatch
@@ -388,13 +388,9 @@ func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint6
 	}
 	var blockTxCounts []uint64
 	var txs [][]byte
-	var blockTimstamps []uint64
-	var blockOriginNums []uint64
 	for _, batch := range b.batches {
 		blockTxCount := uint64(len(batch.Transactions))
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		blockTimstamps = append(blockTimstamps, batch.Timestamp)
-		blockOriginNums = append(blockOriginNums, uint64(batch.EpochNum))
 		for _, rawTx := range batch.Transactions {
 			txs = append(txs, rawTx)
 		}

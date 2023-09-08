@@ -245,7 +245,7 @@ func BatchQueueEager(t *testing.T, batchType int) {
 		} else {
 			require.Equal(t, singularBatches[i], b)
 			safeHead.Number += 1
-			safeHead.Time += 2
+			safeHead.Time += cfg.BlockTime
 			safeHead.Hash = mockHash(b.Timestamp, 2)
 			safeHead.L1Origin = b.Epoch()
 		}

@@ -178,7 +178,7 @@ func (co *ChannelOut) writeSingularBatch(batch *SingularBatch) (uint64, error) {
 }
 
 // writeSpanBatch appends a SingularBatch to the channel's SpanBatch.
-// A channel can have only one SpanBatch. And compressed results should not be accessible until the channel is closed, since the prefix can be changed.
+// A channel can have only one SpanBatch. And compressed results should not be accessible until the channel is closed, since the prefix and payload can be changed.
 // So it resets channel contents and rewrites the entire SpanBatch each time, and compressed results are copied to reader after the channel is closed.
 // It makes we can only get frames once the channel is full or closed, in the case of SpanBatch.
 func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
@@ -259,7 +259,7 @@ func (co *ChannelOut) Flush() error {
 	if err := co.compress.Flush(); err != nil {
 		return err
 	}
-	if co.batchType == SpanBatchType && co.closed && co.reader.Len() == 0 && co.compress.Len() > 0 {
+	if co.batchType == SpanBatchType && co.closed && co.ReadyBytes() == 0 && co.compress.Len() > 0 {
 		_, err := io.Copy(co.reader, co.compress)
 		return fmt.Errorf("failed to flush compressed data to reader: %w", err)
 	}
@@ -303,8 +303,8 @@ func (co *ChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, erro
 
 	// Copy data from the local buffer into the frame data buffer
 	maxDataSize := maxSize - FrameV0OverHeadSize
-	if maxDataSize > uint64(co.reader.Len()) {
-		maxDataSize = uint64(co.reader.Len())
+	if maxDataSize > uint64(co.ReadyBytes()) {
+		maxDataSize = uint64(co.ReadyBytes())
 		// If we are closed & will not spill past the current frame
 		// mark it is the final frame of the channel.
 		if co.closed {

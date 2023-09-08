@@ -15,11 +15,10 @@ import (
 
 // SingularBatch is an implementation of Batch interface, containing the input to build one L2 block.
 type SingularBatch struct {
-	ParentHash common.Hash  // parent L2 block hash
-	EpochNum   rollup.Epoch // aka l1 num
-	EpochHash  common.Hash  // block hash
-	Timestamp  uint64
-	// no feeRecipient address input, all fees go to a L2 contract
+	ParentHash   common.Hash  // parent L2 block hash
+	EpochNum     rollup.Epoch // aka l1 num
+	EpochHash    common.Hash  // l1 block hash
+	Timestamp    uint64
 	Transactions []hexutil.Bytes
 }
 

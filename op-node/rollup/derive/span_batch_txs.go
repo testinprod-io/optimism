@@ -384,43 +384,6 @@ func (btx *spanBatchTxs) fullTxs() ([][]byte, error) {
 	return txs, nil
 }
 
-func (btx *spanBatchTxs) appendTx(txBytes []byte) error {
-	btx.totalBlockTxCount += 1
-
-	var tx types.Transaction
-	if err := tx.UnmarshalBinary(txBytes); err != nil {
-		return errors.New("failed to decode tx")
-	}
-	var txSig spanBatchSignature
-	v, r, s := tx.RawSignatureValues()
-	R, _ := uint256.FromBig(r)
-	S, _ := uint256.FromBig(s)
-	txSig.v = v.Uint64()
-	txSig.r = R
-	txSig.s = S
-	btx.txSigs = append(btx.txSigs, txSig)
-	contractCreationBit := uint(1)
-	if tx.To() != nil {
-		btx.txTos = append(btx.txTos, *tx.To())
-		contractCreationBit = uint(0)
-	}
-	btx.contractCreationBits.SetBit(btx.contractCreationBits, int(btx.totalBlockTxCount-1), contractCreationBit)
-	yParityBit := convertVToYParity(txSig.v, int(tx.Type()))
-	btx.yParityBits.SetBit(btx.yParityBits, int(btx.totalBlockTxCount-1), yParityBit)
-	btx.txNonces = append(btx.txNonces, tx.Nonce())
-	btx.txGases = append(btx.txGases, tx.Gas())
-	stx, err := newSpanBatchTx(tx)
-	if err != nil {
-		return err
-	}
-	txData, err := stx.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	btx.txDatas = append(btx.txDatas, txData)
-	return nil
-}
-
 func convertVToYParity(v uint64, txType int) uint {
 	var yParityBit uint
 	switch txType {
