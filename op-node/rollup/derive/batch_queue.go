@@ -127,12 +127,19 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	} else if err != nil {
 		return nil, err
 	}
-	singularBatch, ok := batch.(*SingularBatch)
-	if ok {
+
+	switch batch.GetBatchType() {
+	case SingularBatchType:
+		singularBatch, ok := batch.(*SingularBatch)
+		if !ok {
+			return nil, NewCriticalError(errors.New("failed type assertion to SingularBatch"))
+		}
 		return singularBatch, nil
-	}
-	spanBatch, ok := batch.(*SpanBatch)
-	if ok {
+	case SpanBatchType:
+		spanBatch, ok := batch.(*SpanBatch)
+		if !ok {
+			return nil, NewCriticalError(errors.New("failed type assertion to SpanBatch"))
+		}
 		// If next batch is SpanBatch, convert it to SingularBatches.
 		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
 		if err != nil {
@@ -144,8 +151,9 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		// Must set ParentHash before return.
 		nextBatch.ParentHash = safeL2Head.Hash
 		return nextBatch, nil
+	default:
+		return nil, NewCriticalError(fmt.Errorf("unrecognized batch type: %d", batch.GetBatchType()))
 	}
-	return nil, nil
 }
 
 func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.SystemConfig) error {

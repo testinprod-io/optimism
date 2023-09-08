@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 	"io"
 	"math/big"
 	"sort"
@@ -30,12 +29,6 @@ type spanBatchPrefix struct {
 	l1OriginNum   uint64 // L1 origin number
 	parentCheck   []byte // First 20 bytes of the first block's parent hash
 	l1OriginCheck []byte // First 20 bytes of the last block's L1 origin hash
-}
-
-type spanBatchSignature struct {
-	v uint64
-	r *uint256.Int
-	s *uint256.Int
 }
 
 type spanBatchPayload struct {
