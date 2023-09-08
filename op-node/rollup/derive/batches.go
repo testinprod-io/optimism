@@ -31,14 +31,22 @@ const (
 func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
 	switch batch.Batch.GetBatchType() {
 	case SingularBatchType:
+		singularBatch, ok := batch.Batch.(*SingularBatch)
+		if !ok {
+			log.Error("failed type assertion to SingularBatch")
+			return BatchDrop
+		}
 		if cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			log.Warn("received SingularBatch after SpanBatch hard fork")
 			return BatchDrop
 		}
-		singularBatch, _ := batch.Batch.(*SingularBatch)
 		return checkSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
 	case SpanBatchType:
-		spanBatch, _ := batch.Batch.(*SpanBatch)
+		spanBatch, ok := batch.Batch.(*SpanBatch)
+		if !ok {
+			log.Error("failed type assertion to SpanBatch")
+			return BatchDrop
+		}
 		if !cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
 			log.Warn("received SpanBatch before SpanBatch hard fork")
 			return BatchDrop
