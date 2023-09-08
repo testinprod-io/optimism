@@ -110,8 +110,10 @@ func (co *ChannelOut) Reset() error {
 	co.rlpLength = 0
 	co.compress.Reset()
 	co.reader.Reset()
-	co.spanBatchBuilder.Reset()
 	co.closed = false
+	if co.spanBatchBuilder != nil {
+		co.spanBatchBuilder.Reset()
+	}
 	_, err := rand.Read(co.id[:])
 	return err
 }
@@ -215,6 +217,8 @@ func (co *ChannelOut) writeSpanBatch(batch *SingularBatch) (uint64, error) {
 		}
 		_, err = io.Copy(co.reader, co.compress)
 		if err != nil {
+			// Must reset reader to avoid partial output
+			co.reader.Reset()
 			return 0, fmt.Errorf("failed to copy compressed data to reader: %w", err)
 		}
 	}
@@ -261,7 +265,11 @@ func (co *ChannelOut) Flush() error {
 	}
 	if co.batchType == SpanBatchType && co.closed && co.ReadyBytes() == 0 && co.compress.Len() > 0 {
 		_, err := io.Copy(co.reader, co.compress)
-		return fmt.Errorf("failed to flush compressed data to reader: %w", err)
+		if err != nil {
+			// Must reset reader to avoid partial output
+			co.reader.Reset()
+			return fmt.Errorf("failed to flush compressed data to reader: %w", err)
+		}
 	}
 	return nil
 }
