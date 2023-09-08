@@ -31,6 +31,12 @@ type spanBatchTxs struct {
 	txTypes []int
 }
 
+type spanBatchSignature struct {
+	v uint64
+	r *uint256.Int
+	s *uint256.Int
+}
+
 func (btx *spanBatchTxs) encodeContractCreationBits(w io.Writer) error {
 	contractCreationBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
