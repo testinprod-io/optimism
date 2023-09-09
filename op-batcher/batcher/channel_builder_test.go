@@ -37,10 +37,7 @@ var defaultTestChannelConfig = ChannelConfig{
 	ParentRef: &eth.L2BlockRef{Time: 0},
 }
 
-var maxTs = uint64(math.MaxUint64)
-var spanBatchNotActivated = rollup.Config{
-	SpanBatchTime: &maxTs,
-}
+var spanBatchNotActivated = rollup.Config{}
 var zeroTs = uint64(0)
 var spanBatchActivated = rollup.Config{
 	SpanBatchTime: &zeroTs,
@@ -378,15 +375,10 @@ func TestChannelBuilderBatchType(t *testing.T) {
 		name string
 		f    func(t *testing.T, batchType int, rcfg *rollup.Config)
 	}{
-		{"ChannelBuilder_NextFrame", ChannelBuilder_NextFrame},
-		{"ChannelBuilder_OutputWrongFramePanic", ChannelBuilder_OutputWrongFramePanic},
 		{"ChannelBuilder_MaxRLPBytesPerChannel", ChannelBuilder_MaxRLPBytesPerChannel},
 		{"ChannelBuilder_OutputFramesMaxFrameIndex", ChannelBuilder_OutputFramesMaxFrameIndex},
 		{"ChannelBuilder_AddBlock", ChannelBuilder_AddBlock},
 		{"ChannelBuilder_Reset", ChannelBuilder_Reset},
-		{"BuilderRegisterL1Block", BuilderRegisterL1Block},
-		{"BuilderRegisterL1BlockZeroMaxChannelDuration", BuilderRegisterL1BlockZeroMaxChannelDuration},
-		{"FramePublished", FramePublished},
 		{"ChannelBuilder_PendingFrames_TotalFrames", ChannelBuilder_PendingFrames_TotalFrames},
 		{"ChannelBuilder_InputBytes", ChannelBuilder_InputBytes},
 		{"ChannelBuilder_OutputBytes", ChannelBuilder_OutputBytes},
@@ -406,13 +398,12 @@ func TestChannelBuilderBatchType(t *testing.T) {
 	}
 }
 
-// ChannelBuilder_NextFrame tests calling NextFrame on a ChannelBuilder with only one frame
-func ChannelBuilder_NextFrame(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestChannelBuilder_NextFrame tests calling NextFrame on a ChannelBuilder with only one frame
+func TestChannelBuilder_NextFrame(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
-	channelConfig.BatchType = batchType
 
 	// Create a new channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 
 	// Mock the internals of `channelBuilder.outputFrame`
@@ -447,21 +438,19 @@ func ChannelBuilder_NextFrame(t *testing.T, batchType int, rcfg *rollup.Config) 
 	require.PanicsWithValue(t, "no next frame", func() { cb.NextFrame() })
 }
 
-// ChannelBuilder_OutputWrongFramePanic tests that a panic is thrown when a frame is pushed with an invalid frame id
-func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestChannelBuilder_OutputWrongFramePanic tests that a panic is thrown when a frame is pushed with an invalid frame id
+func TestChannelBuilder_OutputWrongFramePanic(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
-	channelConfig.BatchType = batchType
 
 	// Construct a channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 
 	// Mock the internals of `channelBuilder.outputFrame`
 	// to construct a single frame
 	c, err := channelConfig.CompressorConfig.NewCompressor()
 	require.NoError(t, err)
-	spanBatchBuilder := derive.NewSpanBatchBuilder(channelConfig.ParentRef.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
-	co, err := derive.NewChannelOut(c, derive.SingularBatchType, spanBatchBuilder)
+	co, err := derive.NewChannelOut(c, derive.SingularBatchType, nil)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	fn, err := co.OutputFrame(&buf, channelConfig.MaxFrameSize)
@@ -485,10 +474,9 @@ func ChannelBuilder_OutputWrongFramePanic(t *testing.T, batchType int, rcfg *rol
 func TestChannelBuilder_OutputFramesWorks(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
 	channelConfig.MaxFrameSize = 24
-	channelConfig.BatchType = derive.SingularBatchType
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, &spanBatchNotActivated)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 	require.False(t, cb.IsFull())
 	require.Equal(t, 0, cb.PendingFrames())
@@ -722,13 +710,12 @@ func ChannelBuilder_Reset(t *testing.T, batchType int, rcfg *rollup.Config) {
 	require.Equal(t, 0, cb.co.ReadyBytes())
 }
 
-// BuilderRegisterL1Block tests the RegisterL1Block function
-func BuilderRegisterL1Block(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestBuilderRegisterL1Block tests the RegisterL1Block function
+func TestBuilderRegisterL1Block(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
-	channelConfig.BatchType = batchType
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 
 	// Assert params modified in RegisterL1Block
@@ -743,16 +730,15 @@ func BuilderRegisterL1Block(t *testing.T, batchType int, rcfg *rollup.Config) {
 	require.Equal(t, uint64(101), cb.timeout)
 }
 
-// BuilderRegisterL1BlockZeroMaxChannelDuration tests the RegisterL1Block function
-func BuilderRegisterL1BlockZeroMaxChannelDuration(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestBuilderRegisterL1BlockZeroMaxChannelDuration tests the RegisterL1Block function
+func TestBuilderRegisterL1BlockZeroMaxChannelDuration(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
-	channelConfig.BatchType = batchType
 
 	// Set the max channel duration to 0
 	channelConfig.MaxChannelDuration = 0
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 
 	// Assert params modified in RegisterL1Block
@@ -768,13 +754,12 @@ func BuilderRegisterL1BlockZeroMaxChannelDuration(t *testing.T, batchType int, r
 	require.Equal(t, uint64(0), cb.timeout)
 }
 
-// FramePublished tests the FramePublished function
-func FramePublished(t *testing.T, batchType int, rcfg *rollup.Config) {
+// TestFramePublished tests the FramePublished function
+func TestFramePublished(t *testing.T) {
 	channelConfig := defaultTestChannelConfig
-	channelConfig.BatchType = batchType
 
 	// Construct the channel builder
-	cb, err := newChannelBuilder(channelConfig, rcfg)
+	cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 	require.NoError(t, err)
 
 	// Let's say the block number is fed in as 100
