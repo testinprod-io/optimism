@@ -26,6 +26,15 @@ type ValidBatchTestCase struct {
 	Expected   BatchValidity
 }
 
+type SpanBatchHardForkTestCase struct {
+	Name          string
+	L1Blocks      []eth.L1BlockRef
+	L2SafeHead    eth.L2BlockRef
+	Batch         BatchWithL1InclusionBlock
+	Expected      BatchValidity
+	SpanBatchTime uint64
+}
+
 var HashA = common.Hash{0x0a}
 var HashB = common.Hash{0x0b}
 
@@ -1199,6 +1208,138 @@ func TestValidSpanBatch(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			validity := CheckBatch(&conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch)
+			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
+		})
+	}
+}
+
+func TestSpanBatchHardFork(t *testing.T) {
+	minTs := uint64(0)
+	conf := rollup.Config{
+		Genesis: rollup.Genesis{
+			L2Time: 31, // a genesis time that itself does not align to make it more interesting
+		},
+		BlockTime:         2,
+		SeqWindowSize:     4,
+		MaxSequencerDrift: 6,
+		SpanBatchTime:     &minTs,
+		// other config fields are ignored and can be left empty.
+	}
+
+	rng := rand.New(rand.NewSource(1234))
+	chainId := new(big.Int).SetUint64(rng.Uint64())
+	signer := types.NewLondonSigner(chainId)
+	randTx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
+	randTxData, _ := randTx.MarshalBinary()
+	l1A := testutils.RandomBlockRef(rng)
+	l1B := eth.L1BlockRef{
+		Hash:       testutils.RandomHash(rng),
+		Number:     l1A.Number + 1,
+		ParentHash: l1A.Hash,
+		Time:       l1A.Time + 7,
+	}
+
+	l2A0 := eth.L2BlockRef{
+		Hash:           testutils.RandomHash(rng),
+		Number:         100,
+		ParentHash:     testutils.RandomHash(rng),
+		Time:           l1A.Time,
+		L1Origin:       l1A.ID(),
+		SequenceNumber: 0,
+	}
+
+	l2A1 := eth.L2BlockRef{
+		Hash:           testutils.RandomHash(rng),
+		Number:         l2A0.Number + 1,
+		ParentHash:     l2A0.Hash,
+		Time:           l2A0.Time + conf.BlockTime,
+		L1Origin:       l1A.ID(),
+		SequenceNumber: 1,
+	}
+
+	testCases := []SpanBatchHardForkTestCase{
+		{
+			Name:       "singular batch before hard fork",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A0,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: &SingularBatch{
+					ParentHash:   l2A1.ParentHash,
+					EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+					EpochHash:    l2A1.L1Origin.Hash,
+					Timestamp:    l2A1.Time,
+					Transactions: []hexutil.Bytes{randTxData},
+				},
+			},
+			SpanBatchTime: l2A1.Time + 2,
+			Expected:      BatchAccept,
+		},
+		{
+			Name:       "span batch before hard fork",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A0,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A1.ParentHash,
+						EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+						EpochHash:    l2A1.L1Origin.Hash,
+						Timestamp:    l2A1.Time,
+						Transactions: []hexutil.Bytes{randTxData},
+					},
+				}),
+			},
+			SpanBatchTime: l2A1.Time + 2,
+			Expected:      BatchDrop,
+		},
+		{
+			Name:       "singular batch after hard fork",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A0,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: &SingularBatch{
+					ParentHash:   l2A1.ParentHash,
+					EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+					EpochHash:    l2A1.L1Origin.Hash,
+					Timestamp:    l2A1.Time,
+					Transactions: []hexutil.Bytes{randTxData},
+				},
+			},
+			SpanBatchTime: l2A1.Time - 2,
+			Expected:      BatchDrop,
+		},
+		{
+			Name:       "span batch after hard fork",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A0,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A1.ParentHash,
+						EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+						EpochHash:    l2A1.L1Origin.Hash,
+						Timestamp:    l2A1.Time,
+						Transactions: []hexutil.Bytes{randTxData},
+					},
+				}),
+			},
+			SpanBatchTime: l2A1.Time - 2,
+			Expected:      BatchAccept,
+		},
+	}
+
+	// Log level can be increased for debugging purposes
+	logger := testlog.Logger(t, log.LvlInfo)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			rcfg := conf
+			rcfg.SpanBatchTime = &testCase.SpanBatchTime
+			validity := CheckBatch(&rcfg, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch)
 			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
 		})
 	}
