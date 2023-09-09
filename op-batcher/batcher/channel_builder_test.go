@@ -166,6 +166,32 @@ func newMiniL2BlockWithNumberParent(numTx int, number *big.Int, parent common.Ha
 	}, txs, nil, nil, trie.NewStackTrie(nil))
 }
 
+func nextMiniL2Block(parent *types.Block, blockTime uint64, numTx int) *types.Block {
+	l1Block := types.NewBlock(&types.Header{
+		BaseFee:    big.NewInt(10),
+		Difficulty: common.Big0,
+		Number:     big.NewInt(100),
+	}, nil, nil, nil, trie.NewStackTrie(nil))
+	l1InfoTx, err := derive.L1InfoDeposit(0, eth.BlockToInfo(l1Block), eth.SystemConfig{}, false)
+	if err != nil {
+		panic(err)
+	}
+
+	rng := rand.New(rand.NewSource(123))
+	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
+	txs := make([]*types.Transaction, 0, 1+numTx)
+	txs = append(txs, types.NewTx(l1InfoTx))
+	for i := 0; i < numTx; i++ {
+		txs = append(txs, types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer))
+	}
+
+	return types.NewBlock(&types.Header{
+		Number:     new(big.Int).Add(parent.Number(), big.NewInt(1)),
+		ParentHash: parent.Hash(),
+		Time:       parent.Time() + blockTime,
+	}, txs, nil, nil, trie.NewStackTrie(nil))
+}
+
 // addTooManyBlocks adds blocks to the channel until it hits an error,
 // which is presumably ErrTooManyRLPBytes.
 func addTooManyBlocks(cb *channelBuilder) error {
