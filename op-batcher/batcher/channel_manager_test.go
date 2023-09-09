@@ -35,6 +35,7 @@ func TestChannelManagerBatchType(t *testing.T) {
 		{"ChannelManagerCloseBeforeFirstUse", ChannelManagerCloseBeforeFirstUse},
 		{"ChannelManagerCloseNoPendingChannel", ChannelManagerCloseNoPendingChannel},
 		{"ChannelManagerClosePendingChannel", ChannelManagerClosePendingChannel},
+		{"ChannelManagerCloseAllTxsFailed", ChannelManagerCloseAllTxsFailed},
 	}
 	for _, test := range tests {
 		test := test
