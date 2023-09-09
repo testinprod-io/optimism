@@ -187,18 +187,12 @@ func addTooManyBlocks(cb *channelBuilder) error {
 // is set to 0, the channel builder cannot have a duration timeout.
 func FuzzDurationTimeoutZeroMaxChannelDuration(f *testing.F) {
 	for i := range [10]int{} {
-		f.Add(uint64(i), derive.SingularBatchType)
-		f.Add(uint64(i), derive.SpanBatchType)
+		f.Add(uint64(i))
 	}
-	f.Fuzz(func(t *testing.T, l1BlockNum uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, l1BlockNum uint64) {
 		channelConfig := defaultTestChannelConfig
 		channelConfig.MaxChannelDuration = 0
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 		cb.timeout = 0
 		cb.updateDurationTimeout(l1BlockNum)
@@ -211,10 +205,9 @@ func FuzzDurationTimeoutZeroMaxChannelDuration(f *testing.F) {
 // as long as the channel builder's timeout is set to 0.
 func FuzzChannelBuilder_DurationZero(f *testing.F) {
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i))
 	}
-	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64) {
 		if maxChannelDuration == 0 {
 			t.Skip("Max channel duration cannot be 0")
 		}
@@ -222,12 +215,7 @@ func FuzzChannelBuilder_DurationZero(f *testing.F) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.MaxChannelDuration = maxChannelDuration
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Whenever the timeout is set to 0, the channel builder should have a duration timeout
@@ -244,10 +232,9 @@ func FuzzChannelBuilder_DurationZero(f *testing.F) {
 func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i))
 	}
-	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64, timeout uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, l1BlockNum uint64, maxChannelDuration uint64, timeout uint64) {
 		if maxChannelDuration == 0 {
 			t.Skip("Max channel duration cannot be 0")
 		}
@@ -255,12 +242,7 @@ func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.MaxChannelDuration = maxChannelDuration
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Whenever the timeout is greater than the l1BlockNum,
@@ -287,20 +269,14 @@ func FuzzDurationTimeoutMaxChannelDuration(f *testing.F) {
 func FuzzChannelCloseTimeout(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5))
 	}
-	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64, timeout uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64, timeout uint64) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.ChannelTimeout = channelTimeout
 		channelConfig.SubSafetyMargin = subSafetyMargin
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Check the timeout
@@ -321,20 +297,14 @@ func FuzzChannelCloseTimeout(f *testing.F) {
 func FuzzChannelZeroCloseTimeout(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i))
 	}
-	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, l1BlockNum uint64, channelTimeout uint64, subSafetyMargin uint64) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.ChannelTimeout = channelTimeout
 		channelConfig.SubSafetyMargin = subSafetyMargin
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Check the timeout
@@ -354,20 +324,14 @@ func FuzzChannelZeroCloseTimeout(f *testing.F) {
 func FuzzSeqWindowClose(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i), uint64(i*5))
 	}
-	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64, timeout uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64, timeout uint64) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.SeqWindowSize = seqWindowSize
 		channelConfig.SubSafetyMargin = subSafetyMargin
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Check the timeout
@@ -388,20 +352,14 @@ func FuzzSeqWindowClose(f *testing.F) {
 func FuzzSeqWindowZeroTimeoutClose(f *testing.F) {
 	// Set multiple seeds in case fuzzing isn't explicitly used
 	for i := range [10]int{} {
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SingularBatchType)
-		f.Add(uint64(i), uint64(i), uint64(i), derive.SpanBatchType)
+		f.Add(uint64(i), uint64(i), uint64(i))
 	}
-	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64, batchType int) {
+	f.Fuzz(func(t *testing.T, epochNum uint64, seqWindowSize uint64, subSafetyMargin uint64) {
 		// Create the channel builder
 		channelConfig := defaultTestChannelConfig
 		channelConfig.SeqWindowSize = seqWindowSize
 		channelConfig.SubSafetyMargin = subSafetyMargin
-		channelConfig.BatchType = batchType
-		rcfg := &spanBatchNotActivated
-		if batchType == derive.SpanBatchType {
-			rcfg = &spanBatchActivated
-		}
-		cb, err := newChannelBuilder(channelConfig, rcfg)
+		cb, err := newChannelBuilder(channelConfig, &rollup.Config{})
 		require.NoError(t, err)
 
 		// Check the timeout
