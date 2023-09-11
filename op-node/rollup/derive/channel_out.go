@@ -67,7 +67,7 @@ type ChannelOut struct {
 	// closed indicates if the channel is closed
 	closed bool
 	// batchType indicates whether this channel uses SingularBatch or SpanBatch
-	batchType int
+	batchType uint
 	// spanBatchBuilder contains information requires to build SpanBatch
 	spanBatchBuilder *SpanBatchBuilder
 	// reader contains compressed data for making output frames
@@ -78,7 +78,7 @@ func (co *ChannelOut) ID() ChannelID {
 	return co.id
 }
 
-func NewChannelOut(compress Compressor, batchType int, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
+func NewChannelOut(compress Compressor, batchType uint, spanBatchBuilder *SpanBatchBuilder) (*ChannelOut, error) {
 	// If the channel uses SingularBatch, use compressor directly as its reader
 	var reader ChannelOutReader = compress
 	if batchType == SpanBatchType {

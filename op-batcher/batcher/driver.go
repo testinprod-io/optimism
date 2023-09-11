@@ -92,6 +92,7 @@ func NewBatchSubmitterFromCLIConfig(cfg CLIConfig, l log.Logger, m metrics.Metri
 			SubSafetyMargin:    cfg.SubSafetyMargin,
 			MaxFrameSize:       cfg.MaxL1TxSize - 1, // subtract 1 byte for version
 			CompressorConfig:   cfg.CompressorConfig.Config(),
+			BatchType:          cfg.BatchType,
 		},
 	}
 

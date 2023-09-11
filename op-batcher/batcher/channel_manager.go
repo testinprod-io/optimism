@@ -3,11 +3,11 @@ package batcher
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"io"
 	"sync"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/metrics"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -204,16 +204,12 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 		return nil
 	}
 
-	batchType := derive.SingularBatchType
-	if s.rcfg.IsSpanBatch(s.lastProcessedBlock.Time + s.rcfg.BlockTime) {
-		// Next channel uses SpanBatch
-		batchType = derive.SpanBatchType
+	var spanBatchBuilder *derive.SpanBatchBuilder
+	if s.cfg.BatchType == derive.SpanBatchType {
+		// Pass the current lastProcessedBlock as the parent
+		spanBatchBuilder = derive.NewSpanBatchBuilder(s.lastProcessedBlock.L1Origin.Number, s.rcfg.Genesis.L2Time, s.rcfg.L2ChainID)
 	}
-	channelCfg := s.cfg
-	channelCfg.BatchType = batchType
-	// Pass the current lastProcessedBlock as the parent
-	channelCfg.ParentRef = s.lastProcessedBlock
-	pc, err := newChannel(s.log, s.metr, channelCfg, s.rcfg)
+	pc, err := newChannel(s.log, s.metr, s.cfg, spanBatchBuilder)
 	if err != nil {
 		return fmt.Errorf("creating new channel: %w", err)
 	}
@@ -222,8 +218,7 @@ func (s *channelManager) ensureChannelWithSpace(l1Head eth.BlockID) error {
 	s.log.Info("Created channel",
 		"id", pc.ID(),
 		"l1Head", l1Head,
-		"blocks_pending", len(s.blocks),
-		"batch_type", batchType)
+		"blocks_pending", len(s.blocks))
 	s.metr.RecordChannelOpened(pc.ID(), len(s.blocks))
 
 	return nil
