@@ -36,10 +36,6 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 			log.Error("failed type assertion to SingularBatch")
 			return BatchDrop
 		}
-		if cfg.IsSpanBatch(batch.Batch.GetTimestamp()) {
-			log.Warn("received SingularBatch after SpanBatch hard fork")
-			return BatchDrop
-		}
 		return checkSingularBatch(cfg, log, l1Blocks, l2SafeHead, singularBatch, batch.L1InclusionBlock)
 	case SpanBatchType:
 		spanBatch, ok := batch.Batch.(*SpanBatch)
