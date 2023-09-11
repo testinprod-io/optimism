@@ -35,6 +35,7 @@ func TestChannelManagerBatchType(t *testing.T) {
 		{"ChannelManagerCloseBeforeFirstUse", ChannelManagerCloseBeforeFirstUse},
 		{"ChannelManagerCloseNoPendingChannel", ChannelManagerCloseNoPendingChannel},
 		{"ChannelManagerClosePendingChannel", ChannelManagerClosePendingChannel},
+		{"ChannelManagerCloseAllTxsFailed", ChannelManagerCloseAllTxsFailed},
 	}
 	for _, test := range tests {
 		test := test
@@ -390,4 +391,53 @@ func ChannelManagerCloseAllTxsFailed(t *testing.T, rcfg *rollup.Config, safeHead
 
 	_, err = m.TxData(eth.BlockID{})
 	require.ErrorIs(err, io.EOF, "Expected closed channel manager to produce no more tx data")
+}
+
+// TestChannelManagerSpanBatchHardfork tests that the channel manager closes current channel
+// when SpanBatch hard fork is activated.
+func TestChannelManagerSpanBatchHardfork(t *testing.T) {
+	require := require.New(t)
+	log := testlog.Logger(t, log.LvlDebug)
+
+	blockTime := uint64(2)
+	a := newMiniL2Block(0)
+	b := nextMiniL2Block(a, blockTime, 0)
+	c := nextMiniL2Block(b, blockTime, 0)
+	d := nextMiniL2Block(c, blockTime, 0)
+
+	spanBatchTime := d.Time() // SpanBatch hard fork activated at block d
+	rcfg := rollup.Config{SpanBatchTime: &spanBatchTime, BlockTime: blockTime}
+	safeHead := eth.L2BlockRef{Time: a.Time()}
+
+	m := NewChannelManager(log, metrics.NoopMetrics,
+		ChannelConfig{
+			MaxFrameSize:   1000,
+			ChannelTimeout: 1000,
+			CompressorConfig: compressor.Config{
+				TargetNumFrames:  100,
+				TargetFrameSize:  1000,
+				ApproxComprRatio: 1.0,
+			},
+		}, &rcfg, &safeHead,
+	)
+
+	require.NoError(m.AddL2Block(b))
+	require.NoError(m.AddL2Block(c))
+	require.NoError(m.AddL2Block(d))
+
+	// Channel Manager creates a new channel with SingularBatchType.
+	// This channel should be closed when processing block d.
+	data, err := m.TxData(eth.BlockID{})
+	require.NoError(err)
+	require.NotNil(data)
+	require.Equal(m.currentChannel.cfg.BatchType, derive.SingularBatchType)
+	require.NotNil(m.currentChannel.FullErr())
+	require.ErrorIs(m.currentChannel.FullErr(), ErrTerminated) // forced closed
+
+	// Channel Manager creates a new channel with SpanBatchType.
+	_, err = m.TxData(eth.BlockID{})
+	require.ErrorIs(err, io.EOF) // no frame yet
+	require.Equal(m.currentChannel.cfg.BatchType, derive.SpanBatchType)
+	require.NoError(m.currentChannel.FullErr())
+
 }

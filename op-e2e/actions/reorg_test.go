@@ -189,8 +189,15 @@ func TestReorgFlipFlop(gt *testing.T) {
 	verifier.ActL2PipelineFull(t)
 	require.Equal(t, sd.RollupCfg.Genesis.L1, verifier.L2Safe().L1Origin, "expected to be back at genesis origin after losing A0 and A1")
 
-	require.NotZero(t, verifier.L2Safe().Number, "still preserving old L2 blocks that did not reference reorged L1 chain (assuming more than one L2 block per L1 block)")
-	require.Equal(t, verifier.L2Safe(), verifier.L2Unsafe(), "head is at safe block after L1 reorg")
+	if sd.RollupCfg.SpanBatchTime == nil {
+		// before span batch hard fork
+		require.NotZero(t, verifier.L2Safe().Number, "still preserving old L2 blocks that did not reference reorged L1 chain (assuming more than one L2 block per L1 block)")
+		require.Equal(t, verifier.L2Safe(), verifier.L2Unsafe(), "head is at safe block after L1 reorg")
+	} else {
+		// after span batch hard fork
+		require.Zero(t, verifier.L2Safe().Number, "safe head is at genesis block because partially valid span batch not accepted")
+		require.Equal(t, verifier.L2Unsafe().ID(), sequencer.L2Unsafe().ParentID(), "head is at the highest unsafe block that references canonical L1 chain(genesis block)")
+	}
 	checkVerifEngine()
 
 	// and sync the sequencer, then build some new L2 blocks, up to and including with L1 origin B2
@@ -210,6 +217,7 @@ func TestReorgFlipFlop(gt *testing.T) {
 	verifier.ActL1HeadSignal(t)
 	verifier.ActL2PipelineFull(t)
 	require.Equal(t, verifier.L2Safe().L1Origin, blockB2.ID(), "B2 is the L1 origin of verifier now")
+	require.Equal(t, verifier.L2Unsafe(), sequencer.L2Unsafe(), "verifier unsafe head is reorged along sequencer")
 	checkVerifEngine()
 
 	// Flop back to chain A!

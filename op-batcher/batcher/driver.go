@@ -454,7 +454,7 @@ func fetchSyncStatus(ctx context.Context, rollupNode *sources.RollupClient, time
 	if err != nil {
 		return &eth.SyncStatus{}, fmt.Errorf("failed to get sync status: %w", err)
 	}
-	if syncStatus.HeadL1 == (eth.L1BlockRef{}) {
+	if syncStatus.SafeL2 == (eth.L2BlockRef{}) {
 		return &eth.SyncStatus{}, errors.New("empty sync status")
 	}
 	return syncStatus, nil

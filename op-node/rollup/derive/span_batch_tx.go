@@ -26,7 +26,7 @@ type spanBatchLegacyTxData struct {
 	Data     []byte
 }
 
-func (txData spanBatchLegacyTxData) txType() byte { return types.LegacyTxType }
+func (txData *spanBatchLegacyTxData) txType() byte { return types.LegacyTxType }
 
 type spanBatchAccessListTxData struct {
 	Value      *big.Int // wei amount
@@ -35,7 +35,7 @@ type spanBatchAccessListTxData struct {
 	AccessList types.AccessList // EIP-2930 access list
 }
 
-func (txData spanBatchAccessListTxData) txType() byte { return types.AccessListTxType }
+func (txData *spanBatchAccessListTxData) txType() byte { return types.AccessListTxType }
 
 type spanBatchDynamicFeeTxData struct {
 	Value      *big.Int
@@ -45,7 +45,7 @@ type spanBatchDynamicFeeTxData struct {
 	AccessList types.AccessList
 }
 
-func (txData spanBatchDynamicFeeTxData) txType() byte { return types.DynamicFeeTxType }
+func (txData *spanBatchDynamicFeeTxData) txType() byte { return types.DynamicFeeTxType }
 
 // Type returns the transaction type.
 func (tx *spanBatchTx) Type() uint8 {
@@ -99,11 +99,17 @@ func (tx *spanBatchTx) decodeTyped(b []byte) (spanBatchTxData, error) {
 	case types.AccessListTxType:
 		var inner spanBatchAccessListTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
-		return &inner, fmt.Errorf("failed to decode spanBatchAccessListTxData: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode spanBatchAccessListTxData: %w", err)
+		}
+		return &inner, nil
 	case types.DynamicFeeTxType:
 		var inner spanBatchDynamicFeeTxData
 		err := rlp.DecodeBytes(b[1:], &inner)
-		return &inner, fmt.Errorf("failed to decode spanBatchDynamicFeeTxData: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode spanBatchDynamicFeeTxData: %w", err)
+		}
+		return &inner, nil
 	default:
 		return nil, types.ErrTxTypeNotSupported
 	}
@@ -162,7 +168,7 @@ func (tx *spanBatchTx) UnmarshalBinary(b []byte) error {
 }
 
 // convertToFullTx takes values and convert spanBatchTx to types.Transaction
-func (tx spanBatchTx) convertToFullTx(nonce, gas uint64, to *common.Address, chainID, V, R, S *big.Int) (*types.Transaction, error) {
+func (tx *spanBatchTx) convertToFullTx(nonce, gas uint64, to *common.Address, chainID, V, R, S *big.Int) (*types.Transaction, error) {
 	var inner types.TxData
 	switch tx.Type() {
 	case types.LegacyTxType:
@@ -219,20 +225,20 @@ func newSpanBatchTx(tx types.Transaction) (*spanBatchTx, error) {
 	var inner spanBatchTxData
 	switch tx.Type() {
 	case types.LegacyTxType:
-		inner = spanBatchLegacyTxData{
+		inner = &spanBatchLegacyTxData{
 			GasPrice: tx.GasPrice(),
 			Value:    tx.Value(),
 			Data:     tx.Data(),
 		}
 	case types.AccessListTxType:
-		inner = spanBatchAccessListTxData{
+		inner = &spanBatchAccessListTxData{
 			GasPrice:   tx.GasPrice(),
 			Value:      tx.Value(),
 			Data:       tx.Data(),
 			AccessList: tx.AccessList(),
 		}
 	case types.DynamicFeeTxType:
-		inner = spanBatchDynamicFeeTxData{
+		inner = &spanBatchDynamicFeeTxData{
 			GasTipCap:  tx.GasTipCap(),
 			GasFeeCap:  tx.GasFeeCap(),
 			Value:      tx.Value(),

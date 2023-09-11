@@ -417,6 +417,7 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 			DepositContractAddress: cfg.DeployConfig.OptimismPortalProxy,
 			L1SystemConfigAddress:  cfg.DeployConfig.SystemConfigProxy,
 			RegolithTime:           cfg.DeployConfig.RegolithTime(uint64(cfg.DeployConfig.L1GenesisBlockTimestamp)),
+			SpanBatchTime:          cfg.DeployConfig.SpanBatchTime(uint64(cfg.DeployConfig.L1GenesisBlockTimestamp)),
 		}
 	}
 	defaultConfig := makeRollupConfig()
