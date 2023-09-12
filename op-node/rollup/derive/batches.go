@@ -1,6 +1,8 @@
 package derive
 
 import (
+	"bytes"
+	"context"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -165,7 +167,8 @@ func checkSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 }
 
 // checkSingularBatch implements SpanBatch validation rule.
-func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *SpanBatch, l1InclusionBlock eth.L1BlockRef) BatchValidity {
+func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef,
+	batch *SpanBatch, l1InclusionBlock eth.L1BlockRef, l2Fetcher SafeBlockFetcher) BatchValidity {
 	// add details to the log
 	log = batch.LogContext(log)
 
@@ -182,15 +185,55 @@ func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 		log.Trace("received out-of-order batch for future processing after next batch", "next_timestamp", nextTimestamp)
 		return BatchFuture
 	}
-	if batch.GetTimestamp() < nextTimestamp {
-		log.Warn("dropping batch with old timestamp", "min_timestamp", nextTimestamp)
+	if batch.GetBlockTimestamp(batch.GetBlockCount()-1) < nextTimestamp {
 		return BatchDrop
 	}
 
-	// dependent on above timestamp check. If the timestamp is correct, then it must build on top of the safe head.
-	if !batch.CheckParentHash(l2SafeHead.Hash) {
-		log.Warn("ignoring batch with mismatching parent hash", "current_safe_head", l2SafeHead.Hash)
+	parentNum := l2SafeHead.Number
+	parentBlock := l2SafeHead
+	if batch.GetTimestamp() < nextTimestamp {
+		if batch.GetTimestamp() > l2SafeHead.Time {
+			return BatchDrop
+		}
+		if (l2SafeHead.Time-batch.GetTimestamp())%cfg.BlockTime != 0 {
+			return BatchDrop
+		}
+		parentNum = l2SafeHead.Number - (l2SafeHead.Time-batch.GetTimestamp())/cfg.BlockTime
+		var err error
+		parentBlock, err = l2Fetcher.L2BlockRefByNumber(ctx, parentNum)
+		if err != nil {
+		}
+	}
+	if !batch.CheckParentHash(parentBlock.Hash) {
+		log.Warn("ignoring batch with mismatching parent hash", "parent_block", parentBlock.Hash)
 		return BatchDrop
+	}
+	if batch.GetTimestamp() < nextTimestamp {
+		for i := uint64(0); i < l2SafeHead.Number-parentNum; i++ {
+			safeBlockNum := parentNum + i + 1
+			safeBlockPayload, err := l2Fetcher.PayloadByNumber(ctx, safeBlockNum)
+			if err != nil {
+
+			}
+			safeBlockTxs := safeBlockPayload.Transactions
+			batchTxs := batch.GetBlockTransactions(int(i))
+			if len(safeBlockTxs) != len(batchTxs) {
+				return BatchDrop
+			}
+			for j := 0; j < len(safeBlockTxs); j++ {
+				if !bytes.Equal(safeBlockTxs[j], batchTxs[j]) {
+					return BatchDrop
+				}
+			}
+			safeBlockRef, err := PayloadToBlockRef(safeBlockPayload, &cfg.Genesis)
+			if err != nil {
+
+			}
+			if safeBlockRef.L1Origin.Number != batch.GetBlockOriginNum(int(i)) {
+				return BatchDrop
+			}
+
+		}
 	}
 
 	startEpochNum := uint64(batch.GetEpochNum())
@@ -202,12 +245,12 @@ func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 	}
 
 	// Check the L1 origin of the batch
-	if startEpochNum > epoch.Number+1 {
+	if startEpochNum > parentBlock.L1Origin.Number+1 {
 		log.Warn("batch is for future epoch too far ahead, while it has the next timestamp, so it must be invalid", "current_epoch", epoch.ID())
 		return BatchDrop
 	}
 
-	endEpochNum := uint64(batch.GetBlockOriginNum(batch.GetBlockCount() - 1))
+	endEpochNum := batch.GetBlockOriginNum(batch.GetBlockCount() - 1)
 	originChecked := false
 	for _, l1Block := range l1Blocks {
 		if l1Block.Number == endEpochNum {
@@ -222,11 +265,6 @@ func checkSpanBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRe
 	if !originChecked {
 		log.Info("need more l1 blocks to check entire origins of span batch")
 		return BatchUndecided
-	}
-
-	if startEpochNum < epoch.Number {
-		log.Warn("dropped batch, epoch is too old", "minimum", epoch.ID())
-		return BatchDrop
 	}
 
 	originIdx := 0

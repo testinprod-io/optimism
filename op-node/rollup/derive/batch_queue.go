@@ -32,6 +32,11 @@ type NextBatchProvider interface {
 	NextBatch(ctx context.Context) (Batch, error)
 }
 
+type SafeBlockFetcher interface {
+	L2BlockRefByNumber(ctx context.Context, num uint64) (eth.L2BlockRef, error)
+	PayloadByNumber(ctx context.Context, number uint64) (*eth.ExecutionPayload, error)
+}
+
 // BatchQueue contains a set of batches for every L1 block.
 // L1 blocks are contiguous and this does not support reorgs.
 type BatchQueue struct {
@@ -47,14 +52,17 @@ type BatchQueue struct {
 
 	// nextSpan is cached SingularBatches derived from SpanBatch
 	nextSpan []*SingularBatch
+
+	l2 SafeBlockFetcher
 }
 
 // NewBatchQueue creates a BatchQueue, which should be Reset(origin) before use.
-func NewBatchQueue(log log.Logger, cfg *rollup.Config, prev NextBatchProvider) *BatchQueue {
+func NewBatchQueue(log log.Logger, cfg *rollup.Config, prev NextBatchProvider, l2 SafeBlockFetcher) *BatchQueue {
 	return &BatchQueue{
 		log:    log,
 		config: cfg,
 		prev:   prev,
+		l2:     l2,
 	}
 }
 

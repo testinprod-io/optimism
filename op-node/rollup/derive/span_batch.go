@@ -320,8 +320,8 @@ func (b *SpanBatch) CheckParentHash(hash common.Hash) bool {
 }
 
 // GetBlockOriginNum returns the epoch number(L1 origin block number) of the block at the given index in the span.
-func (b *SpanBatch) GetBlockOriginNum(i int) rollup.Epoch {
-	return b.batches[i].EpochNum
+func (b *SpanBatch) GetBlockOriginNum(i int) uint64 {
+	return uint64(b.batches[i].EpochNum)
 }
 
 // GetBlockTimestamp returns the timestamp of the block at the given index in the span.
