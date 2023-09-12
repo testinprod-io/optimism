@@ -254,7 +254,7 @@ Rules are enforced with the [contextual definitions](./derivation.md#batch-queue
 Definitions:
 - `batch` as defined in the [Span batch format section][span-batch-format].
 - `parent_safe_block` is the L2 block from the current safe chain,
-  whose timestamp is at `span_start.timestamp - block_time`
+  whose timestamp is at `span_start.timestamp - l2_block_time`
 
 Span-batch rules, in validation order:
 
@@ -271,9 +271,8 @@ Span-batch rules, in validation order:
   - Rules:
     - For each `block_input`, whose timestamp is less than `next_timestamp`:
       - If there's no `safe_block` for the `block_input` -> `drop`: i.e. misaligned timestamp
-      - `block_input.origin.number != safe_block.origin.number` -> `drop`
+      - `block_input.l1_origin.number != safe_block.l1_origin.number` -> `drop`
       - `block_input.transactions != safe_block.transactions` -> `drop`
-        - `transactions` is a list of EIP-2718 transactions
 - Sequencing-window checks:
   - Note: The sequencing window is enforced for the *batch as a whole*:
     if the batch was partially invalid instead, it would drop the oldest L2 blocks,
@@ -301,7 +300,7 @@ Span-batch rules, in validation order:
     - `next_epoch`: `block_input.origin`'s next L1 block.
       It may reach to the next origin outside the L1 origins of the span.
   - Rules:
-    - For each `block_input`, whose timestamp is greater than `safe_head.timestamp`:
+    - For each `block_input` whose timestamp is greater than `safe_head.timestamp`:
       - `block_input.timestamp < block_input.origin.time` -> `drop`: enforce the min L2 timestamp rule.
       - `block_input.timestamp > block_input.origin.time + max_sequencer_drift`: enforce the L2 timestamp drift rule,
         but with exceptions to preserve above min L2 timestamp invariant:
