@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBatchTxsContractCreationBits(t *testing.T) {
+func TestSpanBatchTxsContractCreationBits(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x1234567))
 	chainID := big.NewInt(rng.Int63n(1000))
 
