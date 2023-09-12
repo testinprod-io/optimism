@@ -5,15 +5,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
+	"sort"
+
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"io"
-	"math/big"
-	"sort"
 )
 
 // Batch format
@@ -44,12 +45,21 @@ type RawSpanBatch struct {
 	spanBatchPayload
 }
 
-func (b *spanBatchPayload) decodeOriginBits(originBitBuffer []byte, blockCount uint64) {
+func (b *spanBatchPayload) decodeOriginBits(r *bytes.Reader) error {
+	originBitBufferLen := b.blockCount / 8
+	if b.blockCount%8 != 0 {
+		originBitBufferLen++
+	}
+	originBitBuffer := make([]byte, originBitBufferLen)
+	_, err := io.ReadFull(r, originBitBuffer)
+	if err != nil {
+		return fmt.Errorf("failed to read origin bits: %w", err)
+	}
 	originBits := new(big.Int)
-	for i := 0; i < int(blockCount); i += 8 {
+	for i := 0; i < int(b.blockCount); i += 8 {
 		end := i + 8
-		if end < int(blockCount) {
-			end = int(blockCount)
+		if end < int(b.blockCount) {
+			end = int(b.blockCount)
 		}
 		bits := originBitBuffer[i/8]
 		for j := i; j < end; j++ {
@@ -58,29 +68,62 @@ func (b *spanBatchPayload) decodeOriginBits(originBitBuffer []byte, blockCount u
 		}
 	}
 	b.originBits = originBits
+	return nil
 }
 
-// decodePrefix parses data into b.spanBatchPrefix
-func (b *RawSpanBatch) decodePrefix(r *bytes.Reader) error {
+// decodeRelTimestamp parses data into bp.relTimestamp
+func (bp *spanBatchPrefix) decodeRelTimestamp(r *bytes.Reader) error {
 	relTimestamp, err := binary.ReadUvarint(r)
 	if err != nil {
 		return fmt.Errorf("failed to read rel timestamp: %w", err)
 	}
-	b.relTimestamp = relTimestamp
+	bp.relTimestamp = relTimestamp
+	return nil
+}
+
+// decodeL1OriginNum parses data into bp.l1OriginNum
+func (bp *spanBatchPrefix) decodeL1OriginNum(r *bytes.Reader) error {
 	L1OriginNum, err := binary.ReadUvarint(r)
 	if err != nil {
 		return fmt.Errorf("failed to read l1 origin num: %w", err)
 	}
-	b.l1OriginNum = L1OriginNum
-	b.parentCheck = make([]byte, 20)
-	_, err = io.ReadFull(r, b.parentCheck)
+	bp.l1OriginNum = L1OriginNum
+	return nil
+}
+
+// decodeParentCheck parses data into bp.parentCheck
+func (bp *spanBatchPrefix) decodeParentCheck(r *bytes.Reader) error {
+	bp.parentCheck = make([]byte, 20)
+	_, err := io.ReadFull(r, bp.parentCheck)
 	if err != nil {
 		return fmt.Errorf("failed to read parent check: %w", err)
 	}
-	b.l1OriginCheck = make([]byte, 20)
-	_, err = io.ReadFull(r, b.l1OriginCheck)
+	return nil
+}
+
+// decodeL1OriginCheck parses data into bp.decodeL1OriginCheck
+func (bp *spanBatchPrefix) decodeL1OriginCheck(r *bytes.Reader) error {
+	bp.l1OriginCheck = make([]byte, 20)
+	_, err := io.ReadFull(r, bp.l1OriginCheck)
 	if err != nil {
 		return fmt.Errorf("failed to read l1 origin check: %w", err)
+	}
+	return nil
+}
+
+// decodePrefix parses data into b.spanBatchPrefix
+func (bp *spanBatchPrefix) decodePrefix(r *bytes.Reader) error {
+	if err := bp.decodeRelTimestamp(r); err != nil {
+		return err
+	}
+	if err := bp.decodeL1OriginNum(r); err != nil {
+		return err
+	}
+	if err := bp.decodeParentCheck(r); err != nil {
+		return err
+	}
+	if err := bp.decodeL1OriginCheck(r); err != nil {
+		return err
 	}
 	return nil
 }
@@ -88,20 +131,14 @@ func (b *RawSpanBatch) decodePrefix(r *bytes.Reader) error {
 // decodePayload parses data into b.spanBatchPayload
 func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
+	b.blockCount = blockCount
 	// TODO: check block count is not too large
 	if err != nil {
 		return fmt.Errorf("failed to read block count: %w", err)
 	}
-	originBitBufferLen := blockCount / 8
-	if blockCount%8 != 0 {
-		originBitBufferLen++
+	if err := b.decodeOriginBits(r); err != nil {
+		return err
 	}
-	originBitBuffer := make([]byte, originBitBufferLen)
-	_, err = io.ReadFull(r, originBitBuffer)
-	if err != nil {
-		return fmt.Errorf("failed to read origin bits: %w", err)
-	}
-	b.decodeOriginBits(originBitBuffer, blockCount)
 	blockTxCounts := make([]uint64, blockCount)
 	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(blockCount); i++ {
@@ -113,7 +150,6 @@ func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	b.blockCount = blockCount
 	b.blockTxCounts = blockTxCounts
 	b.txs = &spanBatchTxs{}
 	b.txs.totalBlockTxCount = totalBlockTxCount
@@ -135,26 +171,55 @@ func (b *RawSpanBatch) decodeBytes(data []byte) error {
 	return nil
 }
 
-func (b *RawSpanBatch) encodePrefix(w io.Writer) error {
+func (bp *spanBatchPrefix) encodeRelTimestamp(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(buf[:], b.relTimestamp)
+	n := binary.PutUvarint(buf[:], bp.relTimestamp)
 	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write rel timestamp: %w", err)
 	}
-	n = binary.PutUvarint(buf[:], b.l1OriginNum)
+	return nil
+}
+
+func (bp *spanBatchPrefix) encodeL1OriginNum(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], bp.l1OriginNum)
 	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write l1 origin number: %w", err)
 	}
-	if _, err := w.Write(b.parentCheck); err != nil {
+	return nil
+}
+
+func (bp *spanBatchPrefix) encodeParentCheck(w io.Writer) error {
+	if _, err := w.Write(bp.parentCheck); err != nil {
 		return fmt.Errorf("cannot write parent check: %w", err)
 	}
-	if _, err := w.Write(b.l1OriginCheck); err != nil {
+	return nil
+}
+
+func (bp *spanBatchPrefix) encodeL1OriginCheck(w io.Writer) error {
+	if _, err := w.Write(bp.l1OriginCheck); err != nil {
 		return fmt.Errorf("cannot write l1 origin check: %w", err)
 	}
 	return nil
 }
 
-func (b *spanBatchPayload) encodeOriginBits() []byte {
+func (bp *spanBatchPrefix) encodePrefix(w io.Writer) error {
+	if err := bp.encodeRelTimestamp(w); err != nil {
+		return err
+	}
+	if err := bp.encodeL1OriginNum(w); err != nil {
+		return err
+	}
+	if err := bp.encodeParentCheck(w); err != nil {
+		return err
+	}
+	if err := bp.encodeL1OriginCheck(w); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *spanBatchPayload) encodeOriginBits(w io.Writer) error {
 	originBitBufferLen := b.blockCount / 8
 	if b.blockCount%8 != 0 {
 		originBitBufferLen++
@@ -171,7 +236,10 @@ func (b *spanBatchPayload) encodeOriginBits() []byte {
 		}
 		originBitBuffer[i/8] = byte(bits)
 	}
-	return originBitBuffer
+	if _, err := w.Write(originBitBuffer); err != nil {
+		return fmt.Errorf("cannot write origin bits: %w", err)
+	}
+	return nil
 }
 
 func (b *RawSpanBatch) encodePayload(w io.Writer) error {
@@ -180,9 +248,8 @@ func (b *RawSpanBatch) encodePayload(w io.Writer) error {
 	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write block count: %w", err)
 	}
-	originBitBuffer := b.encodeOriginBits()
-	if _, err := w.Write(originBitBuffer); err != nil {
-		return fmt.Errorf("cannot write origin bits: %w", err)
+	if err := b.encodeOriginBits(w); err != nil {
+		return nil
 	}
 	for _, blockTxCount := range b.blockTxCounts {
 		n = binary.PutUvarint(buf[:], blockTxCount)
