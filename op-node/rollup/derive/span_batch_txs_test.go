@@ -344,3 +344,43 @@ func TestSpanBatchTxsRoundTripFullTxs(t *testing.T) {
 		assert.Equal(t, txs, txs2)
 	}
 }
+
+func TestSpanBatchTxsRecoverVInvalidTxType(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+
+	var sbt spanBatchTxs
+
+	sbt.txTypes = []int{types.DepositTxType}
+	sbt.txSigs = []spanBatchSignature{{v: 0, r: nil, s: nil}}
+	sbt.yParityBits = new(big.Int)
+
+	// expect panic
+	sbt.recoverV()
+}
+
+func TestSpanBatchTxsFullTxNotEnoughTxTos(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x13572468))
+	chainID := big.NewInt(rng.Int63n(1000))
+	signer := types.NewLondonSigner(chainID)
+
+	totalblockTxCounts := uint64(1 + rng.Int()&0xFF)
+	var txs [][]byte
+	for i := 0; i < int(totalblockTxCounts); i++ {
+		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
+		rawTx, err := tx.MarshalBinary()
+		assert.NoError(t, err)
+		txs = append(txs, rawTx)
+	}
+	sbt, err := newSpanBatchTxs(txs, chainID)
+	assert.NoError(t, err)
+
+	// drop single to field
+	sbt.txTos = sbt.txTos[:len(sbt.txTos)-2]
+
+	_, err = sbt.fullTxs()
+	assert.EqualError(t, err, "tx to not enough")
+}
