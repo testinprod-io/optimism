@@ -253,15 +253,15 @@ Rules are enforced with the [contextual definitions](./derivation.md#batch-queue
 
 Definitions:
 - `batch` as defined in the [Span batch format section][span-batch-format].
-- `parent_safe_block` is the L2 block from the current safe chain,
+- `prev_l2_block` is the L2 block from the current safe chain,
   whose timestamp is at `span_start.timestamp - l2_block_time`
 
 Span-batch rules, in validation order:
 
 - `span_start.timestamp > next_timestamp` -> `future`: i.e. the batch must be ready to process.
 - `span_end.timestamp < next_timestamp` -> `drop`: i.e. the batch must have at least one new block.
-- If there's no `parent_safe_block` in the current safe chain -> `drop`: i.e. misaligned timestamp
-- `batch.parent_check != parent_safe_block.hash[:20]` -> `drop`:
+- If there's no `prev_l2_block` in the current safe chain -> `drop`: i.e. misaligned timestamp
+- `batch.parent_check != prev_l2_block.hash[:20]` -> `drop`:
   i.e. the checked part of the parent hash must be equal to the corresponding safe block.
 - Overlapped blocks checks:
   - Note: If the span batch overlaps the current L2 safe chain, we must validate all overlapped blocks.
@@ -284,7 +284,7 @@ Span-batch rules, in validation order:
   - Rules:
     - `start_epoch_num + sequence_window_size < inclusion_block_number` -> `drop`:
       i.e. the batch must be included timely.
-    - `start_epoch_num > parent_safe_block.l1_origin.number + 1` -> `drop`:
+    - `start_epoch_num > prev_l2_block.l1_origin.number + 1` -> `drop`:
       i.e. the L1 origin cannot change by more than one L1 block per L2 block.
     - If `batch.l1_origin_check` does not match the canonical L1 chain at `end_epoch_num` -> `drop`:
       verify the batch is intended for this L1 chain.
