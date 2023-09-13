@@ -142,7 +142,8 @@ func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
 	if bp.txs == nil {
 		bp.txs = &spanBatchTxs{}
 	}
-	blockTxCounts := make([]uint64, bp.blockCount)
+	// do not preallocate to avoid oom
+	var blockTxCounts []uint64
 	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(bp.blockCount); i++ {
 		blockTxCount, err := binary.ReadUvarint(r)
@@ -150,7 +151,7 @@ func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
 		if err != nil {
 			return fmt.Errorf("failed to read block tx count: %w", err)
 		}
-		blockTxCounts[i] = blockTxCount
+		blockTxCounts = append(blockTxCounts, blockTxCount)
 		totalBlockTxCount += blockTxCount
 	}
 	bp.blockTxCounts = blockTxCounts
@@ -608,7 +609,8 @@ func ReadTxData(r *bytes.Reader) ([]byte, int, error) {
 		}
 	}
 	// TODO: set maximum inputLimit
-	s := rlp.NewStream(r, 0)
+	// temp fix: single tx size is always less than size of channel
+	s := rlp.NewStream(r, MaxRLPBytesPerChannel)
 	var txPayload []byte
 	kind, _, err := s.Kind()
 	switch {
