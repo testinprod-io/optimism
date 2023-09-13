@@ -128,20 +128,23 @@ func (bp *spanBatchPrefix) decodePrefix(r *bytes.Reader) error {
 	return nil
 }
 
-// decodePayload parses data into b.spanBatchPayload
-func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
+func (bp *spanBatchPayload) decodeBlockCount(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
-	b.blockCount = blockCount
+	bp.blockCount = blockCount
 	// TODO: check block count is not too large
 	if err != nil {
 		return fmt.Errorf("failed to read block count: %w", err)
 	}
-	if err := b.decodeOriginBits(r); err != nil {
-		return err
+	return nil
+}
+
+func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
+	if bp.txs == nil {
+		bp.txs = &spanBatchTxs{}
 	}
-	blockTxCounts := make([]uint64, blockCount)
+	blockTxCounts := make([]uint64, bp.blockCount)
 	totalBlockTxCount := uint64(0)
-	for i := 0; i < int(blockCount); i++ {
+	for i := 0; i < int(bp.blockCount); i++ {
 		blockTxCount, err := binary.ReadUvarint(r)
 		// TODO: check blockTxCount is not too large
 		if err != nil {
@@ -150,10 +153,26 @@ func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
 		blockTxCounts[i] = blockTxCount
 		totalBlockTxCount += blockTxCount
 	}
-	b.blockTxCounts = blockTxCounts
-	b.txs = &spanBatchTxs{}
-	b.txs.totalBlockTxCount = totalBlockTxCount
-	if err = b.txs.decode(r); err != nil {
+	bp.blockTxCounts = blockTxCounts
+	bp.txs.totalBlockTxCount = totalBlockTxCount
+	return nil
+}
+
+// decodePayload parses data into b.spanBatchPayload
+func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
+	if b.txs == nil {
+		b.txs = &spanBatchTxs{}
+	}
+	if err := b.decodeBlockCount(r); err != nil {
+		return err
+	}
+	if err := b.decodeOriginBits(r); err != nil {
+		return err
+	}
+	if err := b.decodeBlockTxCounts(r); err != nil {
+		return err
+	}
+	if err := b.txs.decode(r); err != nil {
 		return err
 	}
 	return nil
@@ -242,20 +261,35 @@ func (b *spanBatchPayload) encodeOriginBits(w io.Writer) error {
 	return nil
 }
 
-func (b *RawSpanBatch) encodePayload(w io.Writer) error {
+func (bp *spanBatchPayload) encodeBlockCount(w io.Writer) error {
 	var buf [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(buf[:], b.blockCount)
+	n := binary.PutUvarint(buf[:], bp.blockCount)
 	if _, err := w.Write(buf[:n]); err != nil {
 		return fmt.Errorf("cannot write block count: %w", err)
+	}
+	return nil
+}
+
+func (bp *spanBatchPayload) encodeBlockTxCounts(w io.Writer) error {
+	var buf [binary.MaxVarintLen64]byte
+	for _, blockTxCount := range bp.blockTxCounts {
+		n := binary.PutUvarint(buf[:], blockTxCount)
+		if _, err := w.Write(buf[:n]); err != nil {
+			return fmt.Errorf("cannot write block tx count: %w", err)
+		}
+	}
+	return nil
+}
+
+func (b *RawSpanBatch) encodePayload(w io.Writer) error {
+	if err := b.encodeBlockCount(w); err != nil {
+		return err
 	}
 	if err := b.encodeOriginBits(w); err != nil {
 		return nil
 	}
-	for _, blockTxCount := range b.blockTxCounts {
-		n = binary.PutUvarint(buf[:], blockTxCount)
-		if _, err := w.Write(buf[:n]); err != nil {
-			return fmt.Errorf("cannot write block tx count: %w", err)
-		}
+	if err := b.encodeBlockTxCounts(w); err != nil {
+		return nil
 	}
 	if err := b.txs.encode(w); err != nil {
 		return err
