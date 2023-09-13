@@ -159,7 +159,7 @@ func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
 }
 
 // decodePayload parses data into b.spanBatchPayload
-func (b *RawSpanBatch) decodePayload(r *bytes.Reader) error {
+func (b *spanBatchPayload) decodePayload(r *bytes.Reader) error {
 	if b.txs == nil {
 		b.txs = &spanBatchTxs{}
 	}
@@ -281,7 +281,7 @@ func (bp *spanBatchPayload) encodeBlockTxCounts(w io.Writer) error {
 	return nil
 }
 
-func (b *RawSpanBatch) encodePayload(w io.Writer) error {
+func (b *spanBatchPayload) encodePayload(w io.Writer) error {
 	if err := b.encodeBlockCount(w); err != nil {
 		return err
 	}
