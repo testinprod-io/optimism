@@ -14,11 +14,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSpanBatchInterface(t *testing.T) {
-	// rng := rand.New(rand.NewSource(0x54321))
-	// chainID := big.NewInt(rng.Int63n(1000))
-	// signer := types.NewLondonSigner(chainID)
+func TestSpanBatchForBatchInterface(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x5432177))
+	chainID := big.NewInt(rng.Int63n(1000))
 
+	singularBatches := RandomValidConsecutiveSingularBatches(rng, chainID)
+	blockCount := len(singularBatches)
+	safeL2Head := testutils.RandomL2BlockRef(rng)
+	safeL2Head.Hash = common.BytesToHash(singularBatches[0].ParentHash[:])
+
+	spanBatch := NewSpanBatch(singularBatches)
+
+	// check interface method implementations except logging
+	assert.Equal(t, SpanBatchType, spanBatch.GetBatchType())
+	assert.Equal(t, singularBatches[0].Timestamp, spanBatch.GetTimestamp())
+	assert.Equal(t, singularBatches[0].EpochNum, spanBatch.GetEpochNum())
+	assert.True(t, spanBatch.CheckOriginHash(singularBatches[blockCount-1].EpochHash))
+	assert.True(t, spanBatch.CheckParentHash(singularBatches[0].ParentHash))
 }
 
 func TestSpanBatchOriginBits(t *testing.T) {
