@@ -204,7 +204,7 @@ func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
 }
 
 func (btx *spanBatchTxs) decodeTxSigsRS(r *bytes.Reader) error {
-	txSigs := make([]spanBatchSignature, btx.totalBlockTxCount)
+	var txSigs []spanBatchSignature
 	var sigBuffer [32]byte
 	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		var txSig spanBatchSignature
@@ -218,7 +218,7 @@ func (btx *spanBatchTxs) decodeTxSigsRS(r *bytes.Reader) error {
 			return fmt.Errorf("failed to read tx sig s: %w", err)
 		}
 		txSig.s, _ = uint256.FromBig(new(big.Int).SetBytes(sigBuffer[:]))
-		txSigs[i] = txSig
+		txSigs = append(txSigs, txSig)
 	}
 	btx.txSigs = txSigs
 	return nil
@@ -266,16 +266,16 @@ func (btx *spanBatchTxs) decodeTxTos(r *bytes.Reader) error {
 }
 
 func (btx *spanBatchTxs) decodeTxDatas(r *bytes.Reader) error {
-	txDatas := make([]hexutil.Bytes, btx.totalBlockTxCount)
-	txTypes := make([]int, btx.totalBlockTxCount)
+	var txDatas []hexutil.Bytes
+	var txTypes []int
 	// Do not need txDataHeader because RLP byte stream already includes length info
 	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txData, txType, err := ReadTxData(r)
 		if err != nil {
 			return err
 		}
-		txDatas[i] = txData
-		txTypes[i] = txType
+		txDatas = append(txDatas, txData)
+		txTypes = append(txTypes, txType)
 	}
 	btx.txDatas = txDatas
 	btx.txTypes = txTypes
