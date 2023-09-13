@@ -1,6 +1,8 @@
 package derive
 
 import (
+	"context"
+	"errors"
 	"math"
 	"math/big"
 	"math/rand"
@@ -534,7 +536,8 @@ func TestValidSingularBatch(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			validity := CheckBatch(&conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch)
+			ctx := context.Background()
+			validity := CheckBatch(ctx, &conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch, nil)
 			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
 		})
 	}
@@ -1200,14 +1203,234 @@ func TestValidSpanBatch(t *testing.T) {
 			},
 			Expected: BatchDrop,
 		},
+		{
+			Name:       "valid overlapping batch",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A2.Hash,
+						EpochNum:     rollup.Epoch(l2A3.L1Origin.Number),
+						EpochHash:    l2A3.L1Origin.Hash,
+						Timestamp:    l2A3.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchAccept,
+		},
+		{
+			Name:       "longer overlapping batch",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A0.Hash,
+						EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+						EpochHash:    l2A1.L1Origin.Hash,
+						Timestamp:    l2A1.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A2.Hash,
+						EpochNum:     rollup.Epoch(l2A3.L1Origin.Number),
+						EpochHash:    l2A3.L1Origin.Hash,
+						Timestamp:    l2A3.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchAccept,
+		},
+		{
+			Name:       "fully overlapping batch",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A0.Hash,
+						EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+						EpochHash:    l2A1.L1Origin.Hash,
+						Timestamp:    l2A1.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchDrop,
+		},
+		{
+			Name:       "overlapping batch with invalid parent hash",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A0.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A2.Hash,
+						EpochNum:     rollup.Epoch(l2A3.L1Origin.Number),
+						EpochHash:    l2A3.L1Origin.Hash,
+						Timestamp:    l2A3.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchDrop,
+		},
+		{
+			Name:       "overlapping batch with invalid origin number",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number) + 1,
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A2.Hash,
+						EpochNum:     rollup.Epoch(l2A3.L1Origin.Number),
+						EpochHash:    l2A3.L1Origin.Hash,
+						Timestamp:    l2A3.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchDrop,
+		},
+		{
+			Name:       "overlapping batch with invalid tx",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A2,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: []hexutil.Bytes{randTxData},
+					},
+					{
+						ParentHash:   l2A2.Hash,
+						EpochNum:     rollup.Epoch(l2A3.L1Origin.Number),
+						EpochHash:    l2A3.L1Origin.Hash,
+						Timestamp:    l2A3.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchDrop,
+		},
+		{
+			Name:       "overlapping batch l2 fetcher error",
+			L1Blocks:   []eth.L1BlockRef{l1A, l1B},
+			L2SafeHead: l2A1,
+			Batch: BatchWithL1InclusionBlock{
+				L1InclusionBlock: l1B,
+				Batch: NewSpanBatch([]*SingularBatch{
+					{
+						ParentHash:   l2A0.ParentHash,
+						EpochNum:     rollup.Epoch(l2A0.L1Origin.Number),
+						EpochHash:    l2A0.L1Origin.Hash,
+						Timestamp:    l2A0.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A0.Hash,
+						EpochNum:     rollup.Epoch(l2A1.L1Origin.Number),
+						EpochHash:    l2A1.L1Origin.Hash,
+						Timestamp:    l2A1.Time,
+						Transactions: nil,
+					},
+					{
+						ParentHash:   l2A1.Hash,
+						EpochNum:     rollup.Epoch(l2A2.L1Origin.Number),
+						EpochHash:    l2A2.L1Origin.Hash,
+						Timestamp:    l2A2.Time,
+						Transactions: nil,
+					},
+				}),
+			},
+			Expected: BatchUndecided,
+		},
 	}
 
 	// Log level can be increased for debugging purposes
-	logger := testlog.Logger(t, log.LvlError)
+	logger := testlog.Logger(t, log.LvlInfo)
+
+	l2Client := testutils.MockL2Client{}
+	var nilErr error
+	tempErr := errors.New("temp error")
+	l2Client.Mock.On("L2BlockRefByNumber", l2A0.Number-1).Times(9999).Return(eth.L2BlockRef{}, &tempErr)
+	l2Client.Mock.On("PayloadByNumber", l2A0.Number-1).Times(9999).Return(nil, &tempErr)
+
+	for _, l2Block := range []eth.L2BlockRef{l2A0, l2A1, l2A2, l2A3, l2A4, l2B0} {
+		l2Client.ExpectL2BlockRefByNumber(l2Block.Number, l2Block, nil)
+
+		infoDat := L1BlockInfo{
+			Number:  l2Block.L1Origin.Number,
+			BaseFee: big.NewInt(0),
+		}
+		data, _ := infoDat.MarshalBinary()
+		depositTx := &types.DepositTx{
+			Data: data,
+		}
+		txData, _ := types.NewTx(depositTx).MarshalBinary()
+
+		payload := eth.ExecutionPayload{
+			ParentHash:   l2Block.ParentHash,
+			BlockNumber:  hexutil.Uint64(l2Block.Number),
+			Timestamp:    hexutil.Uint64(l2Block.Time),
+			BlockHash:    l2Block.Hash,
+			Transactions: []hexutil.Bytes{hexutil.Bytes(txData)},
+		}
+		l2Client.Mock.On("L2BlockRefByNumber", l2Block.Number).Times(9999).Return(l2Block, &nilErr)
+		l2Client.Mock.On("PayloadByNumber", l2Block.Number).Times(9999).Return(&payload, &nilErr)
+	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			validity := CheckBatch(&conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch)
+			ctx := context.Background()
+			validity := CheckBatch(ctx, &conf, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch, &l2Client)
 			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
 		})
 	}
@@ -1339,7 +1562,8 @@ func TestSpanBatchHardFork(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			rcfg := conf
 			rcfg.SpanBatchTime = &testCase.SpanBatchTime
-			validity := CheckBatch(&rcfg, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch)
+			ctx := context.Background()
+			validity := CheckBatch(ctx, &rcfg, logger, testCase.L1Blocks, testCase.L2SafeHead, &testCase.Batch, nil)
 			require.Equal(t, testCase.Expected, validity, "batch check must return expected validity level")
 		})
 	}

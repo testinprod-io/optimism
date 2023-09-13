@@ -30,7 +30,8 @@ const (
 // CheckBatch checks if the given batch can be applied on top of the given l2SafeHead, given the contextual L1 blocks the batch was included in.
 // The first entry of the l1Blocks should match the origin of the l2SafeHead. One or more consecutive l1Blocks should be provided.
 // In case of only a single L1 block, the decision whether a batch is valid may have to stay undecided.
-func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock) BatchValidity {
+func CheckBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef,
+	l2SafeHead eth.L2BlockRef, batch *BatchWithL1InclusionBlock, l2Fetcher SafeBlockFetcher) BatchValidity {
 	switch batch.Batch.GetBatchType() {
 	case SingularBatchType:
 		singularBatch, ok := batch.Batch.(*SingularBatch)
@@ -49,7 +50,7 @@ func CheckBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l
 			log.Warn("received SpanBatch before SpanBatch hard fork")
 			return BatchDrop
 		}
-		return checkSpanBatch(cfg, log, l1Blocks, l2SafeHead, spanBatch, batch.L1InclusionBlock)
+		return checkSpanBatch(ctx, cfg, log, l1Blocks, l2SafeHead, spanBatch, batch.L1InclusionBlock, l2Fetcher)
 	default:
 		log.Warn("unrecognized batch type: %d", batch.Batch.GetBatchType())
 		return BatchDrop
@@ -186,54 +187,36 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		return BatchFuture
 	}
 	if batch.GetBlockTimestamp(batch.GetBlockCount()-1) < nextTimestamp {
+		log.Warn("span batch has no new blocks after safe head")
 		return BatchDrop
 	}
 
+	// finding parent block of the span batch.
+	// if the span batch does not overlap the current safe chain, parentBLock should be l2SafeHead.
 	parentNum := l2SafeHead.Number
 	parentBlock := l2SafeHead
 	if batch.GetTimestamp() < nextTimestamp {
 		if batch.GetTimestamp() > l2SafeHead.Time {
+			// batch timestamp cannot be between safe head and next timestamp
+			log.Warn("batch has misaligned timestamp")
 			return BatchDrop
 		}
 		if (l2SafeHead.Time-batch.GetTimestamp())%cfg.BlockTime != 0 {
+			log.Warn("batch has misaligned timestamp")
 			return BatchDrop
 		}
-		parentNum = l2SafeHead.Number - (l2SafeHead.Time-batch.GetTimestamp())/cfg.BlockTime
+		parentNum = l2SafeHead.Number - (l2SafeHead.Time-batch.GetTimestamp())/cfg.BlockTime - 1
 		var err error
 		parentBlock, err = l2Fetcher.L2BlockRefByNumber(ctx, parentNum)
 		if err != nil {
+			log.Error("failed to fetch L2 block", "number", parentNum, "err", err)
+			// unable to validate the batch for now. retry later.
+			return BatchUndecided
 		}
 	}
 	if !batch.CheckParentHash(parentBlock.Hash) {
 		log.Warn("ignoring batch with mismatching parent hash", "parent_block", parentBlock.Hash)
 		return BatchDrop
-	}
-	if batch.GetTimestamp() < nextTimestamp {
-		for i := uint64(0); i < l2SafeHead.Number-parentNum; i++ {
-			safeBlockNum := parentNum + i + 1
-			safeBlockPayload, err := l2Fetcher.PayloadByNumber(ctx, safeBlockNum)
-			if err != nil {
-
-			}
-			safeBlockTxs := safeBlockPayload.Transactions
-			batchTxs := batch.GetBlockTransactions(int(i))
-			if len(safeBlockTxs) != len(batchTxs) {
-				return BatchDrop
-			}
-			for j := 0; j < len(safeBlockTxs); j++ {
-				if !bytes.Equal(safeBlockTxs[j], batchTxs[j]) {
-					return BatchDrop
-				}
-			}
-			safeBlockRef, err := PayloadToBlockRef(safeBlockPayload, &cfg.Genesis)
-			if err != nil {
-
-			}
-			if safeBlockRef.L1Origin.Number != batch.GetBlockOriginNum(int(i)) {
-				return BatchDrop
-			}
-
-		}
 	}
 
 	startEpochNum := uint64(batch.GetEpochNum())
@@ -327,5 +310,41 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 			}
 		}
 	}
+
+	// Check overlapped blocks
+	if batch.GetTimestamp() < nextTimestamp {
+		for i := uint64(0); i < l2SafeHead.Number-parentNum; i++ {
+			safeBlockNum := parentNum + i + 1
+			safeBlockPayload, err := l2Fetcher.PayloadByNumber(ctx, safeBlockNum)
+			if err != nil {
+				log.Error("failed to fetch L2 block payload", "number", parentNum, "err", err)
+				// unable to validate the batch for now. retry later.
+				return BatchUndecided
+			}
+			safeBlockTxs := safeBlockPayload.Transactions
+			batchTxs := batch.GetBlockTransactions(int(i))
+			// execution payload has L1 info deposit TX, but batch does not.
+			if len(safeBlockTxs)-1 != len(batchTxs) {
+				log.Warn("overlapped block's tx count does not match")
+				return BatchDrop
+			}
+			for j := 0; j < len(batchTxs); j++ {
+				if !bytes.Equal(safeBlockTxs[j+1], batchTxs[j]) {
+					log.Warn("overlapped block's transaction does not match")
+					return BatchDrop
+				}
+			}
+			safeBlockRef, err := PayloadToBlockRef(safeBlockPayload, &cfg.Genesis)
+			if err != nil {
+				log.Error("failed to extract L2BlockRef from execution payload", "hash", safeBlockPayload.BlockHash, "err", err)
+				return BatchDrop
+			}
+			if safeBlockRef.L1Origin.Number != batch.GetBlockOriginNum(int(i)) {
+				log.Warn("overlapped block's L1 origin number does not match")
+				return BatchDrop
+			}
+		}
+	}
+
 	return BatchAccept
 }
