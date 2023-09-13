@@ -1395,33 +1395,25 @@ func TestValidSpanBatch(t *testing.T) {
 	}
 
 	// Log level can be increased for debugging purposes
-	logger := testlog.Logger(t, log.LvlInfo)
+	logger := testlog.Logger(t, log.LvlError)
 
 	l2Client := testutils.MockL2Client{}
 	var nilErr error
+	// will be return error for block #99 (parent of l2A0)
 	tempErr := errors.New("temp error")
 	l2Client.Mock.On("L2BlockRefByNumber", l2A0.Number-1).Times(9999).Return(eth.L2BlockRef{}, &tempErr)
 	l2Client.Mock.On("PayloadByNumber", l2A0.Number-1).Times(9999).Return(nil, &tempErr)
 
+	// make payloads for L2 blocks and set as expected return value of MockL2Client
 	for _, l2Block := range []eth.L2BlockRef{l2A0, l2A1, l2A2, l2A3, l2A4, l2B0} {
 		l2Client.ExpectL2BlockRefByNumber(l2Block.Number, l2Block, nil)
-
-		infoDat := L1BlockInfo{
-			Number:  l2Block.L1Origin.Number,
-			BaseFee: big.NewInt(0),
-		}
-		data, _ := infoDat.MarshalBinary()
-		depositTx := &types.DepositTx{
-			Data: data,
-		}
-		txData, _ := types.NewTx(depositTx).MarshalBinary()
-
+		txData := l1InfoDepositTx(t, l2Block.L1Origin.Number)
 		payload := eth.ExecutionPayload{
 			ParentHash:   l2Block.ParentHash,
 			BlockNumber:  hexutil.Uint64(l2Block.Number),
 			Timestamp:    hexutil.Uint64(l2Block.Time),
 			BlockHash:    l2Block.Hash,
-			Transactions: []hexutil.Bytes{hexutil.Bytes(txData)},
+			Transactions: []hexutil.Bytes{txData},
 		}
 		l2Client.Mock.On("L2BlockRefByNumber", l2Block.Number).Times(9999).Return(l2Block, &nilErr)
 		l2Client.Mock.On("PayloadByNumber", l2Block.Number).Times(9999).Return(&payload, &nilErr)
