@@ -529,6 +529,9 @@ func (b *SpanBatch) GetSingularBatches(l1Origins []eth.L1BlockRef) ([]*SingularB
 
 // NewSpanBatch converts given singularBatches into spanBatchElements, and creates a new SpanBatch.
 func NewSpanBatch(singularBatches []*SingularBatch) *SpanBatch {
+	if len(singularBatches) == 0 {
+		return &SpanBatch{}
+	}
 	spanBatch := SpanBatch{
 		parentCheck:   singularBatches[0].ParentHash.Bytes()[:20],
 		l1OriginCheck: singularBatches[len(singularBatches)-1].EpochHash.Bytes()[:20],
