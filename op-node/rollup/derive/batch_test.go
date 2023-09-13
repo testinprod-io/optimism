@@ -209,7 +209,6 @@ func TestBatchRoundTripRLP(t *testing.T) {
 	}
 
 	for i, batch := range batches {
-
 		var buf bytes.Buffer
 		err := batch.EncodeRLP(&buf)
 		assert.NoError(t, err)
