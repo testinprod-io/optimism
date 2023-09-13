@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"bytes"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
@@ -114,6 +116,25 @@ func RandomValidConsecutiveSingularBatches(rng *rand.Rand, chainID *big.Int) []*
 	return singularBatches
 }
 
+func mockL1Origin(rng *rand.Rand, rawSpanBatch *RawSpanBatch, singularBatches []*SingularBatch) []eth.L1BlockRef {
+	safeHeadOrigin := testutils.RandomBlockRef(rng)
+	safeHeadOrigin.Hash = singularBatches[0].EpochHash
+	safeHeadOrigin.Number = uint64(singularBatches[0].EpochNum)
+
+	l1Origins := []eth.L1BlockRef{safeHeadOrigin}
+	originBitSum := uint64(0)
+	for i := 0; i < int(rawSpanBatch.blockCount); i++ {
+		if rawSpanBatch.originBits.Bit(i) == 1 {
+			l1Origin := testutils.NextRandomRef(rng, l1Origins[originBitSum])
+			originBitSum++
+			l1Origin.Hash = singularBatches[i].EpochHash
+			l1Origin.Number = uint64(singularBatches[i].EpochNum)
+			l1Origins = append(l1Origins, l1Origin)
+		}
+	}
+	return l1Origins
+}
+
 func TestBatchRoundTrip(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xdeadbeef))
 	blockTime := uint64(2)
@@ -140,6 +161,8 @@ func TestBatchRoundTrip(t *testing.T) {
 		NewSingularBatchData(*RandomSingularBatch(rng, 5, chainID)),
 		NewSingularBatchData(*RandomSingularBatch(rng, 7, chainID)),
 		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
 	}
 
 	for i, batch := range batches {
@@ -155,21 +178,50 @@ func TestBatchRoundTrip(t *testing.T) {
 	}
 }
 
-func mockL1Origin(rng *rand.Rand, rawSpanBatch *RawSpanBatch, singularBatches []*SingularBatch) []eth.L1BlockRef {
-	safeHeadOrigin := testutils.RandomBlockRef(rng)
-	safeHeadOrigin.Hash = singularBatches[0].EpochHash
-	safeHeadOrigin.Number = uint64(singularBatches[0].EpochNum)
+func TestBatchRoundTripRLP(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xbeefdead))
+	blockTime := uint64(2)
+	genesisTimestamp := uint64(0)
+	chainID := new(big.Int).SetUint64(rng.Uint64())
 
-	l1Origins := []eth.L1BlockRef{safeHeadOrigin}
-	originBitSum := uint64(0)
-	for i := 0; i < int(rawSpanBatch.blockCount); i++ {
-		if rawSpanBatch.originBits.Bit(i) == 1 {
-			l1Origin := testutils.NextRandomRef(rng, l1Origins[originBitSum])
-			originBitSum++
-			l1Origin.Hash = singularBatches[i].EpochHash
-			l1Origin.Number = uint64(singularBatches[i].EpochNum)
-			l1Origins = append(l1Origins, l1Origin)
-		}
+	batches := []*BatchData{
+		{
+			SingularBatch: SingularBatch{
+				ParentHash:   common.Hash{},
+				EpochNum:     0,
+				Timestamp:    0,
+				Transactions: []hexutil.Bytes{},
+			},
+		},
+		{
+			SingularBatch: SingularBatch{
+				ParentHash:   common.Hash{31: 0x42},
+				EpochNum:     1,
+				Timestamp:    1647026951,
+				Transactions: []hexutil.Bytes{[]byte{0, 0, 0}, []byte{0x76, 0xfd, 0x7c}},
+			},
+		},
+		NewSingularBatchData(*RandomSingularBatch(rng, 5, chainID)),
+		NewSingularBatchData(*RandomSingularBatch(rng, 7, chainID)),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
+		NewSpanBatchData(*RandomRawSpanBatch(rng, chainID)),
 	}
-	return l1Origins
+
+	for i, batch := range batches {
+
+		var buf bytes.Buffer
+		err := batch.EncodeRLP(&buf)
+		assert.NoError(t, err)
+		result := buf.Bytes()
+		var dec BatchData
+		r := bytes.NewReader(result)
+		s := rlp.NewStream(r, 0)
+		err = dec.DecodeRLP(s)
+		assert.NoError(t, err)
+		if dec.BatchType == SpanBatchType {
+			dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
+		}
+		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
+	}
 }
