@@ -225,26 +225,26 @@ func (btx *spanBatchTxs) decodeTxSigsRS(r *bytes.Reader) error {
 }
 
 func (btx *spanBatchTxs) decodeTxNonces(r *bytes.Reader) error {
-	txNonces := make([]uint64, btx.totalBlockTxCount)
+	var txNonces []uint64
 	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txNonce, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read tx nonce: %w", err)
 		}
-		txNonces[i] = txNonce
+		txNonces = append(txNonces, txNonce)
 	}
 	btx.txNonces = txNonces
 	return nil
 }
 
 func (btx *spanBatchTxs) decodeTxGases(r *bytes.Reader) error {
-	txGases := make([]uint64, btx.totalBlockTxCount)
+	var txGases []uint64
 	for i := 0; i < int(btx.totalBlockTxCount); i++ {
 		txGas, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read tx gas: %w", err)
 		}
-		txGases[i] = txGas
+		txGases = append(txGases, txGas)
 	}
 	btx.txGases = txGases
 	return nil
