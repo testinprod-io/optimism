@@ -159,7 +159,7 @@ func (s *L2Batcher) Buffer(t Testing) error {
 				batchType = derive.SpanBatchType
 				spanBatchBuilder = derive.NewSpanBatchBuilder(s.l2BufferedBlock.L1Origin.Number, s.rollupCfg.Genesis.L2Time, s.rollupCfg.L2ChainID)
 			}
-			ch, err = derive.NewChannelOut(c, batchType, spanBatchBuilder)
+			ch, err = derive.NewChannelOut(c, uint(batchType), spanBatchBuilder)
 		}
 		require.NoError(t, err, "failed to create channel")
 		s.l2ChannelOut = ch

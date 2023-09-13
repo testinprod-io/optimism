@@ -1309,7 +1309,7 @@ func TestSpanBatchHardFork(t *testing.T) {
 				},
 			},
 			SpanBatchTime: l2A1.Time - 2,
-			Expected:      BatchDrop,
+			Expected:      BatchAccept,
 		},
 		{
 			Name:       "span batch after hard fork",

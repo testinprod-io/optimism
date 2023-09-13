@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"math/big"
 	"net"
 	"os"
@@ -657,6 +658,11 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 		return nil, fmt.Errorf("unable to start l2 output submitter: %w", err)
 	}
 
+	batchType := derive.SingularBatchType
+	if os.Getenv("OP_E2E_USE_SPAN_BATCH") == "true" {
+		batchType = derive.SpanBatchType
+	}
+
 	// Batch Submitter
 	sys.BatchSubmitter, err = bss.NewBatchSubmitterFromCLIConfig(bss.CLIConfig{
 		L1EthRpc:               sys.EthInstances["l1"].WSEndpoint(),
@@ -677,6 +683,7 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 			Level:  "info",
 			Format: "text",
 		},
+		BatchType: uint(batchType),
 	}, sys.cfg.Loggers["batcher"], batchermetrics.NoopMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup batch submitter: %w", err)

@@ -8,9 +8,7 @@ import (
 	"math"
 
 	"github.com/ethereum-optimism/optimism/op-batcher/compressor"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -62,9 +60,7 @@ type ChannelConfig struct {
 	CompressorConfig compressor.Config
 
 	// BatchType indicates whether the channel uses SingularBatch or SpanBatch.
-	BatchType int
-	// ParentRef is the parent L2 block of the channel.
-	ParentRef *eth.L2BlockRef
+	BatchType uint
 }
 
 // Check validates the [ChannelConfig] parameters.
@@ -88,6 +84,10 @@ func (cc *ChannelConfig) Check() error {
 	// number, making the frame size extremely large.
 	if cc.MaxFrameSize < derive.FrameV0OverHeadSize {
 		return fmt.Errorf("max frame size %d is less than the minimum 23", cc.MaxFrameSize)
+	}
+
+	if cc.BatchType > derive.SpanBatchType {
+		return fmt.Errorf("unrecognized batch type: %d", cc.BatchType)
 	}
 
 	return nil
@@ -134,15 +134,10 @@ type channelBuilder struct {
 
 // newChannelBuilder creates a new channel builder or returns an error if the
 // channel out could not be created.
-func newChannelBuilder(cfg ChannelConfig, rcfg *rollup.Config) (*channelBuilder, error) {
+func newChannelBuilder(cfg ChannelConfig, spanBatchBuilder *derive.SpanBatchBuilder) (*channelBuilder, error) {
 	c, err := cfg.CompressorConfig.NewCompressor()
 	if err != nil {
 		return nil, err
-	}
-	var spanBatchBuilder *derive.SpanBatchBuilder
-	if cfg.BatchType == derive.SpanBatchType {
-		// Creates a spanBatchBuilder contains information requires to build SpanBatch
-		spanBatchBuilder = derive.NewSpanBatchBuilder(cfg.ParentRef.L1Origin.Number, rcfg.Genesis.L2Time, rcfg.L2ChainID)
 	}
 	co, err := derive.NewChannelOut(c, cfg.BatchType, spanBatchBuilder)
 	if err != nil {
