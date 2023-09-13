@@ -123,7 +123,7 @@ func (btx *spanBatchTxs) encodeYParityBits(w io.Writer) error {
 	return nil
 }
 
-func (btx *spanBatchTxs) encodeTxSigs(w io.Writer) error {
+func (btx *spanBatchTxs) encodeTxSigsRS(w io.Writer) error {
 	for _, txSig := range btx.txSigs {
 		rBuf := txSig.r.Bytes32()
 		if _, err := w.Write(rBuf[:]); err != nil {
@@ -203,7 +203,7 @@ func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
 	return nil
 }
 
-func (btx *spanBatchTxs) decodeTxSigs(r *bytes.Reader) error {
+func (btx *spanBatchTxs) decodeTxSigsRS(r *bytes.Reader) error {
 	txSigs := make([]spanBatchSignature, btx.totalBlockTxCount)
 	var sigBuffer [32]byte
 	for i := 0; i < int(btx.totalBlockTxCount); i++ {
@@ -311,7 +311,7 @@ func (btx *spanBatchTxs) encode(w io.Writer) error {
 	if err := btx.encodeYParityBits(w); err != nil {
 		return err
 	}
-	if err := btx.encodeTxSigs(w); err != nil {
+	if err := btx.encodeTxSigsRS(w); err != nil {
 		return err
 	}
 	if err := btx.encodeTxTos(w); err != nil {
@@ -336,7 +336,7 @@ func (btx *spanBatchTxs) decode(r *bytes.Reader) error {
 	if err := btx.decodeYParityBits(r); err != nil {
 		return err
 	}
-	if err := btx.decodeTxSigs(r); err != nil {
+	if err := btx.decodeTxSigsRS(r); err != nil {
 		return err
 	}
 	if err := btx.decodeTxTos(r); err != nil {

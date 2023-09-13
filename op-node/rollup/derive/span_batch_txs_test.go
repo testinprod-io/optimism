@@ -119,7 +119,7 @@ func TestSpanBatchTxsTxSigs(t *testing.T) {
 	sbt.txSigs = txSigs
 
 	var buf bytes.Buffer
-	err := sbt.encodeTxSigs(&buf)
+	err := sbt.encodeTxSigsRS(&buf)
 	assert.NoError(t, err)
 
 	// txSig field is fixed length: 32 byte + 32 byte = 64 byte
@@ -129,7 +129,7 @@ func TestSpanBatchTxsTxSigs(t *testing.T) {
 	sbt.txSigs = nil
 
 	r := bytes.NewReader(result)
-	err = sbt.decodeTxSigs(r)
+	err = sbt.decodeTxSigsRS(r)
 	assert.NoError(t, err)
 
 	// v field is not set
