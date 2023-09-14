@@ -618,6 +618,9 @@ func ReadTxData(r *bytes.Reader) ([]byte, int, error) {
 	kind, _, err := s.Kind()
 	switch {
 	case err != nil:
+		if errors.Is(err, rlp.ErrValueTooLarge) {
+			return nil, 0, ErrTooBigSpanBatchFieldSize
+		}
 		return nil, 0, fmt.Errorf("failed to read tx RLP prefix: %w", err)
 	case kind == rlp.List:
 		if txPayload, err = s.Raw(); err != nil {
