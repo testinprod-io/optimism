@@ -456,10 +456,6 @@ func TestSpanBatchReadTxDataInvalid(t *testing.T) {
 	assert.ErrorContains(t, err, "tx RLP prefix type must be list")
 }
 
-func TestSpanBatchMaxTxData(t *testing.T) {
-
-}
-
 func TestSpanBatchBuilder(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xbab1bab1))
 	chainID := new(big.Int).SetUint64(rng.Uint64())
@@ -503,10 +499,27 @@ func TestSpanBatchBuilder(t *testing.T) {
 	}
 }
 
-func TestSpanBatchMaxBlockCount(t *testing.T) {
+func TestSpanBatchMaxTxData(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x177288))
 
+	invalidTx := types.NewTx(&types.DynamicFeeTx{
+		Data: testutils.RandomData(rng, MaxSpanBatchFieldSize + 1),
+	})
+
+	txEncoded, err := invalidTx.MarshalBinary()
+	assert.NoError(t, err)
+
+	r := bytes.NewReader(txEncoded)
+	_, _, err = ReadTxData(r)
+
+	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
 }
 
-func TestSpanBatchMaxBlockTxCount(t *testing.T) {
+func TestSpanBatchMaxOriginBitsLength(t *testing.T) {
+	var sb RawSpanBatch
+	sb.blockCount = 0xFFFFFFFFFFFFFFFF
 
+	r := bytes.NewReader([]byte{})
+	err := sb.decodeOriginBits(r)
+	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
 }

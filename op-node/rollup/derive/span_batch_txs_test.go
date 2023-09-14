@@ -384,3 +384,21 @@ func TestSpanBatchTxsFullTxNotEnoughTxTos(t *testing.T) {
 	_, err = sbt.fullTxs()
 	assert.EqualError(t, err, "tx to not enough")
 }
+
+func TestSpanBatchTxsMaxContractCreationBitsLength(t *testing.T) {
+	var sbt spanBatchTxs
+	sbt.totalBlockTxCount = 0xFFFFFFFFFFFFFFFF
+
+	r := bytes.NewReader([]byte{})
+	err := sbt.decodeContractCreationBits(r)
+	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
+}
+
+func TestSpanBatchTxsMaxYParityBitsLength(t *testing.T) {
+	var sb RawSpanBatch
+	sb.blockCount = 0xFFFFFFFFFFFFFFFF
+
+	r := bytes.NewReader([]byte{})
+	err := sb.decodeOriginBits(r)
+	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
+}
