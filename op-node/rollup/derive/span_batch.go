@@ -327,7 +327,7 @@ func (b *RawSpanBatch) encodeBytes() ([]byte, error) {
 
 // derive converts RawSpanBatch into SpanBatch, which has a list of spanBatchElement.
 // We need chain config constants to derive values for making payload attributes.
-func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainId *big.Int) (*SpanBatch, error) {
+func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainID *big.Int) (*SpanBatch, error) {
 	blockOriginNums := make([]uint64, b.blockCount)
 	l1OriginBlockNumber := b.l1OriginNum
 	for i := int(b.blockCount) - 1; i >= 0; i-- {
@@ -337,7 +337,7 @@ func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainId *big.I
 		}
 	}
 
-	b.txs.chainID = chainId
+	b.txs.chainID = chainID
 	b.txs.recoverV()
 	fullTxs, err := b.txs.fullTxs()
 	if err != nil {
@@ -457,7 +457,7 @@ func (b *SpanBatch) AppendSingularBatch(singularBatch *SingularBatch) {
 }
 
 // ToRawSpanBatch merges SingularBatch List and initialize single RawSpanBatch
-func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint64, chainId *big.Int) (*RawSpanBatch, error) {
+func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint64, chainID *big.Int) (*RawSpanBatch, error) {
 	if len(b.batches) == 0 {
 		return nil, errors.New("cannot merge empty singularBatch list")
 	}
@@ -496,7 +496,7 @@ func (b *SpanBatch) ToRawSpanBatch(originChangedBit uint, genesisTimestamp uint6
 		}
 	}
 	raw.blockTxCounts = blockTxCounts
-	stxs, err := newSpanBatchTxs(txs, chainId)
+	stxs, err := newSpanBatchTxs(txs, chainID)
 	if err != nil {
 		return nil, err
 	}
@@ -553,15 +553,15 @@ func NewSpanBatch(singularBatches []*SingularBatch) *SpanBatch {
 type SpanBatchBuilder struct {
 	parentEpoch      uint64
 	genesisTimestamp uint64
-	chainId          *big.Int
+	chainID          *big.Int
 	spanBatch        *SpanBatch
 }
 
-func NewSpanBatchBuilder(parentEpoch uint64, genesisTimestamp uint64, chainId *big.Int) *SpanBatchBuilder {
+func NewSpanBatchBuilder(parentEpoch uint64, genesisTimestamp uint64, chainID *big.Int) *SpanBatchBuilder {
 	return &SpanBatchBuilder{
 		parentEpoch:      parentEpoch,
 		genesisTimestamp: genesisTimestamp,
-		chainId:          chainId,
+		chainID:          chainID,
 		spanBatch:        &SpanBatch{},
 	}
 }
@@ -575,7 +575,7 @@ func (b *SpanBatchBuilder) GetRawSpanBatch() (*RawSpanBatch, error) {
 	if uint64(b.spanBatch.GetEpochNum()) != b.parentEpoch {
 		originChangedBit = 1
 	}
-	raw, err := b.spanBatch.ToRawSpanBatch(uint(originChangedBit), b.genesisTimestamp, b.chainId)
+	raw, err := b.spanBatch.ToRawSpanBatch(uint(originChangedBit), b.genesisTimestamp, b.chainID)
 	if err != nil {
 		return nil, err
 	}

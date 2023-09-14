@@ -413,7 +413,7 @@ func convertVToYParity(v uint64, txType int) uint {
 	return yParityBit
 }
 
-func newSpanBatchTxs(txs [][]byte, chainId *big.Int) (*spanBatchTxs, error) {
+func newSpanBatchTxs(txs [][]byte, chainID *big.Int) (*spanBatchTxs, error) {
 	totalBlockTxCount := uint64(len(txs))
 	var txSigs []spanBatchSignature
 	var txTos []common.Address
@@ -459,7 +459,7 @@ func newSpanBatchTxs(txs [][]byte, chainId *big.Int) (*spanBatchTxs, error) {
 	}
 	return &spanBatchTxs{
 		totalBlockTxCount:    totalBlockTxCount,
-		chainID:              chainId,
+		chainID:              chainID,
 		contractCreationBits: contractCreationBits,
 		yParityBits:          yParityBits,
 		txSigs:               txSigs,
