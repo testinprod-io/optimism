@@ -158,6 +158,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		if err != nil {
 			return nil, NewCriticalError(err)
 		}
+		bq.nextSpan = singularBatches
 		nextBatch := bq.popNextBatch(safeL2Head)
 		return nextBatch, nil
 	default:
