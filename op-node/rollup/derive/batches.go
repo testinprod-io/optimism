@@ -252,21 +252,29 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 
 	originIdx := 0
 	originAdvanced := false
-	if startEpochNum == epoch.Number+1 {
+	if startEpochNum == parentBlock.L1Origin.Number+1 {
 		originAdvanced = true
 	}
 
 	for i := 0; i < batch.GetBlockCount(); i++ {
+		if batch.GetBlockTimestamp(i) <= l2SafeHead.Time {
+			continue
+		}
+		var l1Origin eth.L1BlockRef
+		for j := originIdx; j < len(l1Blocks); j++ {
+			if batch.GetBlockOriginNum(i) == l1Blocks[j].Number {
+				l1Origin = l1Blocks[j]
+				originIdx = j
+				break
+			}
+
+		}
 		if i > 0 {
 			originAdvanced = false
 			if batch.GetBlockOriginNum(i) > batch.GetBlockOriginNum(i-1) {
 				originAdvanced = true
 			}
 		}
-		if originAdvanced {
-			originIdx += 1
-		}
-		l1Origin := l1Blocks[originIdx]
 		blockTimestamp := batch.GetBlockTimestamp(i)
 		if blockTimestamp < l1Origin.Time {
 			log.Warn("block timestamp is less than L1 origin timestamp", "l2_timestamp", blockTimestamp, "l1_timestamp", l1Origin.Time, "origin", l1Origin.ID())
@@ -324,12 +332,18 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 			safeBlockTxs := safeBlockPayload.Transactions
 			batchTxs := batch.GetBlockTransactions(int(i))
 			// execution payload has L1 info deposit TX, but batch does not.
-			if len(safeBlockTxs)-1 != len(batchTxs) {
-				log.Warn("overlapped block's tx count does not match")
+			depositCount := 0
+			for _, tx := range safeBlockTxs {
+				if tx[0] == types.DepositTxType {
+					depositCount++
+				}
+			}
+			if len(safeBlockTxs)-depositCount != len(batchTxs) {
+				log.Warn("overlapped block's tx count does not match", "safeBlockTxs", len(safeBlockTxs), "batchTxs", len(batchTxs))
 				return BatchDrop
 			}
 			for j := 0; j < len(batchTxs); j++ {
-				if !bytes.Equal(safeBlockTxs[j+1], batchTxs[j]) {
+				if !bytes.Equal(safeBlockTxs[j+depositCount], batchTxs[j]) {
 					log.Warn("overlapped block's transaction does not match")
 					return BatchDrop
 				}

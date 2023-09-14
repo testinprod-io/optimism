@@ -154,18 +154,10 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 			return nil, NewCriticalError(errors.New("failed type assertion to SpanBatch"))
 		}
 		// If next batch is SpanBatch, convert it to SingularBatches.
-		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
+		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks, safeL2Head)
 		if err != nil {
 			return nil, NewCriticalError(err)
 		}
-		// Pop first one and return
-		i := 0
-		for ; i < len(singularBatches); i++ {
-			if singularBatches[i].Timestamp > safeL2Head.Time {
-				break
-			}
-		}
-		bq.nextSpan = singularBatches[i:]
 		nextBatch := bq.popNextBatch(safeL2Head)
 		return nextBatch, nil
 	default:
