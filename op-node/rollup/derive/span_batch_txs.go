@@ -64,6 +64,7 @@ func (btx *spanBatchTxs) decodeContractCreationBits(r *bytes.Reader) error {
 	if btx.totalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
 	}
+	// avoid out of memory before allocation
 	if contractCreationBitBufferLen > MaxSpanBatchFieldSize {
 		return ErrTooBigSpanBatchFieldSize
 	}
@@ -184,6 +185,7 @@ func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
 	if btx.totalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
 	}
+	// avoid out of memory before allocation
 	if yParityBitBufferLen > MaxSpanBatchFieldSize {
 		return ErrTooBigSpanBatchFieldSize
 	}

@@ -221,6 +221,7 @@ func (tx *spanBatchTx) convertToFullTx(nonce, gas uint64, to *common.Address, ch
 	return types.NewTx(inner), nil
 }
 
+// newSpanBatchTx converts types.Transaction to spanBatchTx
 func newSpanBatchTx(tx types.Transaction) (*spanBatchTx, error) {
 	var inner spanBatchTxData
 	switch tx.Type() {
