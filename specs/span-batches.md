@@ -282,6 +282,8 @@ Span-batch rules, in validation order:
         is past `inclusion_block_number` because of the following invariant.
       - Invariant: the epoch-num in the batch is always less than the inclusion block number,
         if and only if the L1 epoch hash is correct.
+    - `start_epoch_num < prev_l2_block.l1_origin.number` -> `drop`:
+      epoch number cannot be older than the origin of parent block
 - Max Sequencer time-drift checks:
   - Note: The max time-drift is enforced for the *batch as a whole*, to keep the possible output variants small.
   - Variables:

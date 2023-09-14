@@ -250,6 +250,11 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		return BatchUndecided
 	}
 
+	if startEpochNum < parentBlock.L1Origin.Number {
+		log.Warn("dropped batch, epoch is too old", "minimum", parentBlock.ID())
+		return BatchDrop
+	}
+
 	originIdx := 0
 	originAdvanced := false
 	if startEpochNum == parentBlock.L1Origin.Number+1 {
