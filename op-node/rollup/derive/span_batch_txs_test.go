@@ -279,12 +279,11 @@ func TestSpanBatchTxsRecoverV(t *testing.T) {
 		yParityBits.SetBit(yParityBits, idx, yParityBit)
 	}
 
-	spanBatchTxs.chainID = chainID
 	spanBatchTxs.yParityBits = yParityBits
 	spanBatchTxs.txSigs = txSigs
 	spanBatchTxs.txTypes = txTypes
 	// recover txSig.v
-	spanBatchTxs.recoverV()
+	spanBatchTxs.recoverV(chainID)
 
 	var recoveredVs []uint64
 	for _, txSig := range spanBatchTxs.txSigs {
@@ -311,11 +310,10 @@ func TestSpanBatchTxsRoundTrip(t *testing.T) {
 		r := bytes.NewReader(result)
 
 		var sbt2 spanBatchTxs
-		sbt2.chainID = chainID
 		sbt2.totalBlockTxCount = totalBlockTxCount
 		err = sbt2.decode(r)
 		assert.NoError(t, err)
-		sbt2.recoverV()
+		sbt2.recoverV(chainID)
 
 		assert.Equal(t, sbt, &sbt2)
 	}
@@ -338,7 +336,7 @@ func TestSpanBatchTxsRoundTripFullTxs(t *testing.T) {
 		sbt, err := newSpanBatchTxs(txs, chainID)
 		assert.NoError(t, err)
 
-		txs2, err := sbt.fullTxs()
+		txs2, err := sbt.fullTxs(chainID)
 		assert.NoError(t, err)
 
 		assert.Equal(t, txs, txs2)
@@ -351,6 +349,8 @@ func TestSpanBatchTxsRecoverVInvalidTxType(t *testing.T) {
 			t.Errorf("The code did not panic")
 		}
 	}()
+	rng := rand.New(rand.NewSource(0x321))
+	chainID := big.NewInt(rng.Int63n(1000))
 
 	var sbt spanBatchTxs
 
@@ -359,7 +359,7 @@ func TestSpanBatchTxsRecoverVInvalidTxType(t *testing.T) {
 	sbt.yParityBits = new(big.Int)
 
 	// expect panic
-	sbt.recoverV()
+	sbt.recoverV(chainID)
 }
 
 func TestSpanBatchTxsFullTxNotEnoughTxTos(t *testing.T) {
@@ -381,7 +381,7 @@ func TestSpanBatchTxsFullTxNotEnoughTxTos(t *testing.T) {
 	// drop single to field
 	sbt.txTos = sbt.txTos[:len(sbt.txTos)-2]
 
-	_, err = sbt.fullTxs()
+	_, err = sbt.fullTxs(chainID)
 	assert.EqualError(t, err, "tx to not enough")
 }
 

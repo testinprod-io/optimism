@@ -337,9 +337,8 @@ func (b *RawSpanBatch) derive(blockTime, genesisTimestamp uint64, chainID *big.I
 		}
 	}
 
-	b.txs.chainID = chainID
-	b.txs.recoverV()
-	fullTxs, err := b.txs.fullTxs()
+	b.txs.recoverV(chainID)
+	fullTxs, err := b.txs.fullTxs(chainID)
 	if err != nil {
 		return nil, err
 	}

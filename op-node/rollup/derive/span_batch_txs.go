@@ -15,9 +15,8 @@ import (
 )
 
 type spanBatchTxs struct {
-	// these two fields must be manually set
+	// this field must be manually set
 	totalBlockTxCount uint64
-	chainID           *big.Int
 
 	// 7 fields
 	contractCreationBits *big.Int
@@ -288,7 +287,7 @@ func (btx *spanBatchTxs) decodeTxDatas(r *bytes.Reader) error {
 	return nil
 }
 
-func (btx *spanBatchTxs) recoverV() {
+func (btx *spanBatchTxs) recoverV(chainID *big.Int) {
 	if len(btx.txTypes) != len(btx.txSigs) {
 		panic("tx type length and tx sigs length mismatch")
 	}
@@ -298,7 +297,7 @@ func (btx *spanBatchTxs) recoverV() {
 		switch txType {
 		case types.LegacyTxType:
 			// EIP155
-			v = btx.chainID.Uint64()*2 + 35 + bit
+			v = chainID.Uint64()*2 + 35 + bit
 		case types.AccessListTxType:
 			v = bit
 		case types.DynamicFeeTxType:
@@ -361,7 +360,7 @@ func (btx *spanBatchTxs) decode(r *bytes.Reader) error {
 	return nil
 }
 
-func (btx *spanBatchTxs) fullTxs() ([][]byte, error) {
+func (btx *spanBatchTxs) fullTxs(chainID *big.Int) ([][]byte, error) {
 	var txs [][]byte
 	toIdx := 0
 	for idx := 0; idx < int(btx.totalBlockTxCount); idx++ {
@@ -383,7 +382,7 @@ func (btx *spanBatchTxs) fullTxs() ([][]byte, error) {
 		v := new(big.Int).SetUint64(btx.txSigs[idx].v)
 		r := btx.txSigs[idx].r.ToBig()
 		s := btx.txSigs[idx].s.ToBig()
-		tx, err := stx.convertToFullTx(nonce, gas, to, btx.chainID, v, r, s)
+		tx, err := stx.convertToFullTx(nonce, gas, to, chainID, v, r, s)
 		if err != nil {
 			return nil, err
 		}
@@ -459,7 +458,6 @@ func newSpanBatchTxs(txs [][]byte, chainID *big.Int) (*spanBatchTxs, error) {
 	}
 	return &spanBatchTxs{
 		totalBlockTxCount:    totalBlockTxCount,
-		chainID:              chainID,
 		contractCreationBits: contractCreationBits,
 		yParityBits:          yParityBits,
 		txSigs:               txSigs,

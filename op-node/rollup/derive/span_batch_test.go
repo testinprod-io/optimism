@@ -187,8 +187,7 @@ func TestSpanBatchPayload(t *testing.T) {
 	err = sb.decodePayload(r)
 	assert.NoError(t, err)
 
-	sb.txs.chainID = chainID
-	sb.txs.recoverV()
+	sb.txs.recoverV(chainID)
 
 	assert.Equal(t, rawSpanBatch.spanBatchPayload, sb.spanBatchPayload)
 }
@@ -249,12 +248,11 @@ func TestSpanBatchTxs(t *testing.T) {
 	var sb RawSpanBatch
 	sb.txs = &spanBatchTxs{}
 
-	sb.txs.chainID = chainID
 	sb.txs.totalBlockTxCount = rawSpanBatch.txs.totalBlockTxCount
 	err = sb.txs.decode(r)
 	assert.NoError(t, err)
 
-	sb.txs.recoverV()
+	sb.txs.recoverV(chainID)
 
 	assert.Equal(t, rawSpanBatch.txs, sb.txs)
 }
@@ -270,13 +268,12 @@ func TestSpanBatchRoundTrip(t *testing.T) {
 
 	var sb RawSpanBatch
 	sb.txs = &spanBatchTxs{}
-	sb.txs.chainID = chainID
 	sb.txs.totalBlockTxCount = rawSpanBatch.txs.totalBlockTxCount
 
 	err = sb.decodeBytes(result)
 	assert.NoError(t, err)
 
-	sb.txs.recoverV()
+	sb.txs.recoverV(chainID)
 
 	assert.Equal(t, rawSpanBatch, &sb)
 }
@@ -503,7 +500,7 @@ func TestSpanBatchMaxTxData(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x177288))
 
 	invalidTx := types.NewTx(&types.DynamicFeeTx{
-		Data: testutils.RandomData(rng, MaxSpanBatchFieldSize + 1),
+		Data: testutils.RandomData(rng, MaxSpanBatchFieldSize+1),
 	})
 
 	txEncoded, err := invalidTx.MarshalBinary()
