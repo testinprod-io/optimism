@@ -19,7 +19,6 @@ import (
 
 func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
 	blockCount := uint64(1 + rng.Int()&0xFF)
-	//blockCount := uint64(10)
 	originBits := new(big.Int)
 	for i := 0; i < int(blockCount); i++ {
 		bit := uint(0)
