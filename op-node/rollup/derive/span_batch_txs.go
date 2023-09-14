@@ -65,6 +65,9 @@ func (btx *spanBatchTxs) decodeContractCreationBits(r *bytes.Reader) error {
 	if btx.totalBlockTxCount%8 != 0 {
 		contractCreationBitBufferLen++
 	}
+	if contractCreationBitBufferLen > MaxSpanBatchFieldSize {
+		return ErrTooBigSpanBatchFieldSize
+	}
 	contractCreationBitBuffer := make([]byte, contractCreationBitBufferLen)
 	_, err := io.ReadFull(r, contractCreationBitBuffer)
 	if err != nil {
@@ -181,6 +184,9 @@ func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
 	yParityBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
 		yParityBitBufferLen++
+	}
+	if yParityBitBufferLen > MaxSpanBatchFieldSize {
+		return ErrTooBigSpanBatchFieldSize
 	}
 	yParityBitBuffer := make([]byte, yParityBitBufferLen)
 	_, err := io.ReadFull(r, yParityBitBuffer)

@@ -25,6 +25,8 @@ import (
 // payload := payload = block_count ++ origin_bits ++ block_tx_counts ++ txs
 // txs = contract_creation_bits ++ y_parity_bits ++ tx_sigs ++ tx_tos ++ tx_datas ++ tx_nonces ++ tx_gases
 
+var ErrTooBigSpanBatchFieldSize = errors.New("batch would cause field bytes to go over limit")
+
 type spanBatchPrefix struct {
 	relTimestamp  uint64 // Relative timestamp of the first block
 	l1OriginNum   uint64 // L1 origin number
@@ -49,6 +51,9 @@ func (b *spanBatchPayload) decodeOriginBits(r *bytes.Reader) error {
 	originBitBufferLen := b.blockCount / 8
 	if b.blockCount%8 != 0 {
 		originBitBufferLen++
+	}
+	if originBitBufferLen > MaxSpanBatchFieldSize {
+		return ErrTooBigSpanBatchFieldSize
 	}
 	originBitBuffer := make([]byte, originBitBufferLen)
 	_, err := io.ReadFull(r, originBitBuffer)
@@ -608,9 +613,7 @@ func ReadTxData(r *bytes.Reader) ([]byte, int, error) {
 			return nil, 0, fmt.Errorf("failed to seek tx reader: %w", err)
 		}
 	}
-	// TODO: set maximum inputLimit
-	// temp fix: single tx size is always less than size of channel
-	s := rlp.NewStream(r, MaxRLPBytesPerChannel)
+	s := rlp.NewStream(r, MaxSpanBatchFieldSize)
 	var txPayload []byte
 	kind, _, err := s.Kind()
 	switch {
