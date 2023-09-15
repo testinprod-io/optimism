@@ -386,6 +386,7 @@ func TestSpanBatchToSingularBatch(t *testing.T) {
 		singularBatches := RandomValidConsecutiveSingularBatches(rng, chainID)
 		safeL2Head := testutils.RandomL2BlockRef(rng)
 		safeL2Head.Hash = common.BytesToHash(singularBatches[0].ParentHash[:])
+		safeL2Head.Time = singularBatches[0].Timestamp - 2
 		genesisTimeStamp := 1 + singularBatches[0].Timestamp - 128
 
 		spanBatch := NewSpanBatch(singularBatches)
@@ -395,7 +396,7 @@ func TestSpanBatchToSingularBatch(t *testing.T) {
 
 		l1Origins := mockL1Origin(rng, rawSpanBatch, singularBatches)
 
-		singularBatches2, err := spanBatch.GetSingularBatches(l1Origins)
+		singularBatches2, err := spanBatch.GetSingularBatches(l1Origins, safeL2Head)
 		assert.NoError(t, err)
 
 		// GetSingularBatches does not fill in parent hash of singular batches
