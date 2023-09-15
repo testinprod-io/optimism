@@ -85,6 +85,43 @@ func getSpanBatchTime(batchType int) *uint64 {
 	return &maxTs
 }
 
+func l1InfoDepositTx(t *testing.T, l1BlockNum uint64) hexutil.Bytes {
+	l1Info := L1BlockInfo{
+		Number:  l1BlockNum,
+		BaseFee: big.NewInt(0),
+	}
+	infoData, err := l1Info.MarshalBinary()
+	require.NoError(t, err)
+	depositTx := &types.DepositTx{
+		Data: infoData,
+	}
+	txData, err := types.NewTx(depositTx).MarshalBinary()
+	require.NoError(t, err)
+	return txData
+}
+
+func singularBatchToPayload(t *testing.T, batch *SingularBatch, blockNumber uint64) eth.ExecutionPayload {
+	txs := []hexutil.Bytes{l1InfoDepositTx(t, uint64(batch.EpochNum))}
+	txs = append(txs, batch.Transactions...)
+	return eth.ExecutionPayload{
+		BlockHash:    mockHash(batch.Timestamp, 2),
+		ParentHash:   batch.ParentHash,
+		BlockNumber:  hexutil.Uint64(blockNumber),
+		Timestamp:    hexutil.Uint64(batch.Timestamp),
+		Transactions: txs,
+	}
+}
+
+func singularBatchToBlockRef(t *testing.T, batch *SingularBatch, blockNumber uint64) eth.L2BlockRef {
+	return eth.L2BlockRef{
+		Hash:       mockHash(batch.Timestamp, 2),
+		Number:     blockNumber,
+		ParentHash: batch.ParentHash,
+		Time:       batch.Timestamp,
+		L1Origin:   eth.BlockID{batch.EpochHash, uint64(batch.EpochNum)},
+	}
+}
+
 func L1Chain(l1Times []uint64) []eth.L1BlockRef {
 	var out []eth.L1BlockRef
 	var parentHash common.Hash
@@ -158,7 +195,7 @@ func BatchQueueNewOrigin(t *testing.T, batchType int) {
 		origin:  l1[0],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 	require.Equal(t, []eth.L1BlockRef{l1[0]}, bq.l1Blocks)
 
@@ -247,7 +284,7 @@ func BatchQueueEager(t *testing.T, batchType int) {
 		origin:  l1[0],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 	// Advance the origin
 	input.origin = l1[1]
@@ -325,7 +362,7 @@ func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 		origin:  l1[0],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 
 	// Load continuous batches for epoch 0
@@ -440,7 +477,7 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 		origin:  l1[0],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
 
 	for i := 0; i < len(expectedOutputBatches); i++ {
@@ -549,7 +586,7 @@ func BatchQueueAdvancedEpoch(t *testing.T, batchType int) {
 	// batches will be returned by fakeBatchQueueInput
 	var inputBatches []Batch
 	if batchType == SpanBatchType {
-		spanBlockCounts := []int{1, 2, 3, 3}
+		spanBlockCounts := []int{2, 2, 2, 3}
 		inputErrors = []error{nil, nil, nil, nil, io.EOF}
 		inputBatches = buildSpanBatches(t, &safeHead, expectedOutputBatches, spanBlockCounts, chainId)
 		inputBatches = append(inputBatches, nil)
@@ -567,7 +604,7 @@ func BatchQueueAdvancedEpoch(t *testing.T, batchType int) {
 		origin:  l1[inputOriginNumber],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[1], eth.SystemConfig{})
 
 	for i := 0; i < len(expectedOutputBatches); i++ {
@@ -583,7 +620,6 @@ func BatchQueueAdvancedEpoch(t *testing.T, batchType int) {
 			require.Nil(t, expectedOutput)
 		} else {
 			require.Equal(t, expectedOutput, b)
-			require.Equal(t, bq.origin, input.origin)
 			require.Equal(t, bq.l1Blocks[0].Number, uint64(b.EpochNum))
 			safeHead.Number += 1
 			safeHead.Time += cfg.BlockTime
@@ -637,7 +673,7 @@ func BatchQueueShuffle(t *testing.T, batchType int) {
 	// batches will be returned by fakeBatchQueueInput
 	var inputBatches []Batch
 	if batchType == SpanBatchType {
-		spanBlockCounts := []int{1, 2, 3, 3}
+		spanBlockCounts := []int{2, 2, 2, 3}
 		inputErrors = []error{nil, nil, nil, nil, io.EOF}
 		inputBatches = buildSpanBatches(t, &safeHead, expectedOutputBatches, spanBlockCounts, chainId)
 	} else {
@@ -660,7 +696,7 @@ func BatchQueueShuffle(t *testing.T, batchType int) {
 		origin:  l1[inputOriginNumber],
 	}
 
-	bq := NewBatchQueue(log, cfg, input)
+	bq := NewBatchQueue(log, cfg, input, nil)
 	_ = bq.Reset(context.Background(), l1[1], eth.SystemConfig{})
 
 	for i := 0; i < len(expectedOutputBatches); i++ {
@@ -684,7 +720,198 @@ func BatchQueueShuffle(t *testing.T, batchType int) {
 			require.Nil(t, expectedOutput)
 		} else {
 			require.Equal(t, expectedOutput, b)
-			require.Equal(t, bq.origin, input.origin)
+			require.Equal(t, bq.l1Blocks[0].Number, uint64(b.EpochNum))
+			safeHead.Number += 1
+			safeHead.Time += cfg.BlockTime
+			safeHead.Hash = mockHash(b.Timestamp, 2)
+			safeHead.L1Origin = b.Epoch()
+		}
+	}
+}
+
+func TestBatchQueueOverlappingSpanBatch(t *testing.T) {
+	log := testlog.Logger(t, log.LvlCrit)
+	l1 := L1Chain([]uint64{10, 20, 30})
+	chainId := big.NewInt(1234)
+	safeHead := eth.L2BlockRef{
+		Hash:           mockHash(10, 2),
+		Number:         0,
+		ParentHash:     common.Hash{},
+		Time:           10,
+		L1Origin:       l1[0].ID(),
+		SequenceNumber: 0,
+	}
+	cfg := &rollup.Config{
+		Genesis: rollup.Genesis{
+			L2Time: genesisTimestamp,
+		},
+		BlockTime:         2,
+		MaxSequencerDrift: 600,
+		SeqWindowSize:     30,
+		SpanBatchTime:     getSpanBatchTime(SpanBatchType),
+		L2ChainID:         chainId,
+	}
+
+	// expected output of BatchQueue.NextBatch()
+	expectedOutputBatches := []*SingularBatch{
+		b(cfg.L2ChainID, 12, l1[0]),
+		b(cfg.L2ChainID, 14, l1[0]),
+		b(cfg.L2ChainID, 16, l1[0]),
+		b(cfg.L2ChainID, 18, l1[0]),
+		b(cfg.L2ChainID, 20, l1[0]),
+		b(cfg.L2ChainID, 22, l1[0]),
+		nil,
+	}
+	// expected error of BatchQueue.NextBatch()
+	expectedOutputErrors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
+	// errors will be returned by fakeBatchQueueInput.NextBatch()
+	inputErrors := []error{nil, nil, nil, nil, io.EOF}
+
+	// batches will be returned by fakeBatchQueueInput
+	var inputBatches []Batch
+	batchSize := 3
+	for i := 0; i < len(expectedOutputBatches)-batchSize; i++ {
+		inputBatches = append(inputBatches, NewSpanBatch(expectedOutputBatches[i:i+batchSize]))
+	}
+	inputBatches = append(inputBatches, nil)
+
+	input := &fakeBatchQueueInput{
+		batches: inputBatches,
+		errors:  inputErrors,
+		origin:  l1[0],
+	}
+
+	l2Client := testutils.MockL2Client{}
+	var nilErr error
+	for i, batch := range expectedOutputBatches {
+		if batch != nil {
+			blockRef := singularBatchToBlockRef(t, batch, uint64(i+1))
+			payload := singularBatchToPayload(t, batch, uint64(i+1))
+			l2Client.Mock.On("L2BlockRefByNumber", uint64(i+1)).Times(9999).Return(blockRef, &nilErr)
+			l2Client.Mock.On("PayloadByNumber", uint64(i+1)).Times(9999).Return(&payload, &nilErr)
+		}
+	}
+
+	bq := NewBatchQueue(log, cfg, input, &l2Client)
+	_ = bq.Reset(context.Background(), l1[0], eth.SystemConfig{})
+	// Advance the origin
+	input.origin = l1[1]
+
+	for i := 0; i < len(expectedOutputBatches); i++ {
+		b, e := bq.NextBatch(context.Background(), safeHead)
+		require.ErrorIs(t, e, expectedOutputErrors[i])
+		if b == nil {
+			require.Nil(t, expectedOutputBatches[i])
+		} else {
+			require.Equal(t, expectedOutputBatches[i], b)
+			safeHead.Number += 1
+			safeHead.Time += cfg.BlockTime
+			safeHead.Hash = mockHash(b.Timestamp, 2)
+			safeHead.L1Origin = b.Epoch()
+		}
+	}
+}
+
+func TestBatchQueueComplex(t *testing.T) {
+	log := testlog.Logger(t, log.LvlCrit)
+	l1 := L1Chain([]uint64{0, 6, 12, 18, 24}) // L1 block time: 6s
+	chainId := big.NewInt(1234)
+	safeHead := eth.L2BlockRef{
+		Hash:           mockHash(4, 2),
+		Number:         0,
+		ParentHash:     common.Hash{},
+		Time:           4,
+		L1Origin:       l1[0].ID(),
+		SequenceNumber: 0,
+	}
+	cfg := &rollup.Config{
+		Genesis: rollup.Genesis{
+			L2Time: genesisTimestamp,
+		},
+		BlockTime:         2,
+		MaxSequencerDrift: 600,
+		SeqWindowSize:     30,
+		SpanBatchTime:     getSpanBatchTime(SpanBatchType),
+		L2ChainID:         chainId,
+	}
+
+	// expected output of BatchQueue.NextBatch()
+	expectedOutputBatches := []*SingularBatch{
+		// 3 L2 blocks per L1 block
+		b(cfg.L2ChainID, 6, l1[1]),
+		b(cfg.L2ChainID, 8, l1[1]),
+		b(cfg.L2ChainID, 10, l1[1]),
+		b(cfg.L2ChainID, 12, l1[2]),
+		b(cfg.L2ChainID, 14, l1[2]),
+		b(cfg.L2ChainID, 16, l1[2]),
+		b(cfg.L2ChainID, 18, l1[3]),
+		b(cfg.L2ChainID, 20, l1[3]),
+		b(cfg.L2ChainID, 22, l1[3]),
+	}
+	// expected error of BatchQueue.NextBatch()
+	expectedOutputErrors := []error{nil, nil, nil, nil, nil, nil, nil, nil, nil, io.EOF}
+	// errors will be returned by fakeBatchQueueInput.NextBatch()
+	inputErrors := []error{nil, nil, nil, nil, nil, nil, io.EOF}
+	// batches will be returned by fakeBatchQueueInput
+	inputBatches := []Batch{
+		NewSpanBatch(expectedOutputBatches[0:2]), // 6, 8
+		expectedOutputBatches[2],                 // 10
+		NewSpanBatch(expectedOutputBatches[1:4]), // 8, 10, 12
+		expectedOutputBatches[4],                 // 14
+		NewSpanBatch(expectedOutputBatches[4:6]), // 14, 16
+		NewSpanBatch(expectedOutputBatches[6:9]), // 18, 20, 22
+	}
+
+	// Shuffle the order of input batches
+	rand.Shuffle(len(inputBatches), func(i, j int) {
+		inputBatches[i], inputBatches[j] = inputBatches[j], inputBatches[i]
+	})
+
+	inputBatches = append(inputBatches, nil)
+
+	// ChannelInReader origin number
+	inputOriginNumber := 2
+	input := &fakeBatchQueueInput{
+		batches: inputBatches,
+		errors:  inputErrors,
+		origin:  l1[inputOriginNumber],
+	}
+
+	l2Client := testutils.MockL2Client{}
+	var nilErr error
+	for i, batch := range expectedOutputBatches {
+		if batch != nil {
+			blockRef := singularBatchToBlockRef(t, batch, uint64(i+1))
+			payload := singularBatchToPayload(t, batch, uint64(i+1))
+			l2Client.Mock.On("L2BlockRefByNumber", uint64(i+1)).Times(9999).Return(blockRef, &nilErr)
+			l2Client.Mock.On("PayloadByNumber", uint64(i+1)).Times(9999).Return(&payload, &nilErr)
+		}
+	}
+
+	bq := NewBatchQueue(log, cfg, input, &l2Client)
+	_ = bq.Reset(context.Background(), l1[1], eth.SystemConfig{})
+
+	for i := 0; i < len(expectedOutputBatches); i++ {
+		expectedOutput := expectedOutputBatches[i]
+		if expectedOutput != nil && uint64(expectedOutput.EpochNum) == l1[inputOriginNumber].Number {
+			// Advance ChannelInReader origin if needed
+			inputOriginNumber += 1
+			input.origin = l1[inputOriginNumber]
+		}
+		var b *SingularBatch
+		var e error
+		for j := 0; j < len(expectedOutputBatches); j++ {
+			// Multiple NextBatch() executions may be required because the order of input is shuffled
+			b, e = bq.NextBatch(context.Background(), safeHead)
+			if !errors.Is(e, NotEnoughData) {
+				break
+			}
+		}
+		require.ErrorIs(t, e, expectedOutputErrors[i])
+		if b == nil {
+			require.Nil(t, expectedOutput)
+		} else {
+			require.Equal(t, expectedOutput, b)
 			require.Equal(t, bq.l1Blocks[0].Number, uint64(b.EpochNum))
 			safeHead.Number += 1
 			safeHead.Time += cfg.BlockTime

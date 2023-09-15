@@ -32,6 +32,11 @@ type NextBatchProvider interface {
 	NextBatch(ctx context.Context) (Batch, error)
 }
 
+type SafeBlockFetcher interface {
+	L2BlockRefByNumber(context.Context, uint64) (eth.L2BlockRef, error)
+	PayloadByNumber(context.Context, uint64) (*eth.ExecutionPayload, error)
+}
+
 // BatchQueue contains a set of batches for every L1 block.
 // L1 blocks are contiguous and this does not support reorgs.
 type BatchQueue struct {
@@ -42,19 +47,22 @@ type BatchQueue struct {
 
 	l1Blocks []eth.L1BlockRef
 
-	// batches in order of when we've first seen them, grouped by L2 timestamp
-	batches map[uint64][]*BatchWithL1InclusionBlock
+	// batches in order of when we've first seen them
+	batches []*BatchWithL1InclusionBlock
 
 	// nextSpan is cached SingularBatches derived from SpanBatch
 	nextSpan []*SingularBatch
+
+	l2 SafeBlockFetcher
 }
 
 // NewBatchQueue creates a BatchQueue, which should be Reset(origin) before use.
-func NewBatchQueue(log log.Logger, cfg *rollup.Config, prev NextBatchProvider) *BatchQueue {
+func NewBatchQueue(log log.Logger, cfg *rollup.Config, prev NextBatchProvider, l2 SafeBlockFetcher) *BatchQueue {
 	return &BatchQueue{
 		log:    log,
 		config: cfg,
 		prev:   prev,
+		l2:     l2,
 	}
 }
 
@@ -62,17 +70,22 @@ func (bq *BatchQueue) Origin() eth.L1BlockRef {
 	return bq.prev.Origin()
 }
 
+func (bq *BatchQueue) popNextBatch(safeL2Head eth.L2BlockRef) *SingularBatch {
+	nextBatch := bq.nextSpan[0]
+	bq.nextSpan = bq.nextSpan[1:]
+	// Must set ParentHash before return. we can use safeL2Head because the parentCheck is verified in CheckBatch().
+	nextBatch.ParentHash = safeL2Head.Hash
+	if nextBatch.GetEpochNum() == rollup.Epoch(bq.l1Blocks[0].Number)+1 {
+		// Advance epoch if necessary
+		bq.l1Blocks = bq.l1Blocks[1:]
+	}
+	return nextBatch
+}
+
 func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*SingularBatch, error) {
 	if len(bq.nextSpan) > 0 {
 		// If there are cached singular batches, pop first one and return.
-		nextBatch := bq.nextSpan[0]
-		bq.nextSpan = bq.nextSpan[1:]
-		// Must set ParentHash before return. we can use safeL2Head because the parentCheck is verified in CheckBatch().
-		nextBatch.ParentHash = safeL2Head.Hash
-		if nextBatch.GetEpochNum() == rollup.Epoch(bq.l1Blocks[0].Number)+1 {
-			// advance epoch if necessary
-			bq.l1Blocks = bq.l1Blocks[1:]
-		}
+		nextBatch := bq.popNextBatch(safeL2Head)
 		return nextBatch, nil
 	}
 
@@ -105,7 +118,7 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 	} else if err != nil {
 		return nil, err
 	} else if !originBehind {
-		bq.AddBatch(batch, safeL2Head)
+		bq.AddBatch(ctx, batch, safeL2Head)
 	}
 
 	// Skip adding data unless we are up to date with the origin, but do fully
@@ -141,15 +154,12 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 			return nil, NewCriticalError(errors.New("failed type assertion to SpanBatch"))
 		}
 		// If next batch is SpanBatch, convert it to SingularBatches.
-		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks)
+		singularBatches, err := spanBatch.GetSingularBatches(bq.l1Blocks, safeL2Head)
 		if err != nil {
 			return nil, NewCriticalError(err)
 		}
-		// Pop first one and return
-		nextBatch := singularBatches[0]
-		bq.nextSpan = singularBatches[1:]
-		// Must set ParentHash before return.
-		nextBatch.ParentHash = safeL2Head.Hash
+		bq.nextSpan = singularBatches
+		nextBatch := bq.popNextBatch(safeL2Head)
 		return nextBatch, nil
 	default:
 		return nil, NewCriticalError(fmt.Errorf("unrecognized batch type: %d", batch.GetBatchType()))
@@ -160,7 +170,7 @@ func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.Syst
 	// Copy over the Origin from the next stage
 	// It is set in the engine queue (two stages away) such that the L2 Safe Head origin is the progress
 	bq.origin = base
-	bq.batches = make(map[uint64][]*BatchWithL1InclusionBlock)
+	bq.batches = []*BatchWithL1InclusionBlock{}
 	// Include the new origin as an origin to build on
 	// Note: This is only for the initialization case. During normal resets we will later
 	// throw out this block.
@@ -170,7 +180,7 @@ func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.Syst
 	return io.EOF
 }
 
-func (bq *BatchQueue) AddBatch(batch Batch, l2SafeHead eth.L2BlockRef) {
+func (bq *BatchQueue) AddBatch(ctx context.Context, batch Batch, l2SafeHead eth.L2BlockRef) {
 	if len(bq.l1Blocks) == 0 {
 		panic(fmt.Errorf("cannot add batch with timestamp %d, no origin was prepared", batch.GetTimestamp()))
 	}
@@ -178,12 +188,12 @@ func (bq *BatchQueue) AddBatch(batch Batch, l2SafeHead eth.L2BlockRef) {
 		L1InclusionBlock: bq.origin,
 		Batch:            batch,
 	}
-	validity := CheckBatch(bq.config, bq.log, bq.l1Blocks, l2SafeHead, &data)
+	validity := CheckBatch(ctx, bq.config, bq.log, bq.l1Blocks, l2SafeHead, &data, bq.l2)
 	if validity == BatchDrop {
 		return // if we do drop the batch, CheckBatch will log the drop reason with WARN level.
 	}
 	batch.LogContext(bq.log).Debug("Adding batch")
-	bq.batches[batch.GetTimestamp()] = append(bq.batches[batch.GetTimestamp()], &data)
+	bq.batches = append(bq.batches, &data)
 }
 
 // deriveNextBatch derives the next batch to apply on top of the current L2 safe head,
@@ -213,13 +223,13 @@ func (bq *BatchQueue) deriveNextBatch(ctx context.Context, outOfData bool, l2Saf
 	// Go over all batches, in order of inclusion, and find the first batch we can accept.
 	// We filter in-place by only remembering the batches that may be processed in the future, or those we are undecided on.
 	var remaining []*BatchWithL1InclusionBlock
-	candidates := bq.batches[nextTimestamp]
 batchLoop:
-	for i, batch := range candidates {
-		validity := CheckBatch(bq.config, bq.log.New("batch_index", i), bq.l1Blocks, l2SafeHead, batch)
+	for i, batch := range bq.batches {
+		validity := CheckBatch(ctx, bq.config, bq.log.New("batch_index", i), bq.l1Blocks, l2SafeHead, batch, bq.l2)
 		switch validity {
 		case BatchFuture:
-			return nil, NewCriticalError(fmt.Errorf("found batch with timestamp %d marked as future batch, but expected timestamp %d", batch.Batch.GetTimestamp(), nextTimestamp))
+			remaining = append(remaining, batch)
+			continue
 		case BatchDrop:
 			batch.Batch.LogContext(bq.log).Warn("dropping batch",
 				"l2_safe_head", l2SafeHead.ID(),
@@ -230,22 +240,17 @@ batchLoop:
 			nextBatch = batch
 			// don't keep the current batch in the remaining items since we are processing it now,
 			// but retain every batch we didn't get to yet.
-			remaining = append(remaining, candidates[i+1:]...)
+			remaining = append(remaining, bq.batches[i+1:]...)
 			break batchLoop
 		case BatchUndecided:
-			remaining = append(remaining, batch)
-			bq.batches[nextTimestamp] = remaining
+			remaining = append(remaining, bq.batches[i:]...)
+			bq.batches = remaining
 			return nil, io.EOF
 		default:
 			return nil, NewCriticalError(fmt.Errorf("unknown batch validity type: %d", validity))
 		}
 	}
-	// clean up if we remove the final batch for this timestamp
-	if len(remaining) == 0 {
-		delete(bq.batches, nextTimestamp)
-	} else {
-		bq.batches[nextTimestamp] = remaining
-	}
+	bq.batches = remaining
 
 	if nextBatch != nil {
 		// advance epoch if necessary
