@@ -167,7 +167,7 @@ func checkSingularBatch(cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1Blo
 	return BatchAccept
 }
 
-// checkSingularBatch implements SpanBatch validation rule.
+// checkSpanBatch implements SpanBatch validation rule.
 func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1Blocks []eth.L1BlockRef, l2SafeHead eth.L2BlockRef,
 	batch *SpanBatch, l1InclusionBlock eth.L1BlockRef, l2Fetcher SafeBlockFetcher) BatchValidity {
 	// add details to the log
@@ -336,7 +336,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 			}
 			safeBlockTxs := safeBlockPayload.Transactions
 			batchTxs := batch.GetBlockTransactions(int(i))
-			// execution payload has L1 info deposit TX, but batch does not.
+			// execution payload has deposit TXs, but batch does not.
 			depositCount := 0
 			for _, tx := range safeBlockTxs {
 				if tx[0] == types.DepositTxType {
