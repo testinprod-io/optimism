@@ -139,7 +139,6 @@ func (bp *spanBatchPrefix) decodePrefix(r *bytes.Reader) error {
 func (bp *spanBatchPayload) decodeBlockCount(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
 	bp.blockCount = blockCount
-	// TODO: check block count is not too large
 	if err != nil {
 		return fmt.Errorf("failed to read block count: %w", err)
 	}
@@ -156,7 +155,6 @@ func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
 	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(bp.blockCount); i++ {
 		blockTxCount, err := binary.ReadUvarint(r)
-		// TODO: check blockTxCount is not too large
 		if err != nil {
 			return fmt.Errorf("failed to read block tx count: %w", err)
 		}
