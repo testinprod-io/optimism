@@ -263,16 +263,6 @@ Span-batch rules, in validation order:
 - If there's no `prev_l2_block` in the current safe chain -> `drop`: i.e. misaligned timestamp
 - `batch.parent_check != prev_l2_block.hash[:20]` -> `drop`:
   i.e. the checked part of the parent hash must be equal to the corresponding safe block.
-- Overlapped blocks checks:
-  - Note: If the span batch overlaps the current L2 safe chain, we must validate all overlapped blocks.
-  - Variables:
-    - `block_input`: an L2 block derived from the span-batch.
-    - `safe_block`: an L2 block from the current L2 safe chain, at same timestamp as `block_input`
-  - Rules:
-    - For each `block_input`, whose timestamp is less than `next_timestamp`:
-      - If there's no `safe_block` for the `block_input` -> `drop`: i.e. misaligned timestamp
-      - `block_input.l1_origin.number != safe_block.l1_origin.number` -> `drop`
-      - `block_input.transactions != safe_block.transactions` -> `drop`
 - Sequencing-window checks:
   - Note: The sequencing window is enforced for the *batch as a whole*:
     if the batch was partially invalid instead, it would drop the oldest L2 blocks,
@@ -292,6 +282,8 @@ Span-batch rules, in validation order:
         is past `inclusion_block_number` because of the following invariant.
       - Invariant: the epoch-num in the batch is always less than the inclusion block number,
         if and only if the L1 epoch hash is correct.
+    - `start_epoch_num < prev_l2_block.l1_origin.number` -> `drop`:
+      epoch number cannot be older than the origin of parent block
 - Max Sequencer time-drift checks:
   - Note: The max time-drift is enforced for the *batch as a whole*, to keep the possible output variants small.
   - Variables:
@@ -319,6 +311,17 @@ Span-batch rules, in validation order:
     that is invalid or derived by other means exclusively:
     - any transaction that is empty (zero length `tx_data`)
     - any [deposited transactions][g-deposit-tx-type] (identified by the transaction type prefix byte in `tx_data`)
+- Overlapped blocks checks:
+  - Note: If the span batch overlaps the current L2 safe chain, we must validate all overlapped blocks.
+  - Variables:
+    - `block_input`: an L2 block derived from the span-batch.
+    - `safe_block`: an L2 block from the current L2 safe chain, at same timestamp as `block_input`
+  - Rules:
+    - For each `block_input`, whose timestamp is less than `next_timestamp`:
+      - If there's no `safe_block` for the `block_input` -> `drop`: i.e. misaligned timestamp
+      - `block_input.l1_origin.number != safe_block.l1_origin.number` -> `drop`
+      - `block_input.transactions != safe_block.transactions` -> `drop`
+        - compare excluding deposit transactions
 
 Once validated, the batch-queue then emits a block-input for each of the blocks included in the span-batch.
 The next derivation stage is thus only aware of individual block inputs, similar to the previous V0 batch,
