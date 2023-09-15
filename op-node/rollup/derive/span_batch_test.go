@@ -39,15 +39,10 @@ func TestSpanBatchOriginBits(t *testing.T) {
 
 	rawSpanBatch := RandomRawSpanBatch(rng, chainID)
 
-	originBits := rawSpanBatch.originBits
 	blockCount := rawSpanBatch.blockCount
 
-	var sb RawSpanBatch
-	sb.blockCount = blockCount
-	sb.originBits = originBits
-
 	var buf bytes.Buffer
-	err := sb.encodeOriginBits(&buf)
+	err := rawSpanBatch.encodeOriginBits(&buf)
 	assert.NoError(t, err)
 
 	// originBit field is fixed length: single bit
@@ -58,13 +53,13 @@ func TestSpanBatchOriginBits(t *testing.T) {
 	assert.Equal(t, buf.Len(), int(originBitBufferLen))
 
 	result := buf.Bytes()
-	sb.originBits = nil
-
+	var sb RawSpanBatch
+	sb.blockCount = blockCount
 	r := bytes.NewReader(result)
 	err = sb.decodeOriginBits(r)
 	assert.NoError(t, err)
 
-	assert.Equal(t, originBits, sb.originBits)
+	assert.Equal(t, rawSpanBatch.originBits, sb.originBits)
 }
 
 func TestSpanBatchPrefix(t *testing.T) {
