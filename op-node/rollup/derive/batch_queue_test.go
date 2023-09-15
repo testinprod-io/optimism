@@ -85,9 +85,9 @@ func getSpanBatchTime(batchType int) *uint64 {
 	return &maxTs
 }
 
-func l1InfoDepositTx(t *testing.T, l1BLockNum uint64) hexutil.Bytes {
+func l1InfoDepositTx(t *testing.T, l1BlockNum uint64) hexutil.Bytes {
 	l1Info := L1BlockInfo{
-		Number:  l1BLockNum,
+		Number:  l1BlockNum,
 		BaseFee: big.NewInt(0),
 	}
 	infoData, err := l1Info.MarshalBinary()
