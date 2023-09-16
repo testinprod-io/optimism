@@ -260,7 +260,7 @@ batchLoop:
 	bq.batches = remaining
 
 	if nextBatch != nil {
-		bq.log.Info("Found next batch", "epoch", epoch, "batch_epoch", nextBatch.Batch.GetEpochNum(), "batch_timestamp", nextBatch.Batch.GetTimestamp())
+		nextBatch.Batch.LogContext(bq.log).Info("Found next batch")
 		return nextBatch.Batch, nil
 	}
 

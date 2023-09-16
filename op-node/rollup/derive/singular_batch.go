@@ -47,16 +47,6 @@ func (b *SingularBatch) LogContext(log log.Logger) log.Logger {
 	)
 }
 
-// CheckOriginHash checks if the epoch hash (L1 origin block hash) matches the given hash, probably L1 block hash from the current canonical L1 chain.
-func (b *SingularBatch) CheckOriginHash(hash common.Hash) bool {
-	return b.EpochHash == hash
-}
-
-// CheckParentHash checks if the parent hash matches the given hash, probably the current L2 safe head.
-func (b *SingularBatch) CheckParentHash(hash common.Hash) bool {
-	return b.ParentHash == hash
-}
-
 // Epoch returns a BlockID of its L1 origin.
 func (b *SingularBatch) Epoch() eth.BlockID {
 	return eth.BlockID{Hash: b.EpochHash, Number: uint64(b.EpochNum)}

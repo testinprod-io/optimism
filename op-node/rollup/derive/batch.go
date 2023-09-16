@@ -7,8 +7,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -38,10 +36,7 @@ const (
 type Batch interface {
 	GetBatchType() int
 	GetTimestamp() uint64
-	GetEpochNum() rollup.Epoch
 	LogContext(log.Logger) log.Logger
-	CheckOriginHash(common.Hash) bool
-	CheckParentHash(common.Hash) bool
 }
 
 // BatchData is a composition type that contains raw data of each batch version.

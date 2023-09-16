@@ -219,7 +219,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		return BatchDrop
 	}
 
-	startEpochNum := uint64(batch.GetEpochNum())
+	startEpochNum := uint64(batch.GetStartEpochNum())
 
 	// Filter out batches that were included too late.
 	if startEpochNum+cfg.SeqWindowSize < l1InclusionBlock.Number {
@@ -233,7 +233,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		return BatchDrop
 	}
 
-	endEpochNum := batch.GetBlockOriginNum(batch.GetBlockCount() - 1)
+	endEpochNum := batch.GetBlockEpochNum(batch.GetBlockCount() - 1)
 	originChecked := false
 	for _, l1Block := range l1Blocks {
 		if l1Block.Number == endEpochNum {
@@ -267,7 +267,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		}
 		var l1Origin eth.L1BlockRef
 		for j := originIdx; j < len(l1Blocks); j++ {
-			if batch.GetBlockOriginNum(i) == l1Blocks[j].Number {
+			if batch.GetBlockEpochNum(i) == l1Blocks[j].Number {
 				l1Origin = l1Blocks[j]
 				originIdx = j
 				break
@@ -276,7 +276,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 		}
 		if i > 0 {
 			originAdvanced = false
-			if batch.GetBlockOriginNum(i) > batch.GetBlockOriginNum(i-1) {
+			if batch.GetBlockEpochNum(i) > batch.GetBlockEpochNum(i-1) {
 				originAdvanced = true
 			}
 		}
@@ -358,7 +358,7 @@ func checkSpanBatch(ctx context.Context, cfg *rollup.Config, log log.Logger, l1B
 				log.Error("failed to extract L2BlockRef from execution payload", "hash", safeBlockPayload.BlockHash, "err", err)
 				return BatchDrop
 			}
-			if safeBlockRef.L1Origin.Number != batch.GetBlockOriginNum(int(i)) {
+			if safeBlockRef.L1Origin.Number != batch.GetBlockEpochNum(int(i)) {
 				log.Warn("overlapped block's L1 origin number does not match")
 				return BatchDrop
 			}

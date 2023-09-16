@@ -291,22 +291,21 @@ func (b *SpanBatch) GetTimestamp() uint64 {
 	return b.batches[0].Timestamp
 }
 
-// GetEpochNum returns epoch number(L1 origin block number) of the first block in the span
-func (b *SpanBatch) GetEpochNum() rollup.Epoch {
-	return b.batches[0].EpochNum
-}
-
 // LogContext creates a new log context that contains information of the batch
 func (b *SpanBatch) LogContext(log log.Logger) log.Logger {
-	lastBlock := b.batches[len(b.batches)-1]
 	return log.New(
 		"batch_timestamp", b.batches[0].Timestamp,
-		"parent_check", b.parentCheck,
-		"origin_check", b.l1OriginCheck,
-		"origin_number", lastBlock.EpochNum,
-		"epoch_number", b.GetEpochNum(),
+		"parent_check", hexutil.Encode(b.parentCheck),
+		"origin_check", hexutil.Encode(b.l1OriginCheck),
+		"start_epoch_number", b.GetStartEpochNum(),
+		"end_epoch_number", b.GetBlockEpochNum(len(b.batches)-1),
 		"block_count", len(b.batches),
 	)
+}
+
+// GetStartEpochNum returns epoch number(L1 origin block number) of the first block in the span
+func (b *SpanBatch) GetStartEpochNum() rollup.Epoch {
+	return b.batches[0].EpochNum
 }
 
 // CheckOriginHash checks if the l1OriginCheck matches the first 20 bytes of given hash, probably L1 block hash from the current canonical L1 chain.
@@ -319,8 +318,8 @@ func (b *SpanBatch) CheckParentHash(hash common.Hash) bool {
 	return bytes.Equal(b.parentCheck, hash.Bytes()[:20])
 }
 
-// GetBlockOriginNum returns the epoch number(L1 origin block number) of the block at the given index in the span.
-func (b *SpanBatch) GetBlockOriginNum(i int) uint64 {
+// GetBlockEpochNum returns the epoch number(L1 origin block number) of the block at the given index in the span.
+func (b *SpanBatch) GetBlockEpochNum(i int) uint64 {
 	return uint64(b.batches[i].EpochNum)
 }
 
@@ -465,7 +464,7 @@ func (b *SpanBatchBuilder) AppendSingularBatch(singularBatch *SingularBatch) {
 
 func (b *SpanBatchBuilder) GetRawSpanBatch() (*RawSpanBatch, error) {
 	originChangedBit := 0
-	if uint64(b.spanBatch.GetEpochNum()) != b.parentEpoch {
+	if uint64(b.spanBatch.GetStartEpochNum()) != b.parentEpoch {
 		originChangedBit = 1
 	}
 	raw, err := b.spanBatch.ToRawSpanBatch(uint(originChangedBit), b.genesisTimestamp, b.chainId)
