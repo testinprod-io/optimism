@@ -243,12 +243,6 @@ func (s *channelManager) processBlocks() error {
 		latestL2ref eth.L2BlockRef
 	)
 	for i, block := range s.blocks {
-		if s.rcfg.IsSpanBatch(block.Time()) && s.currentChannel.cfg.BatchType == derive.SingularBatchType {
-			// SpanBatch hardfork is activated. Close SingularBatch channel
-			s.currentChannel.Close()
-			s.log.Info("SpanBatch hard fork activated. Closed current channel", "channel", s.currentChannel.ID(), "timestamp", block.Time())
-			break
-		}
 		l1info, err := s.currentChannel.AddBlock(block)
 		if errors.As(err, &_chFullErr) {
 			// current block didn't get added because channel is already full
