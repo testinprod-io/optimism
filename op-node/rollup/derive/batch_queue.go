@@ -75,17 +75,21 @@ func (bq *BatchQueue) popNextBatch(safeL2Head eth.L2BlockRef) *SingularBatch {
 	bq.nextSpan = bq.nextSpan[1:]
 	// Must set ParentHash before return. we can use safeL2Head because the parentCheck is verified in CheckBatch().
 	nextBatch.ParentHash = safeL2Head.Hash
+	return nextBatch
+}
+
+func (bq *BatchQueue) advanceEpoch(nextBatch *SingularBatch) {
 	if nextBatch.GetEpochNum() == rollup.Epoch(bq.l1Blocks[0].Number)+1 {
 		// Advance epoch if necessary
 		bq.l1Blocks = bq.l1Blocks[1:]
 	}
-	return nextBatch
 }
 
 func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) (*SingularBatch, error) {
 	if len(bq.nextSpan) > 0 {
 		// If there are cached singular batches, pop first one and return.
 		nextBatch := bq.popNextBatch(safeL2Head)
+		bq.advanceEpoch(nextBatch)
 		return nextBatch, nil
 	}
 
@@ -141,13 +145,14 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 		return nil, err
 	}
 
+	var nextBatch *SingularBatch
 	switch batch.GetBatchType() {
 	case SingularBatchType:
 		singularBatch, ok := batch.(*SingularBatch)
 		if !ok {
 			return nil, NewCriticalError(errors.New("failed type assertion to SingularBatch"))
 		}
-		return singularBatch, nil
+		nextBatch = singularBatch
 	case SpanBatchType:
 		spanBatch, ok := batch.(*SpanBatch)
 		if !ok {
@@ -159,11 +164,13 @@ func (bq *BatchQueue) NextBatch(ctx context.Context, safeL2Head eth.L2BlockRef) 
 			return nil, NewCriticalError(err)
 		}
 		bq.nextSpan = singularBatches
-		nextBatch := bq.popNextBatch(safeL2Head)
-		return nextBatch, nil
+		nextBatch = bq.popNextBatch(safeL2Head)
 	default:
 		return nil, NewCriticalError(fmt.Errorf("unrecognized batch type: %d", batch.GetBatchType()))
 	}
+
+	bq.advanceEpoch(nextBatch)
+	return nextBatch, nil
 }
 
 func (bq *BatchQueue) Reset(ctx context.Context, base eth.L1BlockRef, _ eth.SystemConfig) error {
@@ -253,10 +260,6 @@ batchLoop:
 	bq.batches = remaining
 
 	if nextBatch != nil {
-		// advance epoch if necessary
-		if nextBatch.Batch.GetEpochNum() == rollup.Epoch(epoch.Number)+1 {
-			bq.l1Blocks = bq.l1Blocks[1:]
-		}
 		bq.log.Info("Found next batch", "epoch", epoch, "batch_epoch", nextBatch.Batch.GetEpochNum(), "batch_timestamp", nextBatch.Batch.GetTimestamp())
 		return nextBatch.Batch, nil
 	}
