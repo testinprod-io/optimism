@@ -529,7 +529,7 @@ func TestDropSpanBatchBeforeHardfork(gt *testing.T) {
 	// do not activate SpanBatch hardfork for verifier
 	dp.DeployConfig.L2GenesisSpanBatchTimeOffset = nil
 	sd := e2eutils.Setup(t, dp, defaultAlloc)
-	log := testlog.Logger(t, log.LvlDebug)
+	log := testlog.Logger(t, log.LvlError)
 	miner, seqEngine, sequencer := setupSequencerTest(t, sd, log)
 	verifEngine, verifier := setupVerifier(t, sd, log, miner.L1Client(t, sd.RollupCfg), &sync.Config{})
 
@@ -604,4 +604,90 @@ func TestDropSpanBatchBeforeHardfork(gt *testing.T) {
 	// check that the tx from alice is not included in verifier's chain
 	_, _, err = verifCl.TransactionByHash(t.Ctx(), tx.Hash())
 	require.ErrorIs(t, err, ethereum.NotFound)
+}
+
+func TestAcceptSingularBatchAfterHardfork(gt *testing.T) {
+	t := NewDefaultTesting(gt)
+	p := &e2eutils.TestParams{
+		MaxSequencerDrift:   20, // larger than L1 block time we simulate in this test (12)
+		SequencerWindowSize: 24,
+		ChannelTimeout:      20,
+		L1BlockTime:         12,
+	}
+	minTs := hexutil.Uint64(0)
+	dp := e2eutils.MakeDeployParams(t, p)
+
+	// activate SpanBatch hardfork for verifier.
+	dp.DeployConfig.L2GenesisSpanBatchTimeOffset = &minTs
+	sd := e2eutils.Setup(t, dp, defaultAlloc)
+	log := testlog.Logger(t, log.LvlError)
+	miner, seqEngine, sequencer := setupSequencerTest(t, sd, log)
+	verifEngine, verifier := setupVerifier(t, sd, log, miner.L1Client(t, sd.RollupCfg), &sync.Config{})
+
+	rollupSeqCl := sequencer.RollupClient()
+	dp2 := e2eutils.MakeDeployParams(t, p)
+
+	// not activate SpanBatch hardfork for batcher
+	dp2.DeployConfig.L2GenesisSpanBatchTimeOffset = nil
+	sd2 := e2eutils.Setup(t, dp2, defaultAlloc)
+	batcher := NewL2Batcher(log, sd2.RollupCfg, &BatcherCfg{
+		MinL1TxSize: 0,
+		MaxL1TxSize: 128_000,
+		BatcherKey:  dp.Secrets.Batcher,
+	}, rollupSeqCl, miner.EthClient(), seqEngine.EthClient(), seqEngine.EngineClient(t, sd.RollupCfg))
+
+	// Alice makes a L2 tx
+	cl := seqEngine.EthClient()
+	n, err := cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
+	require.NoError(t, err)
+	signer := types.LatestSigner(sd.L2Cfg.Config)
+	tx := types.MustSignNewTx(dp.Secrets.Alice, signer, &types.DynamicFeeTx{
+		ChainID:   sd.L2Cfg.Config.ChainID,
+		Nonce:     n,
+		GasTipCap: big.NewInt(2 * params.GWei),
+		GasFeeCap: new(big.Int).Add(miner.l1Chain.CurrentBlock().BaseFee, big.NewInt(2*params.GWei)),
+		Gas:       params.TxGas,
+		To:        &dp.Addresses.Bob,
+		Value:     e2eutils.Ether(2),
+	})
+	require.NoError(gt, cl.SendTransaction(t.Ctx(), tx))
+
+	sequencer.ActL2PipelineFull(t)
+	verifier.ActL2PipelineFull(t)
+
+	// Make L2 block
+	sequencer.ActL2StartBlock(t)
+	seqEngine.ActL2IncludeTx(dp.Addresses.Alice)(t)
+	sequencer.ActL2EndBlock(t)
+
+	// batch submit to L1. batcher should submit singular batches.
+	batcher.ActL2BatchBuffer(t)
+	batcher.ActL2ChannelClose(t)
+	batcher.ActL2BatchSubmit(t)
+
+	// confirm batch on L1
+	miner.ActL1StartBlock(12)(t)
+	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
+	miner.ActL1EndBlock(t)
+	bl := miner.l1Chain.CurrentBlock()
+	log.Info("bl", "txs", len(miner.l1Chain.GetBlockByHash(bl.Hash()).Transactions()))
+
+	// Now make enough L1 blocks that the verifier will have to derive a L2 block
+	// It will also eagerly derive the block from the batcher
+	for i := uint64(0); i < sd.RollupCfg.SeqWindowSize; i++ {
+		miner.ActL1StartBlock(12)(t)
+		miner.ActL1EndBlock(t)
+	}
+
+	// sync verifier from L1 batch in otherwise empty sequence window
+	verifier.ActL1HeadSignal(t)
+	verifier.ActL2PipelineFull(t)
+	require.Equal(t, uint64(1), verifier.SyncStatus().SafeL2.L1Origin.Number)
+
+	// check that the tx from alice made it into the L2 chain
+	verifCl := verifEngine.EthClient()
+	vTx, isPending, err := verifCl.TransactionByHash(t.Ctx(), tx.Hash())
+	require.NoError(t, err)
+	require.False(t, isPending)
+	require.NotNil(t, vTx)
 }
