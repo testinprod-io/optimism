@@ -48,7 +48,7 @@ type RawSpanBatch struct {
 }
 
 // decodeOriginBits parses data into bp.originBits
-// originbits is bitlist right-padded to a multiple of 8 bits
+// originBits is bitlist right-padded to a multiple of 8 bits
 func (bp *spanBatchPayload) decodeOriginBits(r *bytes.Reader) error {
 	originBitBufferLen := bp.blockCount / 8
 	if bp.blockCount%8 != 0 {
@@ -263,7 +263,7 @@ func (bp *spanBatchPrefix) encodePrefix(w io.Writer) error {
 }
 
 // encodeOriginBits encodes bp.originBits
-// originbits is bitlist right-padded to a multiple of 8 bits
+// originBits is bitlist right-padded to a multiple of 8 bits
 func (bp *spanBatchPayload) encodeOriginBits(w io.Writer) error {
 	originBitBufferLen := bp.blockCount / 8
 	if bp.blockCount%8 != 0 {
