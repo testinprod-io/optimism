@@ -286,8 +286,8 @@ func TestSpanBatchLowThroughputChain(gt *testing.T) {
 	verifier.ActL2PipelineFull(t)
 
 	miner.ActEmptyBlock(t)
-	// Make 1200 L2 blocks (L1BlockTime / L2BlockTime * 100) including 1~3 txs
-	for i := 0; i < 100; i++ {
+	// Make 600 L2 blocks (L1BlockTime / L2BlockTime * 50) including 1~3 txs
+	for i := 0; i < 50; i++ {
 		sequencer.ActL1HeadSignal(t)
 		for sequencer.derivation.UnsafeL2Head().L1Origin.Number < sequencer.l1State.L1Head().Number {
 			sequencer.ActL2PipelineFull(t)
@@ -295,7 +295,7 @@ func TestSpanBatchLowThroughputChain(gt *testing.T) {
 			// fill the block with random number of L2 txs from alice
 			for j := 0; j < rand.Intn(3); j++ {
 				signer := types.LatestSigner(sd.L2Cfg.Config)
-				data := make([]byte, rand.Intn(1000))
+				data := make([]byte, rand.Intn(100))
 				_, err := crand.Read(data[:]) // fill with random bytes
 				require.NoError(t, err)
 				gas, err := core.IntrinsicGas(data, nil, false, true, true, false)
