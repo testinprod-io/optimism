@@ -116,6 +116,7 @@ func (b *BatchData) decodeTyped(data []byte) error {
 	}
 }
 
+// NewSingularBatchData creates new BatchData with SingularBatch
 func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
 	return &BatchData{
 		BatchType:     SingularBatchType,
