@@ -148,29 +148,39 @@ func (bp *spanBatchPayload) decodeBlockCount(r *bytes.Reader) error {
 // decodeBlockTxCounts parses data into bp.blockTxCounts
 // and sets bp.txs.totalBlockTxCount as sum(bp.blockTxCounts)
 func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
-	if bp.txs == nil {
-		bp.txs = &spanBatchTxs{}
-	}
 	var blockTxCounts []uint64
-	totalBlockTxCount := uint64(0)
 	for i := 0; i < int(bp.blockCount); i++ {
 		blockTxCount, err := binary.ReadUvarint(r)
 		if err != nil {
 			return fmt.Errorf("failed to read block tx count: %w", err)
 		}
 		blockTxCounts = append(blockTxCounts, blockTxCount)
-		totalBlockTxCount += blockTxCount
 	}
 	bp.blockTxCounts = blockTxCounts
+	return nil
+}
+
+// decodeTxs parses data into bp.txs
+func (bp *spanBatchPayload) decodeTxs(r *bytes.Reader) error {
+	if bp.txs == nil {
+		bp.txs = &spanBatchTxs{}
+	}
+	if bp.blockTxCounts == nil {
+		return errors.New("failed to read txs: blockTxCounts not set")
+	}
+	totalBlockTxCount := uint64(0)
+	for i := 0; i < len(bp.blockTxCounts); i++ {
+		totalBlockTxCount += bp.blockTxCounts[i]
+	}
 	bp.txs.totalBlockTxCount = totalBlockTxCount
+	if err := bp.txs.decode(r); err != nil {
+		return err
+	}
 	return nil
 }
 
 // decodePayload parses data into bp.spanBatchPayload
 func (bp *spanBatchPayload) decodePayload(r *bytes.Reader) error {
-	if bp.txs == nil {
-		bp.txs = &spanBatchTxs{}
-	}
 	if err := bp.decodeBlockCount(r); err != nil {
 		return err
 	}
@@ -180,7 +190,7 @@ func (bp *spanBatchPayload) decodePayload(r *bytes.Reader) error {
 	if err := bp.decodeBlockTxCounts(r); err != nil {
 		return err
 	}
-	if err := bp.txs.decode(r); err != nil {
+	if err := bp.decodeTxs(r); err != nil {
 		return err
 	}
 	return nil
@@ -297,18 +307,29 @@ func (bp *spanBatchPayload) encodeBlockTxCounts(w io.Writer) error {
 	return nil
 }
 
+// encodeTxs encodes bp.txs
+func (bp *spanBatchPayload) encodeTxs(w io.Writer) error {
+	if bp.txs == nil {
+		return errors.New("cannot write txs: txs not set")
+	}
+	if err := bp.txs.encode(w); err != nil {
+		return err
+	}
+	return nil
+}
+
 // encodePayload encodes spanBatchPayload
 func (bp *spanBatchPayload) encodePayload(w io.Writer) error {
 	if err := bp.encodeBlockCount(w); err != nil {
 		return err
 	}
 	if err := bp.encodeOriginBits(w); err != nil {
-		return nil
+		return err
 	}
 	if err := bp.encodeBlockTxCounts(w); err != nil {
-		return nil
+		return err
 	}
-	if err := bp.txs.encode(w); err != nil {
+	if err := bp.encodeTxs(w); err != nil {
 		return err
 	}
 	return nil
