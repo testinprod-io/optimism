@@ -310,7 +310,10 @@ func (l *BatchSubmitter) loop() {
 				l.publishStateToL1(queue, receiptsCh, true)
 				if syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout); err == nil {
 					l.state.Clear(&syncStatus.SafeL2)
-				} // if fetchSyncStatus failed, ErrReorg will be returned again
+				} else {
+					// if fetchSyncStatus failed, ErrReorg will be returned again
+					l.log.Error("error fetching sync status from L2 node", "err", err)
+				}
 				continue
 			}
 			l.publishStateToL1(queue, receiptsCh, false)
