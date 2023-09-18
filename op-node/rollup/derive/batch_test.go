@@ -171,7 +171,8 @@ func TestBatchRoundTrip(t *testing.T) {
 		err = dec.UnmarshalBinary(enc)
 		assert.NoError(t, err)
 		if dec.BatchType == SpanBatchType {
-			dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
+			_, err := dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
+			assert.NoError(t, err)
 		}
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}
@@ -218,7 +219,8 @@ func TestBatchRoundTripRLP(t *testing.T) {
 		err = dec.DecodeRLP(s)
 		assert.NoError(t, err)
 		if dec.BatchType == SpanBatchType {
-			dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
+			_, err := dec.RawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
+			assert.NoError(t, err)
 		}
 		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}

@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/ethereum/go-ethereum/core/types"
 	"io"
 	"math"
 	"math/big"
 	"math/rand"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -118,7 +119,7 @@ func singularBatchToBlockRef(t *testing.T, batch *SingularBatch, blockNumber uin
 		Number:     blockNumber,
 		ParentHash: batch.ParentHash,
 		Time:       batch.Timestamp,
-		L1Origin:   eth.BlockID{batch.EpochHash, uint64(batch.EpochNum)},
+		L1Origin:   eth.BlockID{Hash: batch.EpochHash, Number: uint64(batch.EpochNum)},
 	}
 }
 

@@ -58,7 +58,8 @@ func TestSpanBatchTxRoundTrip(t *testing.T) {
 		assert.NoError(t, err)
 
 		var sbtx2 spanBatchTx
-		sbtx2.UnmarshalBinary(sbtxEncoded)
+		err = sbtx2.UnmarshalBinary(sbtxEncoded)
+		assert.NoError(t, err)
 
 		assert.Equal(t, sbtx, &sbtx2)
 	}
@@ -88,7 +89,8 @@ func TestSpanBatchTxRoundTripRLP(t *testing.T) {
 		var sbtx2 spanBatchTx
 		r := bytes.NewReader(result)
 		rlpReader := rlp.NewStream(r, 0)
-		sbtx2.DecodeRLP(rlpReader)
+		err = sbtx2.DecodeRLP(rlpReader)
+		assert.NoError(t, err)
 
 		assert.Equal(t, sbtx, &sbtx2)
 	}

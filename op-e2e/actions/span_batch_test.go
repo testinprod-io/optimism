@@ -1,6 +1,7 @@
 package actions
 
 import (
+	crand "crypto/rand"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -295,7 +296,7 @@ func TestSpanBatchLowThroughputChain(gt *testing.T) {
 			for j := 0; j < rand.Intn(3); j++ {
 				signer := types.LatestSigner(sd.L2Cfg.Config)
 				data := make([]byte, rand.Intn(1000))
-				_, err := rand.Read(data[:]) // fill with random bytes
+				_, err := crand.Read(data[:]) // fill with random bytes
 				require.NoError(t, err)
 				gas, err := core.IntrinsicGas(data, nil, false, true, true, false)
 				require.NoError(t, err)

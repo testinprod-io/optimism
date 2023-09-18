@@ -2,7 +2,6 @@ package derive
 
 import (
 	"bytes"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"math/big"
 	"testing"
 
@@ -31,10 +30,6 @@ func (s *nonCompressor) FullErr() error {
 
 func (s *nonCompressor) ForceWrite(p []byte) (int, error) {
 	return 0, nil
-}
-
-var spanBatchNotActivatedCfg = rollup.Config{
-	SpanBatchTime: &maxTs,
 }
 
 func TestChannelOutAddBlock(t *testing.T) {
@@ -106,42 +101,42 @@ func TestForceCloseTxData(t *testing.T) {
 			output: "",
 		},
 		{
-			frames: []Frame{Frame{FrameNumber: 0, IsLast: false}, Frame{ID: id, FrameNumber: 1, IsLast: true}},
+			frames: []Frame{{FrameNumber: 0, IsLast: false}, {ID: id, FrameNumber: 1, IsLast: true}},
 			errors: true,
 			output: "",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 0, IsLast: false}},
+			frames: []Frame{{ID: id, FrameNumber: 0, IsLast: false}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000001",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 0, IsLast: true}},
+			frames: []Frame{{ID: id, FrameNumber: 0, IsLast: true}},
 			errors: false,
 			output: "00",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 1, IsLast: false}},
+			frames: []Frame{{ID: id, FrameNumber: 1, IsLast: false}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000001",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 1, IsLast: true}},
+			frames: []Frame{{ID: id, FrameNumber: 1, IsLast: true}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000000",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 2, IsLast: true}},
+			frames: []Frame{{ID: id, FrameNumber: 2, IsLast: true}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000000deadbeefdeadbeefdeadbeefdeadbeef00010000000000",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 1, IsLast: false}, Frame{ID: id, FrameNumber: 3, IsLast: true}},
+			frames: []Frame{{ID: id, FrameNumber: 1, IsLast: false}, {ID: id, FrameNumber: 3, IsLast: true}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000000deadbeefdeadbeefdeadbeefdeadbeef00020000000000",
 		},
 		{
-			frames: []Frame{Frame{ID: id, FrameNumber: 1, IsLast: false}, Frame{ID: id, FrameNumber: 3, IsLast: true}, Frame{ID: id, FrameNumber: 5, IsLast: true}},
+			frames: []Frame{{ID: id, FrameNumber: 1, IsLast: false}, {ID: id, FrameNumber: 3, IsLast: true}, {ID: id, FrameNumber: 5, IsLast: true}},
 			errors: false,
 			output: "00deadbeefdeadbeefdeadbeefdeadbeef00000000000000deadbeefdeadbeefdeadbeefdeadbeef00020000000000",
 		},
