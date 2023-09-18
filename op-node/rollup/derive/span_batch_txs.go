@@ -36,6 +36,7 @@ type spanBatchSignature struct {
 	s *uint256.Int
 }
 
+// contractCreationBits is bitlist right-padded to a multiple of 8 bits
 func (btx *spanBatchTxs) encodeContractCreationBits(w io.Writer) error {
 	contractCreationBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
@@ -59,6 +60,7 @@ func (btx *spanBatchTxs) encodeContractCreationBits(w io.Writer) error {
 	return nil
 }
 
+// contractCreationBits is bitlist right-padded to a multiple of 8 bits
 func (btx *spanBatchTxs) decodeContractCreationBits(r *bytes.Reader) error {
 	contractCreationBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
@@ -103,6 +105,7 @@ func (btx *spanBatchTxs) contractCreationCount() uint64 {
 	return result
 }
 
+// yParityBits is bitlist right-padded to a multiple of 8 bits
 func (btx *spanBatchTxs) encodeYParityBits(w io.Writer) error {
 	yParityBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
@@ -180,6 +183,7 @@ func (btx *spanBatchTxs) encodeTxDatas(w io.Writer) error {
 	return nil
 }
 
+// yParityBits is bitlist right-padded to a multiple of 8 bits
 func (btx *spanBatchTxs) decodeYParityBits(r *bytes.Reader) error {
 	yParityBitBufferLen := btx.totalBlockTxCount / 8
 	if btx.totalBlockTxCount%8 != 0 {
