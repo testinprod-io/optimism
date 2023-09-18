@@ -349,8 +349,7 @@ func (btx *spanBatchTxs) decode(r *bytes.Reader) error {
 	if err := btx.decodeTxTos(r); err != nil {
 		return err
 	}
-	err := btx.decodeTxDatas(r)
-	if err != nil {
+	if err := btx.decodeTxDatas(r); err != nil {
 		return err
 	}
 	if err := btx.decodeTxNonces(r); err != nil {
