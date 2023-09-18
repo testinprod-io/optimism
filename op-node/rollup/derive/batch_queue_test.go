@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -22,10 +21,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
-
-var minTs = uint64(0)
-var maxTs = uint64(math.MaxUint64)
-var genesisTimestamp = uint64(10)
 
 type fakeBatchQueueInput struct {
 	i       int
@@ -80,10 +75,11 @@ func buildSpanBatches(t *testing.T, parent *eth.L2BlockRef, singularBatches []*S
 }
 
 func getSpanBatchTime(batchType int) *uint64 {
+	minTs := uint64(0)
 	if batchType == SpanBatchType {
 		return &minTs
 	}
-	return &maxTs
+	return nil
 }
 
 func l1InfoDepositTx(t *testing.T, l1BlockNum uint64) hexutil.Bytes {
@@ -182,7 +178,7 @@ func BatchQueueNewOrigin(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -243,7 +239,7 @@ func BatchQueueEager(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -321,7 +317,7 @@ func BatchQueueInvalidInternalAdvance(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -440,7 +436,7 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -557,7 +553,7 @@ func BatchQueueAdvancedEpoch(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -645,7 +641,7 @@ func BatchQueueShuffle(t *testing.T, batchType int) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -744,7 +740,7 @@ func TestBatchQueueOverlappingSpanBatch(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,
@@ -827,7 +823,7 @@ func TestBatchQueueComplex(t *testing.T) {
 	}
 	cfg := &rollup.Config{
 		Genesis: rollup.Genesis{
-			L2Time: genesisTimestamp,
+			L2Time: 10,
 		},
 		BlockTime:         2,
 		MaxSequencerDrift: 600,

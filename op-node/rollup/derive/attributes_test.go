@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -22,14 +21,12 @@ import (
 
 func TestPreparePayloadAttributes(t *testing.T) {
 	// test sysCfg, only init the necessary fields
-	maxTs := uint64(math.MaxUint64)
 	cfg := &rollup.Config{
 		BlockTime:              2,
 		L1ChainID:              big.NewInt(101),
 		L2ChainID:              big.NewInt(102),
 		DepositContractAddress: common.Address{0xbb},
 		L1SystemConfigAddress:  common.Address{0xcc},
-		SpanBatchTime:          &maxTs,
 	}
 
 	testSysCfg := eth.SystemConfig{
