@@ -1,17 +1,16 @@
 package derive
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-node/testutils/fuzzerutils"
-	"github.com/ethereum/go-ethereum/rlp"
 	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/require"
 )
 
 // FuzzBatchRoundTrip executes a fuzz test similar to TestBatchRoundTrip, which tests that arbitrary BatchData will be
 // encoded and decoded without loss of its original values.
+// Does not test span batch because fuzzer is not aware structure of span batch.
 func FuzzBatchRoundTrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, fuzzedData []byte) {
 		// Create our fuzzer wrapper to generate complex values
@@ -21,6 +20,10 @@ func FuzzBatchRoundTrip(f *testing.F) {
 		// Create our batch data from fuzzed data
 		var batchData BatchData
 		typeProvider.Fuzz(&batchData)
+
+		// force batchdata to only contain singular batch
+		batchData.BatchType = SingularBatchType
+		batchData.RawSpanBatch = RawSpanBatch{}
 
 		// Encode our batch data
 		enc, err := batchData.MarshalBinary()
@@ -33,35 +36,5 @@ func FuzzBatchRoundTrip(f *testing.F) {
 
 		// Ensure the round trip encoding of batch data did not result in data loss
 		require.Equal(t, &batchData, &dec, "round trip batch encoding/decoding did not match original values")
-	})
-}
-
-// FuzzBatchRoundTripRLP executes a fuzz test similar to TestBatchRoundTripRLP, which tests that arbitrary BatchData will be
-// encoded and decoded without loss of its original values.
-func FuzzBatchRoundTripRLP(f *testing.F) {
-	f.Fuzz(func(t *testing.T, fuzzedData []byte) {
-		// Create our fuzzer wrapper to generate complex values
-		typeProvider := fuzz.NewFromGoFuzz(fuzzedData).NilChance(0).MaxDepth(10000).NumElements(0, 0x100).AllowUnexportedFields(true)
-		fuzzerutils.AddFuzzerFunctions(typeProvider)
-
-		// Create our batch data from fuzzed data
-		var batchData BatchData
-		typeProvider.Fuzz(&batchData)
-
-		// Encode our batch data
-		var buf bytes.Buffer
-		err := batchData.EncodeRLP(&buf)
-		require.NoError(t, err)
-		enc := buf.Bytes()
-
-		// Decode our encoded batch data
-		var dec BatchData
-		r := bytes.NewReader(enc)
-		s := rlp.NewStream(r, 0)
-		err = dec.DecodeRLP(s)
-		require.NoError(t, err)
-
-		// Ensure the round trip encoding of batch data did not result in data loss
-		require.Equal(t, &batchData, &dec, "round trip batch RLP encoding/decoding did not match original values")
 	})
 }
