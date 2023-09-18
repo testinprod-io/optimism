@@ -14,12 +14,8 @@ func TestSingularBatchForBatchInterface(t *testing.T) {
 	txCount := 1 + rng.Intn(8)
 
 	singularBatch := RandomSingularBatch(rng, txCount, chainID)
-	epochHash := singularBatch.EpochHash
-	parentHash := singularBatch.ParentHash
 
 	assert.Equal(t, SingularBatchType, singularBatch.GetBatchType())
 	assert.Equal(t, singularBatch.Timestamp, singularBatch.GetTimestamp())
 	assert.Equal(t, singularBatch.EpochNum, singularBatch.GetEpochNum())
-	assert.True(t, singularBatch.CheckOriginHash(epochHash))
-	assert.True(t, singularBatch.CheckParentHash(parentHash))
 }

@@ -28,7 +28,7 @@ func TestSpanBatchForBatchInterface(t *testing.T) {
 	// check interface method implementations except logging
 	assert.Equal(t, SpanBatchType, spanBatch.GetBatchType())
 	assert.Equal(t, singularBatches[0].Timestamp, spanBatch.GetTimestamp())
-	assert.Equal(t, singularBatches[0].EpochNum, spanBatch.GetEpochNum())
+	assert.Equal(t, singularBatches[0].EpochNum, spanBatch.GetStartEpochNum())
 	assert.True(t, spanBatch.CheckOriginHash(singularBatches[blockCount-1].EpochHash))
 	assert.True(t, spanBatch.CheckParentHash(singularBatches[0].ParentHash))
 }
