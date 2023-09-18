@@ -235,16 +235,15 @@ func TestSpanBatchTxs(t *testing.T) {
 	rawSpanBatch := RandomRawSpanBatch(rng, chainID)
 
 	var buf bytes.Buffer
-	err := rawSpanBatch.txs.encode(&buf)
+	err := rawSpanBatch.encodeTxs(&buf)
 	assert.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
-	sb.txs = &spanBatchTxs{}
 
-	sb.txs.totalBlockTxCount = rawSpanBatch.txs.totalBlockTxCount
-	err = sb.txs.decode(r)
+	sb.blockTxCounts = rawSpanBatch.blockTxCounts
+	err = sb.decodeTxs(r)
 	assert.NoError(t, err)
 
 	sb.txs.recoverV(chainID)
@@ -262,9 +261,6 @@ func TestSpanBatchRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 
 	var sb RawSpanBatch
-	sb.txs = &spanBatchTxs{}
-	sb.txs.totalBlockTxCount = rawSpanBatch.txs.totalBlockTxCount
-
 	err = sb.decodeBytes(result)
 	assert.NoError(t, err)
 
