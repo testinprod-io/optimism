@@ -147,7 +147,7 @@ func (l *BatchSubmitter) Start() error {
 	l.killCtx, l.cancelKillCtx = context.WithCancel(context.Background())
 	syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout)
 	if err != nil {
-		return nil
+		return err
 	}
 	l.state.Clear(&syncStatus.SafeL2)
 	l.lastStoredBlock = eth.BlockID{}

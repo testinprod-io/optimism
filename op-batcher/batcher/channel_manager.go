@@ -62,7 +62,7 @@ func NewChannelManager(log log.Logger, metr metrics.Metricer, cfg ChannelConfig,
 }
 
 // Clear clears the entire state of the channel manager.
-// It is intended to be used after an L2 reorg.
+// It is intended to be used before launching op-batcher and after an L2 reorg.
 // Must set lastProcessedBlock as current L2 safe head fetched from L2 node.
 func (s *channelManager) Clear(safeHead *eth.L2BlockRef) {
 	s.mu.Lock()
