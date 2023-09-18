@@ -26,8 +26,8 @@ type channel struct {
 	confirmedTransactions map[txID]eth.BlockID
 }
 
-func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, channelBuilder *derive.SpanBatchBuilder) (*channel, error) {
-	cb, err := newChannelBuilder(cfg, channelBuilder)
+func newChannel(log log.Logger, metr metrics.Metricer, cfg ChannelConfig, spanBatchBuilder *derive.SpanBatchBuilder) (*channel, error) {
+	cb, err := newChannelBuilder(cfg, spanBatchBuilder)
 	if err != nil {
 		return nil, fmt.Errorf("creating new channel: %w", err)
 	}
