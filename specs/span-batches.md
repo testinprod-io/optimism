@@ -252,6 +252,7 @@ Rules are enforced with the [contextual definitions](./derivation.md#batch-queue
 `epoch`, `inclusion_block_number`, `next_timestamp`
 
 Definitions:
+
 - `batch` as defined in the [Span batch format section][span-batch-format].
 - `prev_l2_block` is the L2 block from the current safe chain,
   whose timestamp is at `span_start.timestamp - l2_block_time`
