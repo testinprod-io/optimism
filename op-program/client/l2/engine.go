@@ -110,11 +110,7 @@ func (o *OracleEngine) L2BlockRefByNumber(ctx context.Context, n uint64) (eth.L2
 	if hash == (common.Hash{}) {
 		return eth.L2BlockRef{}, ErrNotFound
 	}
-	block := o.backend.GetBlockByHash(hash)
-	if block == nil {
-		return eth.L2BlockRef{}, ErrNotFound
-	}
-	return derive.L2BlockToBlockRef(block, &o.rollupCfg.Genesis)
+	return o.L2BlockRefByHash(ctx, hash)
 }
 
 func (o *OracleEngine) SystemConfigByL2Hash(ctx context.Context, hash common.Hash) (eth.SystemConfig, error) {
