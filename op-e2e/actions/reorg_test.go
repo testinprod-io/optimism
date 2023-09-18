@@ -195,7 +195,7 @@ func TestReorgFlipFlop(gt *testing.T) {
 		require.Equal(t, verifier.L2Safe(), verifier.L2Unsafe(), "head is at safe block after L1 reorg")
 	} else {
 		// after span batch hard fork
-		require.Zero(t, verifier.L2Safe().Number, "safe head is at genesis block because partially valid span batch not accepted")
+		require.Zero(t, verifier.L2Safe().Number, "safe head is at genesis block because span batch referenced reorged L1 chain is not accepted")
 		require.Equal(t, verifier.L2Unsafe().ID(), sequencer.L2Unsafe().ParentID(), "head is at the highest unsafe block that references canonical L1 chain(genesis block)")
 	}
 	checkVerifEngine()
@@ -804,7 +804,7 @@ func TestSyncAfterReorg(gt *testing.T) {
 		sequencer.ActL2PipelineFull(t)
 		sequencer.ActL2StartBlock(t)
 		if sequencer.derivation.UnsafeL2Head().Number == 11 {
-			// include a user tx at L2 block #12
+			// include a user tx at L2 block #12 to make a state transition
 			alice.L2.ActResetTxOpts(t)
 			alice.L2.ActSetTxToAddr(&dp.Addresses.Bob)(t)
 			alice.L2.ActMakeTx(t)

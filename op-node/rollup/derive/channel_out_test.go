@@ -28,10 +28,6 @@ func (s *nonCompressor) FullErr() error {
 	return nil
 }
 
-func (s *nonCompressor) ForceWrite(p []byte) (int, error) {
-	return 0, nil
-}
-
 func TestChannelOutAddBlock(t *testing.T) {
 	cout, err := NewChannelOut(&nonCompressor{}, SingularBatchType, nil)
 	require.NoError(t, err)

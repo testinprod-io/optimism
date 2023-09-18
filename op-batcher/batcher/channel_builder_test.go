@@ -557,6 +557,7 @@ func TestChannelBuilder_OutputFramesWorks_SpanBatch(t *testing.T) {
 	for i := 0; i < cb.numFrames-1; i++ {
 		require.Len(t, cb.frames[i].data, int(channelConfig.MaxFrameSize))
 	}
+	require.LessOrEqual(t, len(cb.frames[len(cb.frames)-1].data), int(channelConfig.MaxFrameSize))
 }
 
 // ChannelBuilder_MaxRLPBytesPerChannel tests the [channelBuilder.OutputFrames]
@@ -655,6 +656,9 @@ func ChannelBuilder_Reset(t *testing.T, batchType uint) {
 
 	// Lower the max frame size so that we can batch
 	channelConfig.MaxFrameSize = 24
+	channelConfig.CompressorConfig.TargetNumFrames = 1
+	channelConfig.CompressorConfig.TargetFrameSize = 24
+	channelConfig.CompressorConfig.ApproxComprRatio = 1
 
 	cb, err := newChannelBuilder(channelConfig, getSpanBatchBuilder(batchType))
 	require.NoError(t, err)
@@ -669,22 +673,16 @@ func ChannelBuilder_Reset(t *testing.T, batchType uint) {
 	// Timeout should be updated in the AddBlock internal call to `updateSwTimeout`
 	timeout := uint64(100) + cb.cfg.SeqWindowSize - cb.cfg.SubSafetyMargin
 	require.Equal(t, timeout, cb.timeout)
-	require.NoError(t, cb.fullErr)
+	require.Error(t, cb.fullErr)
 
 	// Output frames so we can set the channel builder frames
 	require.NoError(t, cb.OutputFrames())
 
-	// Add another block to increment the block count
-	require.NoError(t, addMiniBlock(cb))
-	require.NoError(t, cb.co.Flush())
-
 	// Check the fields reset in the Reset function
-	require.Equal(t, 2, len(cb.blocks))
+	require.Equal(t, 1, len(cb.blocks))
 	require.Equal(t, timeout, cb.timeout)
-	require.NoError(t, cb.fullErr)
-	if batchType == derive.SingularBatchType {
-		require.Greater(t, len(cb.frames), 1)
-	}
+	require.Error(t, cb.fullErr)
+	require.Greater(t, len(cb.frames), 1)
 
 	// Reset the channel builder
 	require.NoError(t, cb.Reset())
