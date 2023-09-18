@@ -445,7 +445,7 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 		L2ChainID:         chainId,
 	}
 
-	// The intputBatches at 18 and 20 are skipped to stop 22 from being eagerly processed.
+	// The inputBatches at 18 and 20 are skipped to stop 22 from being eagerly processed.
 	// This test checks that batch timestamp 12 & 14 are created, 16 is used, and 18 is advancing the epoch.
 	// Due to the large sequencer time drift 16 is perfectly valid to have epoch 0 as origin.a
 
@@ -457,19 +457,19 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 	// errors will be returned by fakeBatchQueueInput.NextBatch()
 	inputErrors := []error{nil, nil}
 	// batches will be returned by fakeBatchQueueInput
-	var intputBatches []Batch
+	var inputBatches []Batch
 	if batchType == SpanBatchType {
 		spanBlockCounts := []int{1, 1}
 		inputErrors = []error{nil, nil, nil, io.EOF}
-		intputBatches = buildSpanBatches(t, &safeHead, expectedOutputBatches, spanBlockCounts, chainId)
+		inputBatches = buildSpanBatches(t, &safeHead, expectedOutputBatches, spanBlockCounts, chainId)
 	} else {
 		for _, singularBatch := range expectedOutputBatches {
-			intputBatches = append(intputBatches, singularBatch)
+			inputBatches = append(inputBatches, singularBatch)
 		}
 	}
 
 	input := &fakeBatchQueueInput{
-		batches: intputBatches,
+		batches: inputBatches,
 		errors:  inputErrors,
 		origin:  l1[0],
 	}
@@ -483,7 +483,7 @@ func BatchQueueMissing(t *testing.T, batchType int) {
 		require.Nil(t, b)
 	}
 
-	// advance origin. Underlying stage still has no more intputBatches
+	// advance origin. Underlying stage still has no more inputBatches
 	// This is not enough to auto advance yet
 	input.origin = l1[1]
 	b, e := bq.NextBatch(context.Background(), safeHead)
