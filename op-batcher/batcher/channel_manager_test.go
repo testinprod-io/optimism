@@ -1,7 +1,6 @@
 package batcher
 
 import (
-	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"io"
 	"math/big"
 	"math/rand"
@@ -14,6 +13,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	derivetest "github.com/ethereum-optimism/optimism/op-node/rollup/derive/test"
 	"github.com/ethereum-optimism/optimism/op-node/testlog"
+	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
