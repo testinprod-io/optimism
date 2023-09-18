@@ -100,7 +100,7 @@ func TestDropSpanBatchBeforeHardfork(gt *testing.T) {
 	for i := int64(1); i < int64(verifier.L2Safe().Number); i++ {
 		block, _ := verifCl.BlockByNumber(t.Ctx(), big.NewInt(i))
 		require.NoError(t, err)
-		// because verifier drops every span batch, it should generate empty batches.
+		// because verifier drops every span batch, it should generate empty blocks.
 		// so every block has only L1 attribute deposit transaction.
 		require.Equal(t, block.Transactions().Len(), 1)
 	}
