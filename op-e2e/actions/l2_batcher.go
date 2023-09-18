@@ -138,8 +138,6 @@ func (s *L2Batcher) Buffer(t Testing) error {
 		s.l2SubmittedBlock = syncStatus.SafeL2
 		s.l2BufferedBlock = syncStatus.SafeL2
 		s.l2ChannelOut = nil
-		block, err = s.l2.BlockByNumber(t.Ctx(), big.NewInt(int64(s.l2BufferedBlock.Number+1)))
-		require.NoError(t, err, "need l2 block %d from sync status", s.l2SubmittedBlock.Number+1)
 	}
 	// Create channel if we don't have one yet
 	if s.l2ChannelOut == nil {
@@ -153,13 +151,13 @@ func (s *L2Batcher) Buffer(t Testing) error {
 				ApproxComprRatio: 1,
 			})
 			require.NoError(t, e, "failed to create compressor")
-			batchType := derive.SingularBatchType
+			var batchType uint = derive.SingularBatchType
 			var spanBatchBuilder *derive.SpanBatchBuilder = nil
 			if s.rollupCfg.IsSpanBatch(block.Time()) {
 				batchType = derive.SpanBatchType
 				spanBatchBuilder = derive.NewSpanBatchBuilder(s.l2BufferedBlock.L1Origin.Number, s.rollupCfg.Genesis.L2Time, s.rollupCfg.L2ChainID)
 			}
-			ch, err = derive.NewChannelOut(c, uint(batchType), spanBatchBuilder)
+			ch, err = derive.NewChannelOut(c, batchType, spanBatchBuilder)
 		}
 		require.NoError(t, err, "failed to create channel")
 		s.l2ChannelOut = ch
