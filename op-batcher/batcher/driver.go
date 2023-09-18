@@ -308,9 +308,9 @@ func (l *BatchSubmitter) loop() {
 					l.log.Error("error closing the channel manager to handle a L2 reorg", "err", err)
 				}
 				l.publishStateToL1(queue, receiptsCh, true)
-				syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout)
-				// TODO: error handling
-				l.state.Clear(&syncStatus.SafeL2)
+				if syncStatus, err := fetchSyncStatus(l.shutdownCtx, l.RollupNode, l.NetworkTimeout); err == nil {
+					l.state.Clear(&syncStatus.SafeL2)
+				} // if fetchSyncStatus failed, ErrReorg will be returned again
 				continue
 			}
 			l.publishStateToL1(queue, receiptsCh, false)
