@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"io"
 	"math/big"
 	"math/rand"
@@ -21,12 +22,9 @@ import (
 )
 
 func TestChannelManagerBatchType(t *testing.T) {
-	safeHead := eth.L2BlockRef{
-		Time: 0,
-	}
 	tests := []struct {
 		name string
-		f    func(t *testing.T, batchType uint, safeHead *eth.L2BlockRef)
+		f    func(t *testing.T, batchType uint)
 	}{
 		{"ChannelManagerReturnsErrReorg", ChannelManagerReturnsErrReorg},
 		{"ChannelManagerReturnsErrReorgWhenDrained", ChannelManagerReturnsErrReorgWhenDrained},
@@ -40,23 +38,23 @@ func TestChannelManagerBatchType(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name+"_SingularBatch", func(t *testing.T) {
-			test.f(t, derive.SingularBatchType, &safeHead)
+			test.f(t, derive.SingularBatchType)
 		})
 	}
 
 	for _, test := range tests {
 		test := test
 		t.Run(test.name+"_SpanBatch", func(t *testing.T) {
-			test.f(t, derive.SpanBatchType, &safeHead)
+			test.f(t, derive.SpanBatchType)
 		})
 	}
 }
 
 // ChannelManagerReturnsErrReorg ensures that the channel manager
 // detects a reorg when it has cached L1 blocks.
-func ChannelManagerReturnsErrReorg(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerReturnsErrReorg(t *testing.T, batchType uint) {
 	log := testlog.Logger(t, log.LvlCrit)
-	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{BatchType: batchType}, &rollup.Config{}, safeHead)
+	m := NewChannelManager(log, metrics.NoopMetrics, ChannelConfig{BatchType: batchType}, &rollup.Config{}, &eth.L2BlockRef{})
 
 	a := types.NewBlock(&types.Header{
 		Number: big.NewInt(0),
@@ -84,7 +82,7 @@ func ChannelManagerReturnsErrReorg(t *testing.T, batchType uint, safeHead *eth.L
 
 // ChannelManagerReturnsErrReorgWhenDrained ensures that the channel manager
 // detects a reorg even if it does not have any blocks inside it.
-func ChannelManagerReturnsErrReorgWhenDrained(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerReturnsErrReorgWhenDrained(t *testing.T, batchType uint) {
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
 		ChannelConfig{
@@ -96,7 +94,7 @@ func ChannelManagerReturnsErrReorgWhenDrained(t *testing.T, batchType uint, safe
 			},
 			BatchType: batchType,
 		},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 
 	a := newMiniL2Block(0)
@@ -113,7 +111,7 @@ func ChannelManagerReturnsErrReorgWhenDrained(t *testing.T, batchType uint, safe
 }
 
 // ChannelManager_Clear tests clearing the channel manager.
-func ChannelManager_Clear(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManager_Clear(t *testing.T, batchType uint) {
 	require := require.New(t)
 
 	// Create a channel manager
@@ -134,7 +132,7 @@ func ChannelManager_Clear(t *testing.T, batchType uint, safeHead *eth.L2BlockRef
 		},
 		BatchType: batchType,
 	},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 
 	// Channel Manager state should be empty by default
@@ -182,7 +180,8 @@ func ChannelManager_Clear(t *testing.T, batchType uint, safeHead *eth.L2BlockRef
 	require.Equal(b.Hash(), m.tip)
 
 	// Clear the channel manager
-	m.Clear(&eth.L2BlockRef{})
+	safeHead := testutils.RandomL2BlockRef(rng)
+	m.Clear(&safeHead)
 
 	// Check that the entire channel manager state cleared
 	require.Empty(m.blocks)
@@ -190,9 +189,10 @@ func ChannelManager_Clear(t *testing.T, batchType uint, safeHead *eth.L2BlockRef
 	require.Nil(m.currentChannel)
 	require.Empty(m.channelQueue)
 	require.Empty(m.txChannels)
+	require.Equal(m.lastProcessedBlock, &safeHead)
 }
 
-func ChannelManager_TxResend(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManager_TxResend(t *testing.T, batchType uint) {
 	require := require.New(t)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	log := testlog.Logger(t, log.LvlError)
@@ -206,7 +206,7 @@ func ChannelManager_TxResend(t *testing.T, batchType uint, safeHead *eth.L2Block
 			},
 			BatchType: batchType,
 		},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 
 	a, _ := derivetest.RandomL2Block(rng, 4)
@@ -239,7 +239,7 @@ func ChannelManager_TxResend(t *testing.T, batchType uint, safeHead *eth.L2Block
 
 // ChannelManagerCloseBeforeFirstUse ensures that the channel manager
 // will not produce any frames if closed immediately.
-func ChannelManagerCloseBeforeFirstUse(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerCloseBeforeFirstUse(t *testing.T, batchType uint) {
 	require := require.New(t)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	log := testlog.Logger(t, log.LvlCrit)
@@ -253,7 +253,7 @@ func ChannelManagerCloseBeforeFirstUse(t *testing.T, batchType uint, safeHead *e
 			},
 			BatchType: batchType,
 		},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 
 	a, _ := derivetest.RandomL2Block(rng, 4)
@@ -270,7 +270,7 @@ func ChannelManagerCloseBeforeFirstUse(t *testing.T, batchType uint, safeHead *e
 // ChannelManagerCloseNoPendingChannel ensures that the channel manager
 // can gracefully close with no pending channels, and will not emit any new
 // channel frames.
-func ChannelManagerCloseNoPendingChannel(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerCloseNoPendingChannel(t *testing.T, batchType uint) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -284,7 +284,7 @@ func ChannelManagerCloseNoPendingChannel(t *testing.T, batchType uint, safeHead 
 			},
 			BatchType: batchType,
 		},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 	a := newMiniL2Block(0)
 	b := newMiniL2BlockWithNumberParent(0, big.NewInt(1), a.Hash())
@@ -312,7 +312,7 @@ func ChannelManagerCloseNoPendingChannel(t *testing.T, batchType uint, safeHead 
 // ChannelManagerCloseNoPendingChannel ensures that the channel manager
 // can gracefully close with a pending channel, and will not produce any
 // new channel frames after this point.
-func ChannelManagerClosePendingChannel(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerClosePendingChannel(t *testing.T, batchType uint) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -326,10 +326,15 @@ func ChannelManagerClosePendingChannel(t *testing.T, batchType uint, safeHead *e
 			},
 			BatchType: batchType,
 		},
-		&rollup.Config{}, safeHead,
+		&rollup.Config{}, &eth.L2BlockRef{},
 	)
 
-	numTx := 3
+	numTx := 50000
+	if batchType == derive.SpanBatchType {
+		// Adjust number of txs to make 2 frames
+		// Encoding empty txs as span batch requires more data size because span batch encodes tx signature to fixed length
+		numTx = 20000
+	}
 	a := newMiniL2Block(numTx)
 	b := newMiniL2BlockWithNumberParent(10, big.NewInt(1), a.Hash())
 
@@ -361,7 +366,7 @@ func ChannelManagerClosePendingChannel(t *testing.T, batchType uint, safeHead *e
 // ChannelManagerCloseAllTxsFailed ensures that the channel manager
 // can gracefully close after producing transaction frames if none of these
 // have successfully landed on chain.
-func ChannelManagerCloseAllTxsFailed(t *testing.T, batchType uint, safeHead *eth.L2BlockRef) {
+func ChannelManagerCloseAllTxsFailed(t *testing.T, batchType uint) {
 	require := require.New(t)
 	log := testlog.Logger(t, log.LvlCrit)
 	m := NewChannelManager(log, metrics.NoopMetrics,
@@ -374,7 +379,7 @@ func ChannelManagerCloseAllTxsFailed(t *testing.T, batchType uint, safeHead *eth
 				ApproxComprRatio: 1.0,
 			},
 			BatchType: batchType,
-		}, &rollup.Config{}, safeHead,
+		}, &rollup.Config{}, &eth.L2BlockRef{},
 	)
 
 	a := newMiniL2Block(50_000)

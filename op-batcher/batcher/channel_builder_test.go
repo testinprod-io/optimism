@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	dtest "github.com/ethereum-optimism/optimism/op-node/rollup/derive/test"
-	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -153,12 +152,10 @@ func newMiniL2BlockWithNumberParent(numTx int, number *big.Int, parent common.Ha
 		panic(err)
 	}
 
-	rng := rand.New(rand.NewSource(123))
-	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 	txs := make([]*types.Transaction, 0, 1+numTx)
 	txs = append(txs, types.NewTx(l1InfoTx))
 	for i := 0; i < numTx; i++ {
-		txs = append(txs, types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer))
+		txs = append(txs, types.NewTx(&types.DynamicFeeTx{}))
 	}
 
 	return types.NewBlock(&types.Header{
@@ -170,8 +167,9 @@ func newMiniL2BlockWithNumberParent(numTx int, number *big.Int, parent common.Ha
 // addTooManyBlocks adds blocks to the channel until it hits an error,
 // which is presumably ErrTooManyRLPBytes.
 func addTooManyBlocks(cb *channelBuilder) error {
+	rng := rand.New(rand.NewSource(1234))
 	for i := 0; i < 10_000; i++ {
-		block := newMiniL2Block(1000)
+		block, _ := dtest.RandomL2Block(rng, 1000)
 		_, err := cb.AddBlock(block)
 		if err != nil {
 			return err
@@ -558,7 +556,6 @@ func TestChannelBuilder_OutputFramesWorks_SpanBatch(t *testing.T) {
 	require.Greater(t, cb.PendingFrames(), 1)
 	for i := 0; i < cb.numFrames-1; i++ {
 		require.Len(t, cb.frames[i].data, int(channelConfig.MaxFrameSize))
-
 	}
 }
 
@@ -592,7 +589,6 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType uint) {
 	channelConfig.BatchType = batchType
 
 	rng := rand.New(rand.NewSource(123))
-	signer := types.NewLondonSigner(big.NewInt(rng.Int63n(1000)))
 
 	// Continuously add blocks until the max frame index is reached
 	// This should cause the [channelBuilder.OutputFrames] function
@@ -602,16 +598,7 @@ func ChannelBuilder_OutputFramesMaxFrameIndex(t *testing.T, batchType uint) {
 	require.False(t, cb.IsFull())
 	require.Equal(t, 0, cb.PendingFrames())
 	for {
-		lBlock := types.NewBlock(&types.Header{
-			BaseFee:    common.Big0,
-			Difficulty: common.Big0,
-			Number:     common.Big0,
-		}, nil, nil, nil, trie.NewStackTrie(nil))
-		l1InfoTx, _ := derive.L1InfoDeposit(0, eth.BlockToInfo(lBlock), eth.SystemConfig{}, false)
-		txs := []*types.Transaction{types.NewTx(l1InfoTx), testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)}
-		a := types.NewBlock(&types.Header{
-			Number: big.NewInt(0),
-		}, txs, nil, nil, trie.NewStackTrie(nil))
+		a, _ := dtest.RandomL2Block(rng, 1)
 		_, err = cb.AddBlock(a)
 		if cb.IsFull() {
 			fullErr := cb.FullErr()
