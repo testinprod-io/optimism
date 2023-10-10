@@ -47,6 +47,11 @@ type RawSpanBatch struct {
 	spanBatchPayload
 }
 
+// GetBatchType returns its batch type (batch_version)
+func (b *RawSpanBatch) GetBatchType() int {
+	return SpanBatchType
+}
+
 // decodeOriginBits parses data into bp.originBits
 // originBits is bitlist right-padded to a multiple of 8 bits
 func (bp *spanBatchPayload) decodeOriginBits(r *bytes.Reader) error {
@@ -200,6 +205,11 @@ func (bp *spanBatchPayload) decodePayload(r *bytes.Reader) error {
 // decodeBytes parses data into b from data
 func (b *RawSpanBatch) decodeBytes(data []byte) error {
 	r := bytes.NewReader(data)
+	return b.decode(r)
+}
+
+// decode reads the byte encoding of SpanBatch from Reader stream
+func (b *RawSpanBatch) decode(r *bytes.Reader) error {
 	if err := b.decodePrefix(r); err != nil {
 		return err
 	}

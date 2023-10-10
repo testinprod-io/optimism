@@ -39,12 +39,20 @@ type Batch interface {
 	LogContext(log.Logger) log.Logger
 }
 
-// BatchData is a composition type that contains raw data of each batch version.
-// It has encoding & decoding methods to implement typed encoding.
+// BatchData is used to represent the typed encoding & decoding.
+// and wraps arount a single interface InnerBatchData.
 type BatchData struct {
-	BatchType int
-	SingularBatch
-	RawSpanBatch
+	inner InnerBatchData
+}
+
+// InnerBatchData is the underlying data of a BatchData.
+// This is implemented by SingularBatch and RawSpanBatch.
+type InnerBatchData interface {
+	GetBatchType() int
+	encode(w io.Writer) error
+	decode(r *bytes.Reader) error
+	encodeBytes() ([]byte, error)
+	decodeBytes(data []byte) error
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -58,6 +66,30 @@ func (b *BatchData) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, buf.Bytes())
 }
 
+func (bd *BatchData) GetBatchType() uint8 {
+	return uint8(bd.inner.GetBatchType())
+}
+
+// Encode writes the byte encoding of BatchData to Writer stream
+func (bd *BatchData) Encode(w io.Writer) error {
+	return bd.inner.encode(w)
+}
+
+// Decode reads the byte encoding of BatchData from Reader stream
+func (bd *BatchData) Decode(r *bytes.Reader) error {
+	return bd.inner.decode(r)
+}
+
+// EncodeBytes returns the byte encoding of BatchData
+func (bd *BatchData) EncodeBytes() ([]byte, error) {
+	return bd.inner.encodeBytes()
+}
+
+// EecodeBytes parses data into bd from data
+func (bd *BatchData) DecodeBytes(data []byte) error {
+	return bd.inner.decodeBytes(data)
+}
+
 // MarshalBinary returns the canonical encoding of the batch.
 func (b *BatchData) MarshalBinary() ([]byte, error) {
 	var buf bytes.Buffer
@@ -67,16 +99,10 @@ func (b *BatchData) MarshalBinary() ([]byte, error) {
 
 // encodeTyped encodes batch type and payload for each batch type.
 func (b *BatchData) encodeTyped(buf *bytes.Buffer) error {
-	switch b.BatchType {
-	case SingularBatchType:
-		buf.WriteByte(SingularBatchType)
-		return rlp.Encode(buf, &b.SingularBatch)
-	case SpanBatchType:
-		buf.WriteByte(byte(b.BatchType))
-		return b.RawSpanBatch.encode(buf)
-	default:
-		return fmt.Errorf("unrecognized batch type: %d", b.BatchType)
+	if err := buf.WriteByte(b.GetBatchType()); err != nil {
+		return err
 	}
+	return b.Encode(buf)
 }
 
 // DecodeRLP implements rlp.Decoder
@@ -99,35 +125,32 @@ func (b *BatchData) UnmarshalBinary(data []byte) error {
 	return b.decodeTyped(data)
 }
 
-// decodeTyped decodes batch type and payload for each batch type.
+// decodeTyped decodes a typed batchData
 func (b *BatchData) decodeTyped(data []byte) error {
 	if len(data) == 0 {
-		return fmt.Errorf("batch too short")
+		return errors.New("batch too short")
 	}
 	switch data[0] {
 	case SingularBatchType:
-		b.BatchType = SingularBatchType
-		return rlp.DecodeBytes(data[1:], &b.SingularBatch)
+		var inner SingularBatch
+		b.inner = &inner
+		if err := b.DecodeBytes(data[1:]); err != nil {
+			return err
+		}
+		return nil
 	case SpanBatchType:
-		b.BatchType = int(data[0])
-		return b.RawSpanBatch.decodeBytes(data[1:])
+		var inner RawSpanBatch
+		b.inner = &inner
+		if err := b.DecodeBytes(data[1:]); err != nil {
+			return err
+		}
+		return nil
 	default:
 		return fmt.Errorf("unrecognized batch type: %d", data[0])
 	}
 }
 
-// NewSingularBatchData creates new BatchData with SingularBatch
-func NewSingularBatchData(singularBatch SingularBatch) *BatchData {
-	return &BatchData{
-		BatchType:     SingularBatchType,
-		SingularBatch: singularBatch,
-	}
-}
-
-// NewSpanBatchData creates new BatchData with SpanBatch
-func NewSpanBatchData(spanBatch RawSpanBatch) *BatchData {
-	return &BatchData{
-		BatchType:    SpanBatchType,
-		RawSpanBatch: spanBatch,
-	}
+// NewBatchData creates a new BatchData
+func NewBatchData(inner InnerBatchData) *BatchData {
+	return &BatchData{inner: inner}
 }

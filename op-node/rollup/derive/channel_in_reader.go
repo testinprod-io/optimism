@@ -3,6 +3,8 @@ package derive
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -86,15 +88,26 @@ func (cr *ChannelInReader) NextBatch(ctx context.Context) (Batch, error) {
 		cr.NextChannel()
 		return nil, NotEnoughData
 	}
-	if batchData.BatchType == SingularBatchType {
-		return &batchData.SingularBatch, nil
-	} else {
+	switch batchData.GetBatchType() {
+	case SingularBatchType:
+		singularBatch, ok := batchData.inner.(*SingularBatch)
+		if !ok {
+			return nil, errors.New("failed type assertion to SingularBatch")
+		}
+		return singularBatch, nil
+	case SpanBatchType:
+		rawSpanBatch, ok := batchData.inner.(*RawSpanBatch)
+		if !ok {
+			return nil, errors.New("failed type assertion to SpanBatch")
+		}
 		// If the batch type is Span batch, derive block inputs from RawSpanBatch.
-		spanBatch, err := batchData.RawSpanBatch.derive(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
+		spanBatch, err := rawSpanBatch.derive(cr.cfg.BlockTime, cr.cfg.Genesis.L2Time, cr.cfg.L2ChainID)
 		if err != nil {
 			return nil, err
 		}
 		return spanBatch, nil
+	default:
+		return nil, fmt.Errorf("unrecognized batch type: %d", batchData.GetBatchType())
 	}
 }
 
