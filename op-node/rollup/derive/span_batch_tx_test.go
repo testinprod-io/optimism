@@ -7,64 +7,81 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+type spanBatchTxTest struct {
+	name   string
+	trials int
+	mkTx   func(rng *rand.Rand, signer types.Signer) *types.Transaction
+}
+
 func TestSpanBatchTxConvert(t *testing.T) {
-	rng := rand.New(rand.NewSource(0x1331))
-	chainID := big.NewInt(rng.Int63n(1000))
-	signer := types.NewLondonSigner(chainID)
-
-	m := make(map[byte]int)
-	for i := 0; i < 32; i++ {
-		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
-		m[tx.Type()] += 1
-		v, r, s := tx.RawSignatureValues()
-		sbtx, err := newSpanBatchTx(*tx)
-		require.NoError(t, err)
-
-		tx2, err := sbtx.convertToFullTx(tx.Nonce(), tx.Gas(), tx.To(), chainID, v, r, s)
-		require.NoError(t, err)
-
-		// compare after marshal because we only need inner field of transaction
-		txEncoded, err := tx.MarshalBinary()
-		require.NoError(t, err)
-		tx2Encoded, err := tx2.MarshalBinary()
-		require.NoError(t, err)
-
-		require.Equal(t, txEncoded, tx2Encoded)
+	cases := []spanBatchTxTest{
+		{"legacy tx", 32, testutils.RandomLegacyTx},
+		{"access list tx", 32, testutils.RandomAccessListTx},
+		{"dynamic fee tx", 32, testutils.RandomDynamicFeeTx},
 	}
-	// make sure every tx type is tested
-	require.Positive(t, m[types.LegacyTxType])
-	require.Positive(t, m[types.AccessListTxType])
-	require.Positive(t, m[types.DynamicFeeTxType])
+
+	for i, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rng := rand.New(rand.NewSource(int64(0x1331 + i)))
+			chainID := big.NewInt(rng.Int63n(1000))
+			signer := types.NewLondonSigner(chainID)
+
+			for txIdx := 0; txIdx < testCase.trials; txIdx++ {
+				tx := testCase.mkTx(rng, signer)
+
+				v, r, s := tx.RawSignatureValues()
+				sbtx, err := newSpanBatchTx(*tx)
+				require.NoError(t, err)
+
+				tx2, err := sbtx.convertToFullTx(tx.Nonce(), tx.Gas(), tx.To(), chainID, v, r, s)
+				require.NoError(t, err)
+
+				// compare after marshal because we only need inner field of transaction
+				txEncoded, err := tx.MarshalBinary()
+				require.NoError(t, err)
+				tx2Encoded, err := tx2.MarshalBinary()
+				require.NoError(t, err)
+
+				assert.Equal(t, txEncoded, tx2Encoded)
+			}
+		})
+	}
 }
 
 func TestSpanBatchTxRoundTrip(t *testing.T) {
-	rng := rand.New(rand.NewSource(0x1332))
-	chainID := big.NewInt(rng.Int63n(1000))
-	signer := types.NewLondonSigner(chainID)
-
-	m := make(map[byte]int)
-	for i := 0; i < 32; i++ {
-		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
-		m[tx.Type()] += 1
-		sbtx, err := newSpanBatchTx(*tx)
-		require.NoError(t, err)
-
-		sbtxEncoded, err := sbtx.MarshalBinary()
-		require.NoError(t, err)
-
-		var sbtx2 spanBatchTx
-		err = sbtx2.UnmarshalBinary(sbtxEncoded)
-		require.NoError(t, err)
-
-		require.Equal(t, sbtx, &sbtx2)
+	cases := []spanBatchTxTest{
+		{"legacy tx", 32, testutils.RandomLegacyTx},
+		{"access list tx", 32, testutils.RandomAccessListTx},
+		{"dynamic fee tx", 32, testutils.RandomDynamicFeeTx},
 	}
-	// make sure every tx type is tested
-	require.Positive(t, m[types.LegacyTxType])
-	require.Positive(t, m[types.AccessListTxType])
-	require.Positive(t, m[types.DynamicFeeTxType])
+
+	for i, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rng := rand.New(rand.NewSource(int64(0x1332 + i)))
+			chainID := big.NewInt(rng.Int63n(1000))
+			signer := types.NewLondonSigner(chainID)
+
+			for txIdx := 0; txIdx < testCase.trials; txIdx++ {
+				tx := testCase.mkTx(rng, signer)
+
+				sbtx, err := newSpanBatchTx(*tx)
+				require.NoError(t, err)
+
+				sbtxEncoded, err := sbtx.MarshalBinary()
+				require.NoError(t, err)
+
+				var sbtx2 spanBatchTx
+				err = sbtx2.UnmarshalBinary(sbtxEncoded)
+				require.NoError(t, err)
+
+				assert.Equal(t, sbtx, &sbtx2)
+			}
+		})
+	}
 }
 
 type spanBatchDummyTxData struct{}

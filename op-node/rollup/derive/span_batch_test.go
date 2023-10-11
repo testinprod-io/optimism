@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -405,34 +406,36 @@ func TestSpanBatchToSingularBatch(t *testing.T) {
 }
 
 func TestSpanBatchReadTxData(t *testing.T) {
-	rng := rand.New(rand.NewSource(0x109550))
-	chainID := new(big.Int).SetUint64(rng.Uint64())
-
-	txCount := 64
-
-	signer := types.NewLondonSigner(chainID)
-	var rawTxs [][]byte
-	var txs []*types.Transaction
-	m := make(map[byte]int)
-	for i := 0; i < txCount; i++ {
-		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
-		m[tx.Type()] += 1
-		rawTx, err := tx.MarshalBinary()
-		require.NoError(t, err)
-		rawTxs = append(rawTxs, rawTx)
-		txs = append(txs, tx)
+	cases := []spanBatchTxTest{
+		{"legacy tx", 32, testutils.RandomLegacyTx},
+		{"access list tx", 32, testutils.RandomAccessListTx},
+		{"dynamic fee tx", 32, testutils.RandomDynamicFeeTx},
 	}
 
-	for i := 0; i < txCount; i++ {
-		r := bytes.NewReader(rawTxs[i])
-		_, txType, err := ReadTxData(r)
-		require.NoError(t, err)
-		require.Equal(t, int(txs[i].Type()), txType)
+	for i, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rng := rand.New(rand.NewSource(int64(0x109550 + i)))
+			chainID := new(big.Int).SetUint64(rng.Uint64())
+			signer := types.NewLondonSigner(chainID)
+
+			var rawTxs [][]byte
+			var txs []*types.Transaction
+			for txIdx := 0; txIdx < testCase.trials; txIdx++ {
+				tx := testCase.mkTx(rng, signer)
+				rawTx, err := tx.MarshalBinary()
+				require.NoError(t, err)
+				rawTxs = append(rawTxs, rawTx)
+				txs = append(txs, tx)
+			}
+
+			for txIdx := 0; txIdx < testCase.trials; txIdx++ {
+				r := bytes.NewReader(rawTxs[i])
+				_, txType, err := ReadTxData(r)
+				require.NoError(t, err)
+				assert.Equal(t, int(txs[i].Type()), txType)
+			}
+		})
 	}
-	// make sure every tx type is tested
-	require.Positive(t, m[types.LegacyTxType])
-	require.Positive(t, m[types.AccessListTxType])
-	require.Positive(t, m[types.DynamicFeeTxType])
 }
 
 func TestSpanBatchReadTxDataInvalid(t *testing.T) {
