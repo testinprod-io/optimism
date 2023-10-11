@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -166,17 +166,17 @@ func TestBatchRoundTrip(t *testing.T) {
 
 	for i, batch := range batches {
 		enc, err := batch.MarshalBinary()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		var dec BatchData
 		err = dec.UnmarshalBinary(enc)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		if dec.GetBatchType() == SpanBatchType {
 			rawSpanBatch, ok := dec.inner.(*RawSpanBatch)
-			assert.True(t, ok)
+			require.True(t, ok)
 			_, err := rawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
-		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
+		require.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}
 }
 
@@ -213,19 +213,19 @@ func TestBatchRoundTripRLP(t *testing.T) {
 	for i, batch := range batches {
 		var buf bytes.Buffer
 		err := batch.EncodeRLP(&buf)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		result := buf.Bytes()
 		var dec BatchData
 		r := bytes.NewReader(result)
 		s := rlp.NewStream(r, 0)
 		err = dec.DecodeRLP(s)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		if dec.GetBatchType() == SpanBatchType {
 			rawSpanBatch, ok := dec.inner.(*RawSpanBatch)
-			assert.True(t, ok)
+			require.True(t, ok)
 			_, err := rawSpanBatch.derive(blockTime, genesisTimestamp, chainID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
-		assert.Equal(t, batch, &dec, "Batch not equal test case %v", i)
+		require.Equal(t, batch, &dec, "Batch not equal test case %v", i)
 	}
 }

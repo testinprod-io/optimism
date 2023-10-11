@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSpanBatchForBatchInterface(t *testing.T) {
@@ -26,11 +26,11 @@ func TestSpanBatchForBatchInterface(t *testing.T) {
 	spanBatch := NewSpanBatch(singularBatches)
 
 	// check interface method implementations except logging
-	assert.Equal(t, SpanBatchType, spanBatch.GetBatchType())
-	assert.Equal(t, singularBatches[0].Timestamp, spanBatch.GetTimestamp())
-	assert.Equal(t, singularBatches[0].EpochNum, spanBatch.GetStartEpochNum())
-	assert.True(t, spanBatch.CheckOriginHash(singularBatches[blockCount-1].EpochHash))
-	assert.True(t, spanBatch.CheckParentHash(singularBatches[0].ParentHash))
+	require.Equal(t, SpanBatchType, spanBatch.GetBatchType())
+	require.Equal(t, singularBatches[0].Timestamp, spanBatch.GetTimestamp())
+	require.Equal(t, singularBatches[0].EpochNum, spanBatch.GetStartEpochNum())
+	require.True(t, spanBatch.CheckOriginHash(singularBatches[blockCount-1].EpochHash))
+	require.True(t, spanBatch.CheckParentHash(singularBatches[0].ParentHash))
 }
 
 func TestSpanBatchOriginBits(t *testing.T) {
@@ -43,23 +43,23 @@ func TestSpanBatchOriginBits(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeOriginBits(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// originBit field is fixed length: single bit
 	originBitBufferLen := blockCount / 8
 	if blockCount%8 != 0 {
 		originBitBufferLen++
 	}
-	assert.Equal(t, buf.Len(), int(originBitBufferLen))
+	require.Equal(t, buf.Len(), int(originBitBufferLen))
 
 	result := buf.Bytes()
 	var sb RawSpanBatch
 	sb.blockCount = blockCount
 	r := bytes.NewReader(result)
 	err = sb.decodeOriginBits(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.originBits, sb.originBits)
+	require.Equal(t, rawSpanBatch.originBits, sb.originBits)
 }
 
 func TestSpanBatchPrefix(t *testing.T) {
@@ -72,15 +72,15 @@ func TestSpanBatchPrefix(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodePrefix(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 	err = sb.decodePrefix(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch, &sb)
+	require.Equal(t, rawSpanBatch, &sb)
 }
 
 func TestSpanBatchRelTimestamp(t *testing.T) {
@@ -91,15 +91,15 @@ func TestSpanBatchRelTimestamp(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeRelTimestamp(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 	err = sb.decodeRelTimestamp(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.relTimestamp, sb.relTimestamp)
+	require.Equal(t, rawSpanBatch.relTimestamp, sb.relTimestamp)
 }
 
 func TestSpanBatchL1OriginNum(t *testing.T) {
@@ -110,15 +110,15 @@ func TestSpanBatchL1OriginNum(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeL1OriginNum(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 	err = sb.decodeL1OriginNum(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.l1OriginNum, sb.l1OriginNum)
+	require.Equal(t, rawSpanBatch.l1OriginNum, sb.l1OriginNum)
 }
 
 func TestSpanBatchParentCheck(t *testing.T) {
@@ -129,18 +129,18 @@ func TestSpanBatchParentCheck(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeParentCheck(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// parent check field is fixed length: 20 bytes
-	assert.Equal(t, buf.Len(), 20)
+	require.Equal(t, buf.Len(), 20)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 	err = sb.decodeParentCheck(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.parentCheck, sb.parentCheck)
+	require.Equal(t, rawSpanBatch.parentCheck, sb.parentCheck)
 }
 
 func TestSpanBatchL1OriginCheck(t *testing.T) {
@@ -151,18 +151,18 @@ func TestSpanBatchL1OriginCheck(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeL1OriginCheck(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// l1 origin check field is fixed length: 20 bytes
-	assert.Equal(t, buf.Len(), 20)
+	require.Equal(t, buf.Len(), 20)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 	err = sb.decodeL1OriginCheck(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.l1OriginCheck, sb.l1OriginCheck)
+	require.Equal(t, rawSpanBatch.l1OriginCheck, sb.l1OriginCheck)
 }
 
 func TestSpanBatchPayload(t *testing.T) {
@@ -173,18 +173,18 @@ func TestSpanBatchPayload(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodePayload(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 
 	err = sb.decodePayload(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	sb.txs.recoverV(chainID)
 
-	assert.Equal(t, rawSpanBatch.spanBatchPayload, sb.spanBatchPayload)
+	require.Equal(t, rawSpanBatch.spanBatchPayload, sb.spanBatchPayload)
 }
 
 func TestSpanBatchBlockCount(t *testing.T) {
@@ -195,16 +195,16 @@ func TestSpanBatchBlockCount(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeBlockCount(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
 	var sb RawSpanBatch
 
 	err = sb.decodeBlockCount(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.blockCount, sb.blockCount)
+	require.Equal(t, rawSpanBatch.blockCount, sb.blockCount)
 }
 
 func TestSpanBatchBlockTxCounts(t *testing.T) {
@@ -215,7 +215,7 @@ func TestSpanBatchBlockTxCounts(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeBlockTxCounts(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
@@ -223,9 +223,9 @@ func TestSpanBatchBlockTxCounts(t *testing.T) {
 
 	sb.blockCount = rawSpanBatch.blockCount
 	err = sb.decodeBlockTxCounts(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, rawSpanBatch.blockTxCounts, sb.blockTxCounts)
+	require.Equal(t, rawSpanBatch.blockTxCounts, sb.blockTxCounts)
 }
 
 func TestSpanBatchTxs(t *testing.T) {
@@ -236,7 +236,7 @@ func TestSpanBatchTxs(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := rawSpanBatch.encodeTxs(&buf)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result := buf.Bytes()
 	r := bytes.NewReader(result)
@@ -244,11 +244,11 @@ func TestSpanBatchTxs(t *testing.T) {
 
 	sb.blockTxCounts = rawSpanBatch.blockTxCounts
 	err = sb.decodeTxs(r)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	sb.txs.recoverV(chainID)
 
-	assert.Equal(t, rawSpanBatch.txs, sb.txs)
+	require.Equal(t, rawSpanBatch.txs, sb.txs)
 }
 
 func TestSpanBatchRoundTrip(t *testing.T) {
@@ -258,15 +258,15 @@ func TestSpanBatchRoundTrip(t *testing.T) {
 	rawSpanBatch := RandomRawSpanBatch(rng, chainID)
 
 	result, err := rawSpanBatch.encodeBytes()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var sb RawSpanBatch
 	err = sb.decodeBytes(result)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	sb.txs.recoverV(chainID)
 
-	assert.Equal(t, rawSpanBatch, &sb)
+	require.Equal(t, rawSpanBatch, &sb)
 }
 
 func TestSpanBatchDerive(t *testing.T) {
@@ -284,24 +284,24 @@ func TestSpanBatchDerive(t *testing.T) {
 		spanBatch := NewSpanBatch(singularBatches)
 		originChangedBit := uint(originChangedBit)
 		rawSpanBatch, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		spanBatchDerived, err := rawSpanBatch.derive(l2BlockTime, genesisTimeStamp, chainID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		blockCount := len(singularBatches)
-		assert.Equal(t, safeL2Head.Hash.Bytes()[:20], spanBatchDerived.parentCheck[:])
-		assert.Equal(t, singularBatches[blockCount-1].Epoch().Hash.Bytes()[:20], spanBatchDerived.l1OriginCheck[:])
-		assert.Equal(t, len(singularBatches), int(rawSpanBatch.blockCount))
+		require.Equal(t, safeL2Head.Hash.Bytes()[:20], spanBatchDerived.parentCheck[:])
+		require.Equal(t, singularBatches[blockCount-1].Epoch().Hash.Bytes()[:20], spanBatchDerived.l1OriginCheck[:])
+		require.Equal(t, len(singularBatches), int(rawSpanBatch.blockCount))
 
 		for i := 1; i < len(singularBatches); i++ {
-			assert.Equal(t, spanBatchDerived.batches[i].Timestamp, spanBatchDerived.batches[i-1].Timestamp+l2BlockTime)
+			require.Equal(t, spanBatchDerived.batches[i].Timestamp, spanBatchDerived.batches[i-1].Timestamp+l2BlockTime)
 		}
 
 		for i := 0; i < len(singularBatches); i++ {
-			assert.Equal(t, singularBatches[i].EpochNum, spanBatchDerived.batches[i].EpochNum)
-			assert.Equal(t, singularBatches[i].Timestamp, spanBatchDerived.batches[i].Timestamp)
-			assert.Equal(t, singularBatches[i].Transactions, spanBatchDerived.batches[i].Transactions)
+			require.Equal(t, singularBatches[i].EpochNum, spanBatchDerived.batches[i].EpochNum)
+			require.Equal(t, singularBatches[i].Timestamp, spanBatchDerived.batches[i].Timestamp)
+			require.Equal(t, singularBatches[i].Transactions, spanBatchDerived.batches[i].Transactions)
 		}
 	}
 }
@@ -322,7 +322,7 @@ func TestSpanBatchAppend(t *testing.T) {
 	// initialize with two singular batches
 	spanBatch2 := NewSpanBatch(singularBatches[:L])
 
-	assert.Equal(t, spanBatch, spanBatch2)
+	require.Equal(t, spanBatch, spanBatch2)
 }
 
 func TestSpanBatchMerge(t *testing.T) {
@@ -338,32 +338,32 @@ func TestSpanBatchMerge(t *testing.T) {
 		spanBatch := NewSpanBatch(singularBatches)
 		originChangedBit := uint(originChangedBit)
 		rawSpanBatch, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// check span batch prefix
-		assert.Equal(t, rawSpanBatch.relTimestamp, singularBatches[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
-		assert.Equal(t, rollup.Epoch(rawSpanBatch.l1OriginNum), singularBatches[blockCount-1].EpochNum)
-		assert.Equal(t, rawSpanBatch.parentCheck[:], singularBatches[0].ParentHash.Bytes()[:20], "invalid parent check")
-		assert.Equal(t, rawSpanBatch.l1OriginCheck[:], singularBatches[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
+		require.Equal(t, rawSpanBatch.relTimestamp, singularBatches[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
+		require.Equal(t, rollup.Epoch(rawSpanBatch.l1OriginNum), singularBatches[blockCount-1].EpochNum)
+		require.Equal(t, rawSpanBatch.parentCheck[:], singularBatches[0].ParentHash.Bytes()[:20], "invalid parent check")
+		require.Equal(t, rawSpanBatch.l1OriginCheck[:], singularBatches[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
 
 		// check span batch payload
-		assert.Equal(t, int(rawSpanBatch.blockCount), len(singularBatches))
-		assert.Equal(t, rawSpanBatch.originBits.Bit(0), originChangedBit)
+		require.Equal(t, int(rawSpanBatch.blockCount), len(singularBatches))
+		require.Equal(t, rawSpanBatch.originBits.Bit(0), originChangedBit)
 		for i := 1; i < blockCount; i++ {
 			if rawSpanBatch.originBits.Bit(i) == 1 {
-				assert.Equal(t, singularBatches[i].EpochNum, singularBatches[i-1].EpochNum+1)
+				require.Equal(t, singularBatches[i].EpochNum, singularBatches[i-1].EpochNum+1)
 			} else {
-				assert.Equal(t, singularBatches[i].EpochNum, singularBatches[i-1].EpochNum)
+				require.Equal(t, singularBatches[i].EpochNum, singularBatches[i-1].EpochNum)
 			}
 		}
 		for i := 0; i < len(singularBatches); i++ {
 			txCount := len(singularBatches[i].Transactions)
-			assert.Equal(t, txCount, int(rawSpanBatch.blockTxCounts[i]))
+			require.Equal(t, txCount, int(rawSpanBatch.blockTxCounts[i]))
 		}
 
 		// check invariants
 		endEpochNum := rawSpanBatch.l1OriginNum
-		assert.Equal(t, endEpochNum, uint64(singularBatches[blockCount-1].EpochNum))
+		require.Equal(t, endEpochNum, uint64(singularBatches[blockCount-1].EpochNum))
 
 		// we do not check txs field because it has to be derived to be compared
 	}
@@ -383,12 +383,12 @@ func TestSpanBatchToSingularBatch(t *testing.T) {
 		spanBatch := NewSpanBatch(singularBatches)
 		originChangedBit := uint(originChangedBit)
 		rawSpanBatch, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		l1Origins := mockL1Origin(rng, rawSpanBatch, singularBatches)
 
 		singularBatches2, err := spanBatch.GetSingularBatches(l1Origins, safeL2Head)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// GetSingularBatches does not fill in parent hash of singular batches
 		// empty out parent hash for comparison
@@ -397,10 +397,10 @@ func TestSpanBatchToSingularBatch(t *testing.T) {
 		}
 		// check parent hash is empty
 		for i := 0; i < len(singularBatches2); i++ {
-			assert.Equal(t, singularBatches2[i].ParentHash, common.Hash{})
+			require.Equal(t, singularBatches2[i].ParentHash, common.Hash{})
 		}
 
-		assert.Equal(t, singularBatches, singularBatches2)
+		require.Equal(t, singularBatches, singularBatches2)
 	}
 }
 
@@ -418,7 +418,7 @@ func TestSpanBatchReadTxData(t *testing.T) {
 		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
 		m[tx.Type()] += 1
 		rawTx, err := tx.MarshalBinary()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		rawTxs = append(rawTxs, rawTx)
 		txs = append(txs, tx)
 	}
@@ -426,23 +426,23 @@ func TestSpanBatchReadTxData(t *testing.T) {
 	for i := 0; i < txCount; i++ {
 		r := bytes.NewReader(rawTxs[i])
 		_, txType, err := ReadTxData(r)
-		assert.NoError(t, err)
-		assert.Equal(t, int(txs[i].Type()), txType)
+		require.NoError(t, err)
+		require.Equal(t, int(txs[i].Type()), txType)
 	}
 	// make sure every tx type is tested
-	assert.Positive(t, m[types.LegacyTxType])
-	assert.Positive(t, m[types.AccessListTxType])
-	assert.Positive(t, m[types.DynamicFeeTxType])
+	require.Positive(t, m[types.LegacyTxType])
+	require.Positive(t, m[types.AccessListTxType])
+	require.Positive(t, m[types.DynamicFeeTxType])
 }
 
 func TestSpanBatchReadTxDataInvalid(t *testing.T) {
 	dummy, err := rlp.EncodeToBytes("dummy")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// test non list rlp decoding
 	r := bytes.NewReader(dummy)
 	_, _, err = ReadTxData(r)
-	assert.ErrorContains(t, err, "tx RLP prefix type must be list")
+	require.ErrorContains(t, err, "tx RLP prefix type must be list")
 }
 
 func TestSpanBatchBuilder(t *testing.T) {
@@ -463,28 +463,28 @@ func TestSpanBatchBuilder(t *testing.T) {
 		}
 		spanBatchBuilder := NewSpanBatchBuilder(parentEpoch, genesisTimeStamp, chainID)
 
-		assert.Equal(t, 0, spanBatchBuilder.GetBlockCount())
+		require.Equal(t, 0, spanBatchBuilder.GetBlockCount())
 
 		for i := 0; i < len(singularBatches); i++ {
 			spanBatchBuilder.AppendSingularBatch(singularBatches[i])
-			assert.Equal(t, i+1, spanBatchBuilder.GetBlockCount())
-			assert.Equal(t, singularBatches[0].ParentHash.Bytes()[:20], spanBatchBuilder.spanBatch.parentCheck[:])
-			assert.Equal(t, singularBatches[i].EpochHash.Bytes()[:20], spanBatchBuilder.spanBatch.l1OriginCheck[:])
+			require.Equal(t, i+1, spanBatchBuilder.GetBlockCount())
+			require.Equal(t, singularBatches[0].ParentHash.Bytes()[:20], spanBatchBuilder.spanBatch.parentCheck[:])
+			require.Equal(t, singularBatches[i].EpochHash.Bytes()[:20], spanBatchBuilder.spanBatch.l1OriginCheck[:])
 		}
 
 		rawSpanBatch, err := spanBatchBuilder.GetRawSpanBatch()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// compare with rawSpanBatch not using spanBatchBuilder
 		spanBatch := NewSpanBatch(singularBatches)
 		originChangedBit := uint(originChangedBit)
 		rawSpanBatch2, err := spanBatch.ToRawSpanBatch(originChangedBit, genesisTimeStamp, chainID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.Equal(t, rawSpanBatch2, rawSpanBatch)
+		require.Equal(t, rawSpanBatch2, rawSpanBatch)
 
 		spanBatchBuilder.Reset()
-		assert.Equal(t, 0, spanBatchBuilder.GetBlockCount())
+		require.Equal(t, 0, spanBatchBuilder.GetBlockCount())
 	}
 }
 
@@ -496,12 +496,12 @@ func TestSpanBatchMaxTxData(t *testing.T) {
 	})
 
 	txEncoded, err := invalidTx.MarshalBinary()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	r := bytes.NewReader(txEncoded)
 	_, _, err = ReadTxData(r)
 
-	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
+	require.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
 }
 
 func TestSpanBatchMaxOriginBitsLength(t *testing.T) {
@@ -510,5 +510,5 @@ func TestSpanBatchMaxOriginBitsLength(t *testing.T) {
 
 	r := bytes.NewReader([]byte{})
 	err := sb.decodeOriginBits(r)
-	assert.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
+	require.ErrorIs(t, err, ErrTooBigSpanBatchFieldSize)
 }
