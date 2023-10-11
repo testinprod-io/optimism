@@ -52,8 +52,8 @@ func RandomRawSpanBatch(rng *rand.Rand, chainId *big.Int) *RawSpanBatch {
 		spanBatchPrefix: spanBatchPrefix{
 			relTimestamp:  uint64(rng.Uint32()),
 			l1OriginNum:   rng.Uint64(),
-			parentCheck:   testutils.RandomData(rng, 20),
-			l1OriginCheck: testutils.RandomData(rng, 20),
+			parentCheck:   [20]byte(testutils.RandomData(rng, 20)),
+			l1OriginCheck: [20]byte(testutils.RandomData(rng, 20)),
 		},
 		spanBatchPayload: spanBatchPayload{
 			blockCount:    blockCount,

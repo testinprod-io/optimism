@@ -290,8 +290,8 @@ func TestSpanBatchDerive(t *testing.T) {
 		assert.NoError(t, err)
 
 		blockCount := len(singularBatches)
-		assert.Equal(t, safeL2Head.Hash.Bytes()[:20], spanBatchDerived.parentCheck)
-		assert.Equal(t, singularBatches[blockCount-1].Epoch().Hash.Bytes()[:20], spanBatchDerived.l1OriginCheck)
+		assert.Equal(t, safeL2Head.Hash.Bytes()[:20], spanBatchDerived.parentCheck[:])
+		assert.Equal(t, singularBatches[blockCount-1].Epoch().Hash.Bytes()[:20], spanBatchDerived.l1OriginCheck[:])
 		assert.Equal(t, len(singularBatches), int(rawSpanBatch.blockCount))
 
 		for i := 1; i < len(singularBatches); i++ {
@@ -343,8 +343,8 @@ func TestSpanBatchMerge(t *testing.T) {
 		// check span batch prefix
 		assert.Equal(t, rawSpanBatch.relTimestamp, singularBatches[0].Timestamp-genesisTimeStamp, "invalid relative timestamp")
 		assert.Equal(t, rollup.Epoch(rawSpanBatch.l1OriginNum), singularBatches[blockCount-1].EpochNum)
-		assert.Equal(t, rawSpanBatch.parentCheck, singularBatches[0].ParentHash.Bytes()[:20], "invalid parent check")
-		assert.Equal(t, rawSpanBatch.l1OriginCheck, singularBatches[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
+		assert.Equal(t, rawSpanBatch.parentCheck[:], singularBatches[0].ParentHash.Bytes()[:20], "invalid parent check")
+		assert.Equal(t, rawSpanBatch.l1OriginCheck[:], singularBatches[blockCount-1].EpochHash.Bytes()[:20], "invalid l1 origin check")
 
 		// check span batch payload
 		assert.Equal(t, int(rawSpanBatch.blockCount), len(singularBatches))
@@ -468,8 +468,8 @@ func TestSpanBatchBuilder(t *testing.T) {
 		for i := 0; i < len(singularBatches); i++ {
 			spanBatchBuilder.AppendSingularBatch(singularBatches[i])
 			assert.Equal(t, i+1, spanBatchBuilder.GetBlockCount())
-			assert.Equal(t, singularBatches[0].ParentHash.Bytes()[:20], spanBatchBuilder.spanBatch.parentCheck)
-			assert.Equal(t, singularBatches[i].EpochHash.Bytes()[:20], spanBatchBuilder.spanBatch.l1OriginCheck)
+			assert.Equal(t, singularBatches[0].ParentHash.Bytes()[:20], spanBatchBuilder.spanBatch.parentCheck[:])
+			assert.Equal(t, singularBatches[i].EpochHash.Bytes()[:20], spanBatchBuilder.spanBatch.l1OriginCheck[:])
 		}
 
 		rawSpanBatch, err := spanBatchBuilder.GetRawSpanBatch()
