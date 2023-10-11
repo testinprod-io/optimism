@@ -1,14 +1,12 @@
 package derive
 
 import (
-	"bytes"
 	"math/big"
 	"math/rand"
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-node/testutils"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -59,37 +57,6 @@ func TestSpanBatchTxRoundTrip(t *testing.T) {
 
 		var sbtx2 spanBatchTx
 		err = sbtx2.UnmarshalBinary(sbtxEncoded)
-		assert.NoError(t, err)
-
-		assert.Equal(t, sbtx, &sbtx2)
-	}
-	// make sure every tx type is tested
-	assert.Positive(t, m[types.LegacyTxType])
-	assert.Positive(t, m[types.AccessListTxType])
-	assert.Positive(t, m[types.DynamicFeeTxType])
-}
-
-func TestSpanBatchTxRoundTripRLP(t *testing.T) {
-	rng := rand.New(rand.NewSource(0x1333))
-	chainID := big.NewInt(rng.Int63n(1000))
-	signer := types.NewLondonSigner(chainID)
-
-	m := make(map[byte]int)
-	for i := 0; i < 32; i++ {
-		tx := testutils.RandomTx(rng, new(big.Int).SetUint64(rng.Uint64()), signer)
-		m[tx.Type()] += 1
-		sbtx, err := newSpanBatchTx(*tx)
-		assert.NoError(t, err)
-
-		var buf bytes.Buffer
-		err = sbtx.EncodeRLP(&buf)
-		assert.NoError(t, err)
-
-		result := buf.Bytes()
-		var sbtx2 spanBatchTx
-		r := bytes.NewReader(result)
-		rlpReader := rlp.NewStream(r, 0)
-		err = sbtx2.DecodeRLP(rlpReader)
 		assert.NoError(t, err)
 
 		assert.Equal(t, sbtx, &sbtx2)
