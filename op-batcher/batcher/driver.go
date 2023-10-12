@@ -101,12 +101,17 @@ func NewBatchSubmitterFromCLIConfig(cfg CLIConfig, l log.Logger, m metrics.Metri
 		return nil, err
 	}
 
-	return NewBatchSubmitter(ctx, batcherCfg, l, m)
+	syncStatus, err := fetchSyncStatus(ctx, batcherCfg.RollupNode, batcherCfg.NetworkTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewBatchSubmitter(ctx, batcherCfg, l, m, &syncStatus.SafeL2)
 }
 
 // NewBatchSubmitter initializes the BatchSubmitter, gathering any resources
 // that will be needed during operation.
-func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.Metricer) (*BatchSubmitter, error) {
+func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.Metricer, safeHead *eth.L2BlockRef) (*BatchSubmitter, error) {
 	balance, err := cfg.L1Client.BalanceAt(ctx, cfg.TxManager.From(), nil)
 	if err != nil {
 		return nil, err
@@ -117,12 +122,7 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger, m metrics.
 
 	cfg.metr = m
 
-	syncStatus, err := fetchSyncStatus(ctx, cfg.RollupNode, cfg.NetworkTimeout)
-	if err != nil {
-		return nil, err
-	}
-
-	state := NewChannelManager(l, m, cfg.Channel, cfg.Rollup, &syncStatus.SafeL2)
+	state := NewChannelManager(l, m, cfg.Channel, cfg.Rollup, safeHead)
 
 	return &BatchSubmitter{
 		Config: cfg,
