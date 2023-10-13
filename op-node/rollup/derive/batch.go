@@ -40,7 +40,9 @@ type Batch interface {
 }
 
 // BatchData is used to represent the typed encoding & decoding.
-// and wraps arount a single interface InnerBatchData.
+// and wraps around a single interface InnerBatchData.
+// Further fields such as cache can be added in the future, without embedding each type of InnerBatchData.
+// Similar design with op-geth's types.Transaction struct.
 type BatchData struct {
 	inner InnerBatchData
 }
