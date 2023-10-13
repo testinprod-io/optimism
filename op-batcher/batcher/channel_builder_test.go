@@ -762,7 +762,7 @@ func TestFramePublished(t *testing.T) {
 }
 
 func ChannelBuilder_PendingFrames_TotalFrames(t *testing.T, batchType uint) {
-	const tnf = 8
+	const tnf = 9
 	rng := rand.New(rand.NewSource(94572314))
 	require := require.New(t)
 	cfg := defaultTestChannelConfig
