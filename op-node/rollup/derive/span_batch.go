@@ -142,6 +142,10 @@ func (bp *spanBatchPrefix) decodePrefix(r *bytes.Reader) error {
 // decodeBlockCount parses data into bp.blockCount
 func (bp *spanBatchPayload) decodeBlockCount(r *bytes.Reader) error {
 	blockCount, err := binary.ReadUvarint(r)
+	// number of L2 block in span batch cannot be greater than MaxSpanBatchFieldSize
+	if blockCount > MaxSpanBatchFieldSize {
+		return ErrTooBigSpanBatchFieldSize
+	}
 	bp.blockCount = blockCount
 	if err != nil {
 		return fmt.Errorf("failed to read block count: %w", err)
@@ -158,6 +162,11 @@ func (bp *spanBatchPayload) decodeBlockTxCounts(r *bytes.Reader) error {
 		if err != nil {
 			return fmt.Errorf("failed to read block tx count: %w", err)
 		}
+		// number of txs in single L2 block cannot be greater than MaxSpanBatchFieldSize
+		// every tx will take at least single byte
+		if blockTxCount > MaxSpanBatchFieldSize {
+			return ErrTooBigSpanBatchFieldSize
+		}
 		blockTxCounts = append(blockTxCounts, blockTxCount)
 	}
 	bp.blockTxCounts = blockTxCounts
@@ -172,11 +181,16 @@ func (bp *spanBatchPayload) decodeTxs(r *bytes.Reader) error {
 	if bp.blockTxCounts == nil {
 		return errors.New("failed to read txs: blockTxCounts not set")
 	}
-	totalBlockTxCount := uint64(0)
+	totalBlockTxCount := big.NewInt(0)
 	for i := 0; i < len(bp.blockTxCounts); i++ {
-		totalBlockTxCount += bp.blockTxCounts[i]
+		totalBlockTxCount.Add(totalBlockTxCount, new(big.Int).SetUint64(bp.blockTxCounts[i]))
 	}
-	bp.txs.totalBlockTxCount = totalBlockTxCount
+	// total number of txs in span batch cannot be greater than MaxSpanBatchFieldSize
+	if totalBlockTxCount.Cmp(new(big.Int).SetUint64(MaxSpanBatchFieldSize)) > 0 {
+		return ErrTooBigSpanBatchFieldSize
+	}
+	// casting is well defined because MaxSpanBatchFieldSize <= math.MaxUint64
+	bp.txs.totalBlockTxCount = totalBlockTxCount.Uint64()
 	if err := bp.txs.decode(r); err != nil {
 		return err
 	}
