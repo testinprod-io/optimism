@@ -112,6 +112,9 @@ type EngineQueue struct {
 	// If the engine p2p sync is enabled, it can be different with unsafeHead. Otherwise, it must be same with unsafeHead.
 	engineSyncTarget eth.L2BlockRef
 
+	// backupUnsafeHead is used to restore unsafeHead and engineSyncTarget when batch contains invalid payload.
+	backupUnsafeHead eth.L2BlockRef
+
 	buildingOnto eth.L2BlockRef
 	buildingID   eth.PayloadID
 	buildingSafe bool
@@ -608,6 +611,10 @@ func (eq *EngineQueue) consolidateNextSafeAttributes(ctx context.Context) error 
 	if err := AttributesMatchBlock(eq.safeAttributes.attributes, eq.pendingSafeHead.Hash, payload, eq.log); err != nil {
 		eq.log.Warn("L2 reorg: existing unsafe block does not match derived attributes from L1", "err", err, "unsafe", eq.unsafeHead, "pending_safe", eq.pendingSafeHead, "safe", eq.safeHead)
 		// geth cannot wind back a chain without reorging to a new, previously non-canonical, block
+
+		// Tei's claim: we must initialize backupUnsafeHead here.
+		// However we do not have to backup when unsafeHead is not updated.
+
 		return eq.forceNextSafeAttributes(ctx)
 	}
 	ref, err := PayloadToBlockRef(payload, &eq.cfg.Genesis)
@@ -671,6 +678,19 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 			// suppress the error b/c we want to retry with the next batch from the batch queue
 			// If there is no valid batch the node will eventually force a deposit only block. If
 			// the deposit only block fails, this will return the critical error above.
+
+			// Restore unsafeHead, optimistically believing longest observed unsafe chain will become canonical.
+			if eq.backupUnsafeHead != (eth.L2BlockRef{}) {
+				eq.unsafeHead = eq.backupUnsafeHead
+				eq.engineSyncTarget = eq.backupUnsafeHead
+				eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
+				eq.metrics.RecordL2Ref("l2_engineSyncTarget", eq.engineSyncTarget)
+				eq.backupUnsafeHead = eth.L2BlockRef{}
+				// Reorg unsafe chain. Safe/Finalized chain will not be updated.
+				// This update assumes that execution engine stores previously reorged unsafe blocks.
+				// TODO: how can we ensure this?
+				eq.needForkchoiceUpdate = true
+			}
 			return nil
 
 		default:
@@ -728,7 +748,10 @@ func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPa
 	if err != nil {
 		return nil, BlockInsertPayloadErr, NewResetError(fmt.Errorf("failed to decode L2 block ref from payload: %w", err))
 	}
-
+	// Backup unsafeHead when new unsafe block is not built on original unsafe chain.
+	if eq.unsafeHead.Number >= ref.Number {
+		eq.backupUnsafeHead = eq.unsafeHead
+	}
 	eq.unsafeHead = ref
 	eq.engineSyncTarget = ref
 	eq.metrics.RecordL2Ref("l2_unsafe", ref)
