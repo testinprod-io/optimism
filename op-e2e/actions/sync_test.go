@@ -163,6 +163,147 @@ func TestUnsafeSync(gt *testing.T) {
 	}
 }
 
+func TestBackupUnsafe(gt *testing.T) {
+	t := NewDefaultTesting(gt)
+	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
+	minTs := hexutil.Uint64(0)
+	// Activate Delta hardfork
+	dp.DeployConfig.L2GenesisDeltaTimeOffset = &minTs
+	dp.DeployConfig.L2BlockTime = 2
+	sd := e2eutils.Setup(t, dp, defaultAlloc)
+	log := testlog.Logger(t, log.LvlInfo)
+	_, dp, miner, sequencer, seqEng, verifier, _, batcher := setupReorgTestActors(t, dp, sd, log)
+	l2Cl := seqEng.EthClient()
+	seqEngCl, err := sources.NewEngineClient(seqEng.RPCClient(), log, nil, sources.EngineClientDefaultConfig(sd.RollupCfg))
+	require.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(1234))
+	signer := types.LatestSigner(sd.L2Cfg.Config)
+
+	sequencer.ActL2PipelineFull(t)
+	verifier.ActL2PipelineFull(t)
+	addresses := e2eutils.CollectAddresses(sd, dp)
+	l2UserEnv := &BasicUserEnv[*L2Bindings]{
+		EthCl:          l2Cl,
+		Signer:         types.LatestSigner(sd.L2Cfg.Config),
+		AddressCorpora: addresses,
+		Bindings:       NewL2Bindings(t, l2Cl, seqEng.GethClient()),
+	}
+	alice := NewCrossLayerUser(log, dp.Secrets.Alice, rand.New(rand.NewSource(0xa57b)))
+	alice.L2.SetUserEnv(l2UserEnv)
+
+	// Create block A1 ~ A12
+	for i := 0; i < 12; i++ {
+		// Build a L2 block
+		sequencer.ActL2StartBlock(t)
+		sequencer.ActL2EndBlock(t)
+
+		// Notify new L2 block to verifier by unsafe gossip
+		seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
+		require.NoError(t, err)
+		verifier.ActL2UnsafeGossipReceive(seqHead)(t)
+	}
+
+	seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
+	require.NoError(t, err)
+	// eventually correct hash for A12
+	targetUnsafeHeadHash := seqHead.BlockHash
+
+	// only advance unsafe head to A12
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
+
+	// Handle unsafe payload
+	verifier.ActL2PipelineFull(t)
+	// only advance unsafe head toA 12
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
+	require.Equal(t, verifier.L2Safe().Number, uint64(0))
+
+	c, e := compressor.NewRatioCompressor(compressor.Config{
+		TargetFrameSize:  128_000,
+		TargetNumFrames:  1,
+		ApproxComprRatio: 1,
+	})
+	require.NoError(t, e)
+	spanBatchBuilder := derive.NewSpanBatchBuilder(sd.RollupCfg.Genesis.L2Time, sd.RollupCfg.L2ChainID)
+	// Create new span batch channel
+	channelOut, err := derive.NewChannelOut(derive.SpanBatchType, c, spanBatchBuilder)
+	require.NoError(t, err)
+
+	for i := uint64(1); i <= sequencer.L2Unsafe().Number; i++ {
+		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
+		require.NoError(t, err)
+		if i == 7 {
+			// Make block A7 as an different block
+			alice.L2.ActResetTxOpts(t)
+			alice.L2.ActSetTxToAddr(&dp.Addresses.Bob)(t)
+			validTx := alice.L2.InitTx(t)
+			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
+		}
+		if i == 8 {
+			// Make block A8 as an invalid block
+			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
+			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
+		}
+		// Add A1 ~ A12 into the channel
+		_, err = channelOut.AddBlock(block)
+		require.NoError(t, err)
+	}
+
+	// Submit span batch(A1, ...,  A7, invalid A8, A9, ..., A12)
+	batcher.l2ChannelOut = channelOut
+	batcher.ActL2ChannelClose(t)
+	batcher.ActL2BatchSubmit(t)
+
+	miner.ActL1StartBlock(12)(t)
+	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
+	miner.ActL1EndBlock(t)
+	miner.ActL1SafeNext(t)
+	miner.ActL1FinalizeNext(t)
+
+	// let sequencer process invalid span batch
+	sequencer.ActL1HeadSignal(t)
+	sequencer.ActL2PipelineFull(t)
+
+	// safe head cannot be advanced, while unsafe head not changed
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
+	require.Equal(t, sequencer.L2Unsafe().Hash, targetUnsafeHeadHash)
+
+	// let verifier process invalid span batch
+	verifier.ActL1HeadSignal(t)
+	verifier.ActL2PipelineFull(t)
+
+	// safe head cannot be advanced, while unsafe head not changed
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
+	require.Equal(t, verifier.L2Safe().Number, uint64(0))
+	require.Equal(t, verifier.L2Unsafe().Hash, targetUnsafeHeadHash)
+
+	// Build and submit a span batch with A1 ~ A12
+	batcher.ActSubmitAll(t)
+	miner.ActL1StartBlock(12)(t)
+	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
+	miner.ActL1EndBlock(t)
+
+	// let sequencer process valid span batch
+	sequencer.ActL1HeadSignal(t)
+	sequencer.ActL2PipelineFull(t)
+
+	// safe/unsafe head must be advanced
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Safe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Safe().Hash, targetUnsafeHeadHash)
+
+	// let verifier process valid span batch
+	verifier.ActL1HeadSignal(t)
+	verifier.ActL2PipelineFull(t)
+
+	// safe/unsafe head must be advanced
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
+	require.Equal(t, verifier.L2Safe().Number, uint64(12))
+	require.Equal(t, verifier.L2Safe().Hash, targetUnsafeHeadHash)
+}
+
 func TestEngineP2PSync(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)

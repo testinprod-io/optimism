@@ -211,9 +211,8 @@ func (s *BasicUser[B]) LastTxReceipt(t Testing) *types.Receipt {
 	return receipt
 }
 
-// ActMakeTx makes a tx with the predetermined contents (see randomization and other actions)
-// and sends it to the tx pool
-func (s *BasicUser[B]) ActMakeTx(t Testing) {
+// TODO: add comment
+func (s *BasicUser[B]) InitTx(t Testing) *types.Transaction {
 	gas, err := s.env.EthCl.EstimateGas(t.Ctx(), ethereum.CallMsg{
 		From:      s.address,
 		To:        s.txToAddr,
@@ -233,7 +232,14 @@ func (s *BasicUser[B]) ActMakeTx(t Testing) {
 		Gas:       gas,
 		Data:      s.txCallData,
 	})
-	err = s.env.EthCl.SendTransaction(t.Ctx(), tx)
+	return tx
+}
+
+// ActMakeTx makes a tx with the predetermined contents (see randomization and other actions)
+// and sends it to the tx pool
+func (s *BasicUser[B]) ActMakeTx(t Testing) {
+	tx := s.InitTx(t)
+	err := s.env.EthCl.SendTransaction(t.Ctx(), tx)
 	require.NoError(t, err, "must send tx")
 	s.lastTxHash = tx.Hash()
 	// reset the calldata
