@@ -685,6 +685,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 
 			// Restore unsafeHead, optimistically believing longest observed unsafe chain will become canonical.
 			if eq.backupUnsafeHead != (eth.L2BlockRef{}) {
+				eq.log.Info("restoring unsafe head", "backupUnsafe", eq.backupUnsafeHead.ID(), "unsafe", eq.unsafeHead.ID())
 				eq.unsafeHead = eq.backupUnsafeHead
 				eq.engineSyncTarget = eq.backupUnsafeHead
 				eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
