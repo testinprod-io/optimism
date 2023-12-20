@@ -234,7 +234,7 @@ func TestBackupUnsafe(gt *testing.T) {
 		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
 		require.NoError(t, err)
 		if i == 7 {
-			// Make block A7 as an different block
+			// Make block A7 as an valid block different with unsafe block
 			// Alice makes a L2 tx
 			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
 			require.NoError(t, err)
@@ -267,8 +267,6 @@ func TestBackupUnsafe(gt *testing.T) {
 	miner.ActL1StartBlock(12)(t)
 	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
 	miner.ActL1EndBlock(t)
-	miner.ActL1SafeNext(t)
-	miner.ActL1FinalizeNext(t)
 
 	// let sequencer process invalid span batch
 	sequencer.ActL1HeadSignal(t)
