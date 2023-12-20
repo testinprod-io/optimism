@@ -182,15 +182,6 @@ func TestBackupUnsafe(gt *testing.T) {
 
 	sequencer.ActL2PipelineFull(t)
 	verifier.ActL2PipelineFull(t)
-	addresses := e2eutils.CollectAddresses(sd, dp)
-	l2UserEnv := &BasicUserEnv[*L2Bindings]{
-		EthCl:          l2Cl,
-		Signer:         types.LatestSigner(sd.L2Cfg.Config),
-		AddressCorpora: addresses,
-		Bindings:       NewL2Bindings(t, l2Cl, seqEng.GethClient()),
-	}
-	alice := NewCrossLayerUser(log, dp.Secrets.Alice, rand.New(rand.NewSource(0xa57b)))
-	alice.L2.SetUserEnv(l2UserEnv)
 
 	// Create block A1 ~ A12
 	for i := 0; i < 12; i++ {
