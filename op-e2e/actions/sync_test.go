@@ -261,12 +261,37 @@ func TestBackupUnsafe(gt *testing.T) {
 
 	// let sequencer process invalid span batch
 	sequencer.ActL1HeadSignal(t)
-	sequencer.ActL2PipelineFull(t)
-
-	// safe head cannot be advanced, while unsafe head not changed
+	// before stepping, make sure backupUnsafe is empty
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
+	// pendingSafe must not be advanced as well
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(0))
+	// process A1, A2
+	for i := 0; i < 4; i++ {
+		sequencer.ActL2PipelineStep(t)
+	}
+	// A1 is valid original block so pendingSafe is advanced
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(1))
+	sequencer.ActL2PipelineStep(t)
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
-	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
+	sequencer.ActL2PipelineStep(t)
+	// A2 is valid different block, triggering unsafe block reorg + consolidation
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
+	// A2 is valid different block, triggering unsafe block backup
+	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
+	// A1 is valid different block so pendingSafe is advanced
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
+	// try to process invalid leftovers: A3, A4, A5
+	sequencer.ActL2PipelineFull(t)
+	// backupUnsafe is used because A3 is invalid. Check backupUnsafe is empty after used
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
+
+	// check pendingSafe is reset
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(0))
+	// check backupUnsafe is applied
 	require.Equal(t, sequencer.L2Unsafe().Hash, targetUnsafeHeadHash)
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
+	// safe head cannot be advanced because batch contained invalid blocks
+	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
 
 	// let verifier process invalid span batch
 	verifier.ActL1HeadSignal(t)
@@ -296,7 +321,7 @@ func TestBackupUnsafe(gt *testing.T) {
 	verifier.ActL1HeadSignal(t)
 	verifier.ActL2PipelineFull(t)
 
-	// safe/unsafe head must be advanced
+	// safe and unsafe head must be advanced
 	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Hash, targetUnsafeHeadHash)
