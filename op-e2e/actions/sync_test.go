@@ -183,8 +183,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	sequencer.ActL2PipelineFull(t)
 	verifier.ActL2PipelineFull(t)
 
-	// Create block A1 ~ A12
-	for i := 0; i < 12; i++ {
+	// Create block A1 ~ A5
+	for i := 0; i < 5; i++ {
 		// Build a L2 block
 		sequencer.ActL2StartBlock(t)
 		sequencer.ActL2EndBlock(t)
@@ -197,17 +197,17 @@ func TestBackupUnsafe(gt *testing.T) {
 
 	seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
 	require.NoError(t, err)
-	// eventually correct hash for A12
+	// eventually correct hash for A5
 	targetUnsafeHeadHash := seqHead.BlockHash
 
-	// only advance unsafe head to A12
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
+	// only advance unsafe head to A5
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
 	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
 
 	// Handle unsafe payload
 	verifier.ActL2PipelineFull(t)
-	// only advance unsafe head toA 12
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
+	// only advance unsafe head to A5
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Number, uint64(0))
 
 	c, e := compressor.NewRatioCompressor(compressor.Config{
@@ -224,8 +224,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	for i := uint64(1); i <= sequencer.L2Unsafe().Number; i++ {
 		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
 		require.NoError(t, err)
-		if i == 7 {
-			// Make block A7 as an valid block different with unsafe block
+		if i == 2 {
+			// Make block A2 as an valid block different with unsafe block
 			// Alice makes a L2 tx
 			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
 			require.NoError(t, err)
@@ -240,17 +240,17 @@ func TestBackupUnsafe(gt *testing.T) {
 			})
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
 		}
-		if i == 8 {
-			// Make block A8 as an invalid block
+		if i == 3 {
+			// Make block A3 as an invalid block
 			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
 		}
-		// Add A1 ~ A12 into the channel
+		// Add A1 ~ A5 into the channel
 		_, err = channelOut.AddBlock(block)
 		require.NoError(t, err)
 	}
 
-	// Submit span batch(A1, ...,  A7, invalid A8, A9, ..., A12)
+	// Submit span batch(A1, A2, invalid A3, A4, A5)
 	batcher.l2ChannelOut = channelOut
 	batcher.ActL2ChannelClose(t)
 	batcher.ActL2BatchSubmit(t)
@@ -264,7 +264,7 @@ func TestBackupUnsafe(gt *testing.T) {
 	sequencer.ActL2PipelineFull(t)
 
 	// safe head cannot be advanced, while unsafe head not changed
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
 	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
 	require.Equal(t, sequencer.L2Unsafe().Hash, targetUnsafeHeadHash)
 
@@ -273,7 +273,7 @@ func TestBackupUnsafe(gt *testing.T) {
 	verifier.ActL2PipelineFull(t)
 
 	// safe head cannot be advanced, while unsafe head not changed
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Number, uint64(0))
 	require.Equal(t, verifier.L2Unsafe().Hash, targetUnsafeHeadHash)
 
@@ -288,8 +288,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	sequencer.ActL2PipelineFull(t)
 
 	// safe/unsafe head must be advanced
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(12))
-	require.Equal(t, sequencer.L2Safe().Number, uint64(12))
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
+	require.Equal(t, sequencer.L2Safe().Number, uint64(5))
 	require.Equal(t, sequencer.L2Safe().Hash, targetUnsafeHeadHash)
 
 	// let verifier process valid span batch
@@ -297,8 +297,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	verifier.ActL2PipelineFull(t)
 
 	// safe/unsafe head must be advanced
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(12))
-	require.Equal(t, verifier.L2Safe().Number, uint64(12))
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
+	require.Equal(t, verifier.L2Safe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Hash, targetUnsafeHeadHash)
 }
 
