@@ -265,20 +265,21 @@ func TestBackupUnsafe(gt *testing.T) {
 	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
 	// pendingSafe must not be advanced as well
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(0))
-	// process A1, A2
+	// Preheat engine queue and consume A1 from batch
 	for i := 0; i < 4; i++ {
 		sequencer.ActL2PipelineStep(t)
 	}
 	// A1 is valid original block so pendingSafe is advanced
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(1))
-	sequencer.ActL2PipelineStep(t)
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
+	// Process A2
 	sequencer.ActL2PipelineStep(t)
-	// A2 is valid different block, triggering unsafe block reorg + consolidation
+	sequencer.ActL2PipelineStep(t)
+	// A2 is valid different block, triggering unsafe block reorg
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
 	// A2 is valid different block, triggering unsafe block backup
 	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
-	// A1 is valid different block so pendingSafe is advanced
+	// A2 is valid different block, so pendingSafe is advanced
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
 	// try to process invalid leftovers: A3, A4, A5
 	sequencer.ActL2PipelineFull(t)
