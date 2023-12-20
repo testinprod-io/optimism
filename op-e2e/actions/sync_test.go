@@ -275,7 +275,7 @@ func TestBackupUnsafe(gt *testing.T) {
 	// Process A2
 	sequencer.ActL2PipelineStep(t)
 	sequencer.ActL2PipelineStep(t)
-	// A2 is valid different block, triggering unsafe block reorg
+	// A2 is valid different block, triggering unsafe chain reorg
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
 	// A2 is valid different block, triggering unsafe block backup
 	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
