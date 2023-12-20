@@ -151,6 +151,10 @@ func (s *L2Verifier) EngineSyncTarget() eth.L2BlockRef {
 	return s.derivation.EngineSyncTarget()
 }
 
+func (s *L2Verifier) L2BackupUnsafe() eth.L2BlockRef {
+	return s.derivation.BackupUnsafeL2Head()
+}
+
 func (s *L2Verifier) SyncStatus() *eth.SyncStatus {
 	return &eth.SyncStatus{
 		CurrentL1:          s.derivation.Origin(),

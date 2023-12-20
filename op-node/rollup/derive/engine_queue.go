@@ -251,6 +251,10 @@ func (eq *EngineQueue) EngineSyncTarget() eth.L2BlockRef {
 	return eq.engineSyncTarget
 }
 
+func (eq *EngineQueue) BackupUnsafeL2Head() eth.L2BlockRef {
+	return eq.backupUnsafeHead
+}
+
 // Determine if the engine is syncing to the target block
 func (eq *EngineQueue) isEngineSyncing() bool {
 	return eq.unsafeHead.Hash != eq.engineSyncTarget.Hash

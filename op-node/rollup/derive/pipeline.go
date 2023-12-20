@@ -54,6 +54,7 @@ type EngineQueueStage interface {
 	SafeL2Head() eth.L2BlockRef
 	PendingSafeL2Head() eth.L2BlockRef
 	EngineSyncTarget() eth.L2BlockRef
+	BackupUnsafeL2Head() eth.L2BlockRef
 	Origin() eth.L1BlockRef
 	SystemConfig() eth.SystemConfig
 	SetUnsafeHead(head eth.L2BlockRef)
@@ -161,6 +162,10 @@ func (dp *DerivationPipeline) UnsafeL2Head() eth.L2BlockRef {
 
 func (dp *DerivationPipeline) EngineSyncTarget() eth.L2BlockRef {
 	return dp.eng.EngineSyncTarget()
+}
+
+func (dp *DerivationPipeline) BackupUnsafeL2Head() eth.L2BlockRef {
+	return dp.eng.BackupUnsafeL2Head()
 }
 
 func (dp *DerivationPipeline) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {
