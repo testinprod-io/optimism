@@ -235,9 +235,18 @@ func TestBackupUnsafe(gt *testing.T) {
 		require.NoError(t, err)
 		if i == 7 {
 			// Make block A7 as an different block
-			alice.L2.ActResetTxOpts(t)
-			alice.L2.ActSetTxToAddr(&dp.Addresses.Bob)(t)
-			validTx := alice.L2.InitTx(t)
+			// Alice makes a L2 tx
+			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
+			require.NoError(t, err)
+			validTx := types.MustSignNewTx(dp.Secrets.Alice, signer, &types.DynamicFeeTx{
+				ChainID:   sd.L2Cfg.Config.ChainID,
+				Nonce:     n,
+				GasTipCap: big.NewInt(2 * params.GWei),
+				GasFeeCap: new(big.Int).Add(miner.l1Chain.CurrentBlock().BaseFee, big.NewInt(2*params.GWei)),
+				Gas:       params.TxGas,
+				To:        &dp.Addresses.Bob,
+				Value:     e2eutils.Ether(2),
+			})
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
 		}
 		if i == 8 {
