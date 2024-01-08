@@ -124,6 +124,13 @@ type EngineQueue struct {
 	// This update may repeat if the engine returns a temporary error.
 	needForkchoiceUpdate bool
 
+	// Track when the rollup node changes the forkchoice to restore previous
+	// longest unsafe chain. e.g. Unsafe Reorg caused by Invalid span batch.
+	// This update does not repeat even if the engine returns a temporary error
+	// because engine may forgot backupUnsafeHead or backupUnsafeHead is not part
+	// of the chain.
+	checkBackupUnsafeReorg bool
+
 	// finalizedL1 is the currently perceived finalized L1 block.
 	// This may be ahead of the current traversed origin when syncing.
 	finalizedL1 eth.L1BlockRef
@@ -261,6 +268,12 @@ func (eq *EngineQueue) isEngineSyncing() bool {
 }
 
 func (eq *EngineQueue) Step(ctx context.Context) error {
+	if eq.checkBackupUnsafeReorg {
+		if err := eq.tryBackupUnsafeReorg(ctx); err != nil {
+			eq.log.Warn("failed to restore unsafe head using backupUnsafeHead", "error", err)
+		}
+		return nil
+	}
 	if eq.needForkchoiceUpdate {
 		return eq.tryUpdateEngine(ctx)
 	}
@@ -679,15 +692,8 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 			// If there is no valid batch the node will eventually force a deposit only block. If
 			// the deposit only block fails, this will return the critical error above.
 
-			// Optimistically believing longest observed unsafe chain will become canonical.
-			shouldUnsafeReorg := eq.backupUnsafeHead != (eth.L2BlockRef{}) && eq.backupUnsafeHead.Number > eq.unsafeHead.Number
-			if shouldUnsafeReorg {
-				if err := eq.tryReorgUnsafeHeadUsingBackup(ctx); err != nil {
-					eq.log.Warn("failed to restore unsafe head using backupUnsafeHead: %w", err)
-				}
-			}
-			// Reset backupUnsafeHead to avoid multiple usage.
-			eq.backupUnsafeHead = eth.L2BlockRef{}
+			// Compare backupUnsafeHead and unsafeHead. Try to select longest unsafe chain.
+			eq.checkBackupUnsafeReorg = true
 
 			return nil
 		default:
@@ -700,9 +706,20 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 	return nil
 }
 
-// tryReorgUnsafeHeadUsingBackup tries to reorg unsafe head to backupUnsafeHead.
-func (eq *EngineQueue) tryReorgUnsafeHeadUsingBackup(ctx context.Context) error {
+// tryBackupUnsafeReorg tries to reorg unsafe head to backupUnsafeHead.
+func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
+	defer func() {
+		// Reset backupUnsafeHead to avoid multiple usage.
+		eq.backupUnsafeHead = eth.L2BlockRef{}
+		// Only try once because execution engine may forgot backupUnsafeHead
+		// or backupUnsafeHead is not part of the chain.
+		eq.checkBackupUnsafeReorg = false
+	}()
 	if eq.backupUnsafeHead == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
+		return nil
+	}
+	if eq.backupUnsafeHead.Number <= eq.unsafeHead.Number {
+		eq.log.Info("current safe head is already the longest unsafe chain", "backupUnsafe", eq.backupUnsafeHead.ID(), "unsafe", eq.unsafeHead.ID())
 		return nil
 	}
 	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
@@ -881,6 +898,7 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	eq.finalized = finalized
 	eq.resetBuildingState()
 	eq.needForkchoiceUpdate = true
+	eq.checkBackupUnsafeReorg = false
 	eq.finalityData = eq.finalityData[:0]
 	// note: finalizedL1 and triedFinalizeAt do not reset, since these do not change between reorgs.
 	// note: we do not clear the unsafe payloads queue; if the payloads are not applicable anymore the parent hash checks will clear out the old payloads.

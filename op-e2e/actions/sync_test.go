@@ -537,6 +537,153 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 }
 
+func TestBackupUnsafeReorgFailure(gt *testing.T) {
+	t := NewDefaultTesting(gt)
+	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
+	minTs := hexutil.Uint64(0)
+	// Activate Delta hardfork
+	dp.DeployConfig.L2GenesisDeltaTimeOffset = &minTs
+	dp.DeployConfig.L2BlockTime = 2
+	sd := e2eutils.Setup(t, dp, defaultAlloc)
+	log := testlog.Logger(t, log.LvlInfo)
+	_, dp, miner, sequencer, seqEng, verifier, _, batcher := setupReorgTestActors(t, dp, sd, log)
+	l2Cl := seqEng.EthClient()
+	seqEngCl, err := sources.NewEngineClient(seqEng.RPCClient(), log, nil, sources.EngineClientDefaultConfig(sd.RollupCfg))
+	require.NoError(t, err)
+
+	rng := rand.New(rand.NewSource(1234))
+	signer := types.LatestSigner(sd.L2Cfg.Config)
+
+	sequencer.ActL2PipelineFull(t)
+	verifier.ActL2PipelineFull(t)
+
+	// Create block A1 ~ A5
+	for i := 0; i < 5; i++ {
+		// Build a L2 block
+		sequencer.ActL2StartBlock(t)
+		sequencer.ActL2EndBlock(t)
+
+		// Notify new L2 block to verifier by unsafe gossip
+		seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
+		require.NoError(t, err)
+		verifier.ActL2UnsafeGossipReceive(seqHead)(t)
+	}
+
+	seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
+	require.NoError(t, err)
+	// eventually correct hash for A5
+	targetUnsafeHeadHash := seqHead.BlockHash
+
+	// only advance unsafe head to A5
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
+	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
+
+	// Handle unsafe payload
+	verifier.ActL2PipelineFull(t)
+	// only advance unsafe head to A5
+	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
+	require.Equal(t, verifier.L2Safe().Number, uint64(0))
+
+	c, e := compressor.NewRatioCompressor(compressor.Config{
+		TargetFrameSize:  128_000,
+		TargetNumFrames:  1,
+		ApproxComprRatio: 1,
+	})
+	require.NoError(t, e)
+	spanBatchBuilder := derive.NewSpanBatchBuilder(sd.RollupCfg.Genesis.L2Time, sd.RollupCfg.L2ChainID)
+	// Create new span batch channel
+	channelOut, err := derive.NewChannelOut(derive.SpanBatchType, c, spanBatchBuilder)
+	require.NoError(t, err)
+
+	for i := uint64(1); i <= sequencer.L2Unsafe().Number; i++ {
+		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
+		require.NoError(t, err)
+		if i == 2 {
+			// Make block A2 as an valid block different with unsafe block
+			// Alice makes a L2 tx
+			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
+			require.NoError(t, err)
+			validTx := types.MustSignNewTx(dp.Secrets.Alice, signer, &types.DynamicFeeTx{
+				ChainID:   sd.L2Cfg.Config.ChainID,
+				Nonce:     n,
+				GasTipCap: big.NewInt(2 * params.GWei),
+				GasFeeCap: new(big.Int).Add(miner.l1Chain.CurrentBlock().BaseFee, big.NewInt(2*params.GWei)),
+				Gas:       params.TxGas,
+				To:        &dp.Addresses.Bob,
+				Value:     e2eutils.Ether(2),
+			})
+			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
+		}
+		if i == 3 {
+			// Make block A3 as an invalid block
+			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
+			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
+		}
+		// Add A1 ~ A5 into the channel
+		_, err = channelOut.AddBlock(block)
+		require.NoError(t, err)
+	}
+
+	// Submit span batch(A1, A2, invalid A3, A4, A5)
+	batcher.l2ChannelOut = channelOut
+	batcher.ActL2ChannelClose(t)
+	batcher.ActL2BatchSubmit(t)
+
+	miner.ActL1StartBlock(12)(t)
+	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
+	miner.ActL1EndBlock(t)
+
+	// let sequencer process invalid span batch
+	sequencer.ActL1HeadSignal(t)
+	// before stepping, make sure backupUnsafe is empty
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
+	// pendingSafe must not be advanced as well
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(0))
+	// Preheat engine queue and consume A1 from batch
+	for i := 0; i < 4; i++ {
+		sequencer.ActL2PipelineStep(t)
+	}
+	// A1 is valid original block so pendingSafe is advanced
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(1))
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
+	// backupUnsafe is still empty
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
+
+	// Process A2
+	sequencer.ActL2PipelineStep(t)
+	sequencer.ActL2PipelineStep(t)
+	// A2 is valid different block, triggering unsafe chain reorg
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
+	// A2 is valid different block, triggering unsafe block backup
+	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
+	// A2 is valid different block, so pendingSafe is advanced
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
+
+	// A3 is invalid block
+	// NextAttributes is called
+	sequencer.ActL2PipelineStep(t)
+	// forceNextSafeAttributes is called
+	sequencer.ActL2PipelineStep(t)
+	// mock forkChoiceUpdate failure while restoring longest unsafe chain using backup.
+	seqEng.ActL2RPCFail(t)
+	// tryBackupUnsafeReorg is called
+	sequencer.ActL2PipelineStep(t)
+
+	// try to process invalid leftovers: A4, A5
+	sequencer.ActL2PipelineFull(t)
+
+	// backupUnsafe is not used because forkChoiceUpdate returned an error.
+	// Check backupUnsafe is emptied.
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
+
+	// check pendingSafe is reset
+	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(0))
+	// unsafe head is not restored due to forkchoiceUpdate error in tryBackupUnsafeReorg
+	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
+	// safe head cannot be advanced because batch contained invalid blocks
+	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
+}
+
 func TestEngineP2PSync(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
