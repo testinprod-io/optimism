@@ -686,6 +686,9 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 					eq.log.Warn("failed to restore unsafe head using backupUnsafeHead: %w", err)
 				}
 			}
+			// Reset backupUnsafeHead to avoid multiple usage.
+			eq.backupUnsafeHead = eth.L2BlockRef{}
+
 			return nil
 		default:
 			return NewCriticalError(fmt.Errorf("unknown InsertHeadBlock error type %d: %w", errType, err))
@@ -702,8 +705,6 @@ func (eq *EngineQueue) tryReorgUnsafeHeadUsingBackup(ctx context.Context) error 
 	if eq.backupUnsafeHead == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
 		return nil
 	}
-	// Defer resetting backupUnsafeHead.
-	defer func() { eq.backupUnsafeHead = eth.L2BlockRef{} }()
 	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
 	eq.log.Warn("trying to restore unsafe head", "backupUnsafe", eq.backupUnsafeHead.ID(), "unsafe", eq.unsafeHead.ID())
 	fc := eth.ForkchoiceState{
