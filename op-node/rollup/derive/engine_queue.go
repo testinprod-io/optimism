@@ -726,8 +726,9 @@ func (eq *EngineQueue) tryReorgUnsafeHeadUsingBackup(ctx context.Context) error 
 		eq.logSyncProgress("unsafe head reorg using backup")
 	} else {
 		// Execution engine could not reorg back to previous unsafe head.
-		// If INVALID, backupUnsafeHead is forgot, or reorg failed.
-		// If SYNCING, backupUnsafeHead was seen before, but not part of the chain.
+		// If ExecutePayloadStatus is
+		//  - INVALID, backupUnsafeHead is forgot, or reorg failed.
+		//  - SYNCING, backupUnsafeHead was seen before, but not part of the chain.
 		return eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)
 	}
 	return nil
