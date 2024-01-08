@@ -125,7 +125,7 @@ type EngineQueue struct {
 	needForkchoiceUpdate bool
 
 	// Track when the rollup node changes the forkchoice to restore previous
-	// longest unsafe chain. e.g. Unsafe Reorg caused by Invalid span batch.
+	// longest known unsafe chain. e.g. Unsafe Reorg caused by Invalid span batch.
 	// This update does not repeat even if the engine returns a temporary error
 	// because engine may forgot backupUnsafeHead or backupUnsafeHead is not part
 	// of the chain.
@@ -270,7 +270,7 @@ func (eq *EngineQueue) isEngineSyncing() bool {
 func (eq *EngineQueue) Step(ctx context.Context) error {
 	if eq.checkBackupUnsafeReorg {
 		if err := eq.tryBackupUnsafeReorg(ctx); err != nil {
-			eq.log.Warn("failed to restore unsafe head using backupUnsafeHead", "error", err)
+			eq.log.Warn("failed to restore unsafe head using backupUnsafeHead", "err", err)
 		}
 		return nil
 	}
@@ -692,7 +692,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 			// If there is no valid batch the node will eventually force a deposit only block. If
 			// the deposit only block fails, this will return the critical error above.
 
-			// Compare backupUnsafeHead and unsafeHead. Try to select longest unsafe chain.
+			// Compare backupUnsafeHead and unsafeHead. Try to select longest known unsafe chain.
 			eq.checkBackupUnsafeReorg = true
 
 			return nil
