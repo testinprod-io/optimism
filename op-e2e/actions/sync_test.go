@@ -283,7 +283,7 @@ func TestBackupUnsafe(gt *testing.T) {
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
 	// try to process invalid leftovers: A3, A4, A5
 	sequencer.ActL2PipelineFull(t)
-	// backupUnsafe is used because A3 is invalid. Check backupUnsafe is empty after used
+	// backupUnsafe is used because A3 is invalid. Check backupUnsafe is emptied after used
 	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
 
 	// check pendingSafe is reset
@@ -317,6 +317,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(5))
 	require.Equal(t, sequencer.L2Safe().Number, uint64(5))
 	require.Equal(t, sequencer.L2Safe().Hash, targetUnsafeHeadHash)
+	// check backupUnsafe is emptied after consolidation
+	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
 
 	// let verifier process valid span batch
 	verifier.ActL1HeadSignal(t)
@@ -326,6 +328,8 @@ func TestBackupUnsafe(gt *testing.T) {
 	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Number, uint64(5))
 	require.Equal(t, verifier.L2Safe().Hash, targetUnsafeHeadHash)
+	// check backupUnsafe is emptied after consolidation
+	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 }
 
 func TestEngineP2PSync(gt *testing.T) {
