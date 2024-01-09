@@ -708,16 +708,14 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 
 // tryBackupUnsafeReorg tries to reorg(restore) unsafe head to backupUnsafeHead.
 func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
-	defer func() {
-		// Reset backupUnsafeHead to avoid multiple usage.
-		eq.backupUnsafeHead = eth.L2BlockRef{}
-		// Only try once because execution engine may forgot backupUnsafeHead
-		// or backupUnsafeHead is not part of the chain.
-		eq.checkBackupUnsafeReorg = false
-	}()
+	// Only try once because execution engine may forgot backupUnsafeHead
+	// or backupUnsafeHead is not part of the chain.
+	// Exception: Retry when forkChoiceUpdate returns non-input error.
+	eq.checkBackupUnsafeReorg = false
 	// This method must be never called when EL sync. If EL sync is in progress, early return.
 	if eq.unsafeHead.Hash != eq.engineSyncTarget.Hash {
 		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing.")
+		eq.backupUnsafeHead = eth.L2BlockRef{}
 		return nil
 	}
 	if eq.backupUnsafeHead == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
@@ -725,6 +723,7 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	}
 	if eq.backupUnsafeHead.Number <= eq.unsafeHead.Number {
 		eq.log.Info("current safe head is already the longest unsafe chain", "backupUnsafe", eq.backupUnsafeHead.ID(), "unsafe", eq.unsafeHead.ID())
+		eq.backupUnsafeHead = eth.L2BlockRef{}
 		return nil
 	}
 	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
@@ -736,7 +735,21 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	}
 	fcRes, err := eq.engine.ForkchoiceUpdate(ctx, &fc, nil)
 	if err != nil {
-		return fmt.Errorf("failed to make the backupUnsafeHead as L2 block canonical via forkchoice: %w", err)
+		var inputErr eth.InputError
+		if errors.As(err, &inputErr) {
+			eq.backupUnsafeHead = eth.L2BlockRef{}
+			switch inputErr.Code {
+			case eth.InvalidForkchoiceState:
+				return fmt.Errorf("forkchoice update was inconsistent with engine, need reset to resolve: %w", inputErr.Unwrap())
+			default:
+				return fmt.Errorf("unexpected error code in forkchoice-updated response: %w", err)
+			}
+		} else {
+			// Retry when forkChoiceUpdate returns non-input error.
+			// Do not reset backupUnsafeHead because it will be used again.
+			eq.checkBackupUnsafeReorg = true
+			return fmt.Errorf("failed to sync forkchoice with engine: %w", err)
+		}
 	}
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		// Execution engine accepted the reorg.
@@ -746,15 +759,13 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 		eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
 		eq.metrics.RecordL2Ref("l2_engineSyncTarget", eq.engineSyncTarget)
 		eq.logSyncProgress("unsafe head reorg using backup")
-	} else {
-		// Execution engine could not reorg back to previous unsafe head.
-		// If ExecutePayloadStatus is
-		//  - INVALID, backupUnsafeHead is forgot, or reorg failed.
-		//  - SYNCING, backupUnsafeHead was seen before, but not part of the chain.
-		return fmt.Errorf("cannot restore unsafe chain using backupUnsafe: err: %w",
-			eth.ForkchoiceUpdateErr(fcRes.PayloadStatus))
+		eq.backupUnsafeHead = eth.L2BlockRef{}
+		return nil
 	}
-	return nil
+	eq.backupUnsafeHead = eth.L2BlockRef{}
+	// Execution engine could not reorg back to previous unsafe head.
+	return fmt.Errorf("cannot restore unsafe chain using backupUnsafe: err: %w",
+		eth.ForkchoiceUpdateErr(fcRes.PayloadStatus))
 }
 
 func (eq *EngineQueue) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {
