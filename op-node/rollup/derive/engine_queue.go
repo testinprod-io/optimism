@@ -131,10 +131,6 @@ type EngineQueue struct {
 
 	ec LocalEngineControl
 
-	buildingOnto eth.L2BlockRef
-	buildingID   eth.PayloadID
-	buildingSafe bool
-
 	// Track when the rollup node changes the forkchoice without engine action,
 	// e.g. on a reset after a reorg, or after consolidating a block.
 	// This update may repeat if the engine returns a temporary error.
