@@ -226,7 +226,7 @@ func TestBackupUnsafe(gt *testing.T) {
 		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
 		require.NoError(t, err)
 		if i == 2 {
-			// Make block A2 as an valid block different with unsafe block
+			// Make block B2 as an valid block different with unsafe block
 			// Alice makes a L2 tx
 			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
 			require.NoError(t, err)
@@ -242,16 +242,16 @@ func TestBackupUnsafe(gt *testing.T) {
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
 		}
 		if i == 3 {
-			// Make block A3 as an invalid block
+			// Make block B3 as an invalid block
 			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
 		}
-		// Add A1 ~ A5 into the channel
+		// Add A1, B2, B3, B4, B5 into the channel
 		_, err = channelOut.AddBlock(block)
 		require.NoError(t, err)
 	}
 
-	// Submit span batch(A1, A2, invalid A3, A4, A5)
+	// Submit span batch(A1, B2, invalid B3, B4, B5)
 	batcher.l2ChannelOut = channelOut
 	batcher.ActL2ChannelClose(t)
 	batcher.ActL2BatchSubmit(t)
@@ -276,16 +276,16 @@ func TestBackupUnsafe(gt *testing.T) {
 	// backupUnsafe is still empty
 	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
 
-	// Process A2
+	// Process B2
 	sequencer.ActL2PipelineStep(t)
 	sequencer.ActL2PipelineStep(t)
-	// A2 is valid different block, triggering unsafe chain reorg
+	// B2 is valid different block, triggering unsafe chain reorg
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
-	// A2 is valid different block, triggering unsafe block backup
+	// B2 is valid different block, triggering unsafe block backup
 	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
-	// A2 is valid different block, so pendingSafe is advanced
+	// B2 is valid different block, so pendingSafe is advanced
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
-	// try to process invalid leftovers: A3, A4, A5
+	// try to process invalid leftovers: B3, B4, B5
 	sequencer.ActL2PipelineFull(t)
 	// backupUnsafe is used because A3 is invalid. Check backupUnsafe is emptied after used
 	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
@@ -407,7 +407,7 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
 		require.NoError(t, err)
 		if 2 <= i && i <= sequencer.L2Unsafe().Number {
-			// Make block A2 ~ A6 as an valid block different with unsafe block
+			// Make block B2 ~ B6 as an valid block different with unsafe block
 			// Alice makes a L2 tx
 			validTx := types.MustSignNewTx(dp.Secrets.Alice, signer, &types.DynamicFeeTx{
 				ChainID:   sd.L2Cfg.Config.ChainID,
@@ -423,16 +423,16 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 			n += 1
 		}
 		if i == sequencer.L2Unsafe().Number {
-			// Make block A7 as an invalid block
+			// Make block B7 as an invalid block
 			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
 		}
-		// Add A1 ~ A7 into the channel
+		// Add A1, B2, B3, B4, B5, B6, B7 into the channel
 		_, err = channelOut.AddBlock(block)
 		require.NoError(t, err)
 	}
 
-	// Submit span batch(A1, A2, A3, A4, A5, A6, invalid A7)
+	// Submit span batch(A1, B2, B3, B4, B5, B6, invalid B7)
 	batcher.l2ChannelOut = channelOut
 	batcher.ActL2ChannelClose(t)
 	batcher.ActL2BatchSubmit(t)
@@ -458,17 +458,17 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 	// backupUnsafe is still empty
 	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 
-	// Process A2 - A6
+	// Process B2 ~ B6
 	for i := 2; i <= 6; i++ {
 		verifier.ActL2PipelineStep(t)
 		verifier.ActL2PipelineStep(t)
-		// Ai is valid different block, triggering unsafe chain reorg
+		// Bi is valid different block, triggering unsafe chain reorg
 		require.Equal(t, verifier.L2Unsafe().Number, uint64(i))
 		if i == 2 {
-			// A2 is valid different block, triggering unsafe block backup
+			// B2 is valid different block, triggering unsafe block backup
 			require.Equal(t, targetUnsafeHeadHash, verifier.L2BackupUnsafe().Hash)
 		}
-		// Ai is valid different block, so pendingSafe is advanced
+		// Bi is valid different block, so pendingSafe is advanced
 		require.Equal(t, verifier.L2PendingSafe().Number, uint64(i))
 	}
 	// safe head cannot be advanced yet
@@ -480,7 +480,7 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 	// backupUnsafe not yet emptied
 	require.NotEqual(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 
-	// try to process invalid leftovers: A7
+	// try to process invalid leftovers: B7
 	verifier.ActL2PipelineFull(t)
 
 	// backupUnsafe is not used because new unsafe chain is longer
@@ -599,7 +599,7 @@ func TestBackupUnsafeReorgFailure(gt *testing.T) {
 		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
 		require.NoError(t, err)
 		if i == 2 {
-			// Make block A2 as an valid block different with unsafe block
+			// Make block B2 as an valid block different with unsafe block
 			// Alice makes a L2 tx
 			n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
 			require.NoError(t, err)
@@ -615,16 +615,16 @@ func TestBackupUnsafeReorgFailure(gt *testing.T) {
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
 		}
 		if i == 3 {
-			// Make block A3 as an invalid block
+			// Make block B3 as an invalid block
 			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
 			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
 		}
-		// Add A1 ~ A5 into the channel
+		// Add A1, B2, B3, B4, B5 into the channel
 		_, err = channelOut.AddBlock(block)
 		require.NoError(t, err)
 	}
 
-	// Submit span batch(A1, A2, invalid A3, A4, A5)
+	// Submit span batch(A1, B2, invalid B3, B4, B5)
 	batcher.l2ChannelOut = channelOut
 	batcher.ActL2ChannelClose(t)
 	batcher.ActL2BatchSubmit(t)
@@ -649,17 +649,17 @@ func TestBackupUnsafeReorgFailure(gt *testing.T) {
 	// backupUnsafe is still empty
 	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
 
-	// Process A2
+	// Process B2
 	sequencer.ActL2PipelineStep(t)
 	sequencer.ActL2PipelineStep(t)
-	// A2 is valid different block, triggering unsafe chain reorg
+	// B2 is valid different block, triggering unsafe chain reorg
 	require.Equal(t, sequencer.L2Unsafe().Number, uint64(2))
-	// A2 is valid different block, triggering unsafe block backup
+	// B2 is valid different block, triggering unsafe block backup
 	require.Equal(t, targetUnsafeHeadHash, sequencer.L2BackupUnsafe().Hash)
-	// A2 is valid different block, so pendingSafe is advanced
+	// B2 is valid different block, so pendingSafe is advanced
 	require.Equal(t, sequencer.L2PendingSafe().Number, uint64(2))
 
-	// A3 is invalid block
+	// B3 is invalid block
 	// NextAttributes is called
 	sequencer.ActL2PipelineStep(t)
 	// forceNextSafeAttributes is called
@@ -669,7 +669,7 @@ func TestBackupUnsafeReorgFailure(gt *testing.T) {
 	// tryBackupUnsafeReorg is called
 	sequencer.ActL2PipelineStep(t)
 
-	// try to process invalid leftovers: A4, A5
+	// try to process invalid leftovers: B4, B5
 	sequencer.ActL2PipelineFull(t)
 
 	// backupUnsafe is not used because forkChoiceUpdate returned an error.
