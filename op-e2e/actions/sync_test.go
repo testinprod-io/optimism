@@ -538,7 +538,7 @@ func TestBackupUnsafeLongest(gt *testing.T) {
 	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 }
 
-func TestBackupUnsafeReorgForkChoiceNormalError(gt *testing.T) {
+func TestBackupUnsafeReorgForkChoiceInputError(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
 	minTs := hexutil.Uint64(0)
@@ -686,7 +686,7 @@ func TestBackupUnsafeReorgForkChoiceNormalError(gt *testing.T) {
 	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
 }
 
-func TestBackupUnsafeReorgForkChoiceUnexpectedError(gt *testing.T) {
+func TestBackupUnsafeReorgForkChoiceNotInputError(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
 	minTs := hexutil.Uint64(0)
