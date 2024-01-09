@@ -706,7 +706,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 	return nil
 }
 
-// tryBackupUnsafeReorg tries to reorg unsafe head to backupUnsafeHead.
+// tryBackupUnsafeReorg tries to reorg(restore) unsafe head to backupUnsafeHead.
 func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	defer func() {
 		// Reset backupUnsafeHead to avoid multiple usage.
@@ -736,7 +736,7 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	}
 	fcRes, err := eq.engine.ForkchoiceUpdate(ctx, &fc, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to make the backupUnsafeHead as L2 block canonical via forkchoice: %w", err)
 	}
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		// Execution engine accepted the reorg.
@@ -751,7 +751,8 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 		// If ExecutePayloadStatus is
 		//  - INVALID, backupUnsafeHead is forgot, or reorg failed.
 		//  - SYNCING, backupUnsafeHead was seen before, but not part of the chain.
-		return eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)
+		return fmt.Errorf("cannot restore unsafe chain using backupUnsafe: err: %w",
+			eth.ForkchoiceUpdateErr(fcRes.PayloadStatus))
 	}
 	return nil
 }
