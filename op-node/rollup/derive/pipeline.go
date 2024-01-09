@@ -167,7 +167,7 @@ func (dp *DerivationPipeline) BackupUnsafeL2Head() eth.L2BlockRef {
 	return dp.eng.BackupUnsafeL2Head()
 }
 
-func (dp *DerivationPipeline) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *eth.PayloadAttributes, updateSafe bool) (errType BlockInsertionErrType, err error) {
+func (dp *DerivationPipeline) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *AttributesWithParent, updateSafe bool) (errType BlockInsertionErrType, err error) {
 	return dp.eng.StartPayload(ctx, parent, attrs, updateSafe)
 }
 

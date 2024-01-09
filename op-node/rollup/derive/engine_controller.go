@@ -26,11 +26,12 @@ type EngineController struct {
 	genesis *rollup.Genesis
 
 	// Block Head State
-	syncTarget      eth.L2BlockRef
-	unsafeHead      eth.L2BlockRef
-	pendingSafeHead eth.L2BlockRef
-	safeHead        eth.L2BlockRef
-	finalizedHead   eth.L2BlockRef
+	syncTarget       eth.L2BlockRef
+	unsafeHead       eth.L2BlockRef
+	pendingSafeHead  eth.L2BlockRef
+	safeHead         eth.L2BlockRef
+	finalizedHead    eth.L2BlockRef
+	backupUnsafeHead eth.L2BlockRef
 
 	// Building State
 	buildingOnto eth.L2BlockRef
@@ -68,6 +69,10 @@ func (e *EngineController) SafeL2Head() eth.L2BlockRef {
 
 func (e *EngineController) Finalized() eth.L2BlockRef {
 	return e.finalizedHead
+}
+
+func (e *EngineController) BackupUnsafeL2Head() eth.L2BlockRef {
+	return e.backupUnsafeHead
 }
 
 func (e *EngineController) BuildingPayload() (eth.L2BlockRef, eth.PayloadID, bool) {
@@ -108,6 +113,12 @@ func (e *EngineController) SetSafeHead(r eth.L2BlockRef) {
 func (e *EngineController) SetUnsafeHead(r eth.L2BlockRef) {
 	e.metrics.RecordL2Ref("l2_unsafe", r)
 	e.unsafeHead = r
+}
+
+// SetBackupUnsafeL2Headimplements LocalEngineControl.
+func (e *EngineController) SetBackupUnsafeL2Head(r eth.L2BlockRef) {
+	e.metrics.RecordL2Ref("l2_backupUnsafeHead", r)
+	e.backupUnsafeHead = r
 }
 
 // Engine Methods
@@ -163,7 +174,11 @@ func (e *EngineController) ConfirmPayload(ctx context.Context) (out *eth.Executi
 	if err != nil {
 		return nil, BlockInsertPayloadErr, NewResetError(fmt.Errorf("failed to decode L2 block ref from payload: %w", err))
 	}
-
+	// Backup unsafeHead when new block is not built on original unsafe head.
+	if e.unsafeHead.Number >= ref.Number {
+		e.backupUnsafeHead = e.unsafeHead
+		e.metrics.RecordL2Ref("l2_backupUnsafeHead", e.backupUnsafeHead)
+	}
 	e.unsafeHead = ref
 	e.syncTarget = ref
 
@@ -175,6 +190,8 @@ func (e *EngineController) ConfirmPayload(ctx context.Context) (out *eth.Executi
 		if updateSafe {
 			e.safeHead = ref
 			e.metrics.RecordL2Ref("l2_safe", ref)
+			// Remove backupUnsafeHead because this backup will be never used after consolidation.
+			e.backupUnsafeHead = eth.L2BlockRef{}
 		}
 	}
 

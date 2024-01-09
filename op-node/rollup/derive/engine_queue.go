@@ -84,12 +84,14 @@ type LocalEngineControl interface {
 
 	PendingSafeL2Head() eth.L2BlockRef
 	EngineSyncTarget() eth.L2BlockRef
+	BackupUnsafeL2Head() eth.L2BlockRef
 
 	SetUnsafeHead(eth.L2BlockRef)
 	SetSafeHead(eth.L2BlockRef)
 	SetFinalizedHead(eth.L2BlockRef)
 	SetPendingSafeL2Head(eth.L2BlockRef)
 	SetEngineSyncTarget(eth.L2BlockRef)
+	SetBackupUnsafeL2Head(eth.L2BlockRef)
 }
 
 // Max memory used for buffering unsafe payloads
@@ -129,20 +131,10 @@ type EngineQueue struct {
 
 	ec LocalEngineControl
 
-	// L2 block processed from the batch, but not consolidated to the safe block yet.
-	// Consolidation will be pending until the entire batch is processed successfully, to guarantee the span batch atomicity.
-	pendingSafeHead eth.L2BlockRef
-
-	// Target L2 block the engine is currently syncing to.
-	// If the engine p2p sync is enabled, it can be different with unsafeHead. Otherwise, it must be same with unsafeHead.
-	engineSyncTarget eth.L2BlockRef
-
 	buildingOnto eth.L2BlockRef
 	buildingID   eth.PayloadID
 	buildingSafe bool
 
-	// backupUnsafeHead is used to restore unsafeHead and engineSyncTarget when batch contains invalid payload.
-	backupUnsafeHead eth.L2BlockRef
 	// Track when the rollup node changes the forkchoice without engine action,
 	// e.g. on a reset after a reorg, or after consolidating a block.
 	// This update may repeat if the engine returns a temporary error.
@@ -274,7 +266,7 @@ func (eq *EngineQueue) EngineSyncTarget() eth.L2BlockRef {
 }
 
 func (eq *EngineQueue) BackupUnsafeL2Head() eth.L2BlockRef {
-	return eq.backupUnsafeHead
+	return eq.ec.BackupUnsafeL2Head()
 }
 
 // Determine if the engine is syncing to the target block
@@ -716,6 +708,8 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 
 func (eq *EngineQueue) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *AttributesWithParent, updateSafe bool) (errType BlockInsertionErrType, err error) {
 	return eq.ec.StartPayload(ctx, parent, attrs, updateSafe)
+}
+
 // tryBackupUnsafeReorg tries to reorg(restore) unsafe head to backupUnsafeHead.
 func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	// Only try once because execution engine may forgot backupUnsafeHead
@@ -723,26 +717,26 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	// Exception: Retry when forkChoiceUpdate returns non-input error.
 	eq.checkBackupUnsafeReorg = false
 	// This method must be never called when EL sync. If EL sync is in progress, early return.
-	if eq.unsafeHead.Hash != eq.engineSyncTarget.Hash {
+	if eq.ec.UnsafeL2Head().Hash != eq.ec.EngineSyncTarget().Hash {
 		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing.")
-		eq.backupUnsafeHead = eth.L2BlockRef{}
+		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 		return nil
 	}
-	if eq.backupUnsafeHead == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
+	if eq.ec.BackupUnsafeL2Head() == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
 		return nil
 	}
 	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
-	eq.log.Warn("trying to restore unsafe head", "backupUnsafe", eq.backupUnsafeHead.ID(), "unsafe", eq.unsafeHead.ID())
+	eq.log.Warn("trying to restore unsafe head", "backupUnsafe", eq.ec.BackupUnsafeL2Head().ID(), "unsafe", eq.ec.UnsafeL2Head().ID())
 	fc := eth.ForkchoiceState{
-		HeadBlockHash:      eq.backupUnsafeHead.Hash,
-		SafeBlockHash:      eq.safeHead.Hash,
-		FinalizedBlockHash: eq.finalized.Hash,
+		HeadBlockHash:      eq.ec.BackupUnsafeL2Head().Hash,
+		SafeBlockHash:      eq.ec.SafeL2Head().Hash,
+		FinalizedBlockHash: eq.ec.Finalized().Hash,
 	}
-	fcRes, err := eq.engine.ForkchoiceUpdate(ctx, &fc, nil)
+	fcRes, err := eq.ec.ForkchoiceUpdate(ctx, &fc, nil)
 	if err != nil {
 		var inputErr eth.InputError
 		if errors.As(err, &inputErr) {
-			eq.backupUnsafeHead = eth.L2BlockRef{}
+			eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 			switch inputErr.Code {
 			case eth.InvalidForkchoiceState:
 				return fmt.Errorf("forkchoice update was inconsistent with engine, need reset to resolve: %w", inputErr.Unwrap())
@@ -758,16 +752,14 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	}
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		// Execution engine accepted the reorg.
-		eq.log.Info("successfully reorged unsafe head", "unsafe", eq.backupUnsafeHead.ID())
-		eq.unsafeHead = eq.backupUnsafeHead
-		eq.engineSyncTarget = eq.backupUnsafeHead
-		eq.metrics.RecordL2Ref("l2_unsafe", eq.unsafeHead)
-		eq.metrics.RecordL2Ref("l2_engineSyncTarget", eq.engineSyncTarget)
+		eq.log.Info("successfully reorged unsafe head", "unsafe", eq.ec.BackupUnsafeL2Head().ID())
+		eq.ec.SetUnsafeHead(eq.ec.BackupUnsafeL2Head())
+		eq.ec.SetEngineSyncTarget(eq.ec.BackupUnsafeL2Head())
+		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 		eq.logSyncProgress("unsafe head reorg using backup")
-		eq.backupUnsafeHead = eth.L2BlockRef{}
 		return nil
 	}
-	eq.backupUnsafeHead = eth.L2BlockRef{}
+	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 	// Execution engine could not reorg back to previous unsafe head.
 	return fmt.Errorf("cannot restore unsafe chain using backupUnsafe: err: %w",
 		eth.ForkchoiceUpdateErr(fcRes.PayloadStatus))
@@ -785,13 +777,6 @@ func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPa
 		eq.postProcessSafeL2()
 	}
 	return out, BlockInsertOK, nil
-	// BBackup unsafeHead when new block is not built on original unsafe head.
-	if eq.unsafeHead.Number >= ref.Number {
-		eq.backupUnsafeHead = eq.unsafeHead
-		eq.metrics.RecordL2Ref("l2_backupUnsafeHead", eq.backupUnsafeHead)
-	}
-			// Remove backupUnsafeHead because this backup will be never used after consolidation.
-			eq.backupUnsafeHead = eth.L2BlockRef{}
 }
 
 func (eq *EngineQueue) CancelPayload(ctx context.Context, force bool) error {
@@ -849,7 +834,7 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	eq.ec.SetSafeHead(safe)
 	eq.ec.SetPendingSafeL2Head(safe)
 	eq.ec.SetFinalizedHead(finalized)
-	eq.backupUnsafeHead = eth.L2BlockRef{}
+	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 	eq.safeAttributes = nil
 	eq.ec.ResetBuildingState()
 	eq.needForkchoiceUpdate = true
