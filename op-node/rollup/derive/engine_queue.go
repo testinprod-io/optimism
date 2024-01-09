@@ -715,6 +715,11 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 		// or backupUnsafeHead is not part of the chain.
 		eq.checkBackupUnsafeReorg = false
 	}()
+	// This method must be never called when EL sync. If EL sync is in progress, early return.
+	if eq.unsafeHead.Hash != eq.engineSyncTarget.Hash {
+		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing.")
+		return nil
+	}
 	if eq.backupUnsafeHead == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
 		return nil
 	}
