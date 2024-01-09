@@ -796,7 +796,7 @@ func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPa
 	if err != nil {
 		return nil, BlockInsertPayloadErr, NewResetError(fmt.Errorf("failed to decode L2 block ref from payload: %w", err))
 	}
-	// Backup unsafeHead when new unsafe block is not built on original unsafe chain.
+	// BBackup unsafeHead when new block is not built on original unsafe head.
 	if eq.unsafeHead.Number >= ref.Number {
 		eq.backupUnsafeHead = eq.unsafeHead
 		eq.metrics.RecordL2Ref("l2_backupUnsafeHead", eq.backupUnsafeHead)
