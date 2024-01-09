@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/testutils"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -337,207 +336,6 @@ func TestBackupUnsafe(gt *testing.T) {
 	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
 }
 
-func TestBackupUnsafeLongest(gt *testing.T) {
-	t := NewDefaultTesting(gt)
-	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
-	minTs := hexutil.Uint64(0)
-	// Activate Delta hardfork
-	dp.DeployConfig.L2GenesisDeltaTimeOffset = &minTs
-	dp.DeployConfig.L2BlockTime = 2
-	sd := e2eutils.Setup(t, dp, defaultAlloc)
-	log := testlog.Logger(t, log.LvlInfo)
-	_, dp, miner, sequencer, seqEng, verifier, _, batcher := setupReorgTestActors(t, dp, sd, log)
-	l2Cl := seqEng.EthClient()
-	seqEngCl, err := sources.NewEngineClient(seqEng.RPCClient(), log, nil, sources.EngineClientDefaultConfig(sd.RollupCfg))
-	require.NoError(t, err)
-
-	rng := rand.New(rand.NewSource(1234))
-	signer := types.LatestSigner(sd.L2Cfg.Config)
-
-	sequencer.ActL2PipelineFull(t)
-	verifier.ActL2PipelineFull(t)
-
-	var targetUnsafeHeadHash common.Hash
-	var finalUnsafeHeadHash common.Hash
-	// Create block A1 ~ A7
-	for i := 0; i < 7; i++ {
-		// Build a L2 block
-		sequencer.ActL2StartBlock(t)
-		sequencer.ActL2EndBlock(t)
-		// Notify new L2 block to verifier by unsafe gossip
-		seqHead, err := seqEngCl.PayloadByLabel(t.Ctx(), eth.Unsafe)
-		require.NoError(t, err)
-		if i <= 4 {
-			// Only notify blocks A1 ~ A5
-			verifier.ActL2UnsafeGossipReceive(seqHead)(t)
-		}
-		if i == 4 {
-			targetUnsafeHeadHash = seqHead.BlockHash
-		}
-		if i == 6 {
-			finalUnsafeHeadHash = seqHead.BlockHash
-		}
-	}
-
-	// only advance unsafe head to A7
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(7))
-	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
-
-	// Handle unsafe payload
-	verifier.ActL2PipelineFull(t)
-	// only advance unsafe head to A5
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
-	require.Equal(t, verifier.L2Safe().Number, uint64(0))
-	require.Equal(t, verifier.L2Unsafe().Hash, targetUnsafeHeadHash)
-
-	c, e := compressor.NewRatioCompressor(compressor.Config{
-		TargetFrameSize:  128_000,
-		TargetNumFrames:  1,
-		ApproxComprRatio: 1,
-	})
-	require.NoError(t, e)
-	spanBatchBuilder := derive.NewSpanBatchBuilder(sd.RollupCfg.Genesis.L2Time, sd.RollupCfg.L2ChainID)
-	// Create new span batch channel
-	channelOut, err := derive.NewChannelOut(derive.SpanBatchType, c, spanBatchBuilder)
-	require.NoError(t, err)
-
-	n, err := l2Cl.PendingNonceAt(t.Ctx(), dp.Addresses.Alice)
-	require.NoError(t, err)
-
-	for i := uint64(1); i <= sequencer.L2Unsafe().Number; i++ {
-		block, err := l2Cl.BlockByNumber(t.Ctx(), new(big.Int).SetUint64(i))
-		require.NoError(t, err)
-		if 2 <= i && i <= sequencer.L2Unsafe().Number {
-			// Make block B2 ~ B6 as an valid block different with unsafe block
-			// Alice makes a L2 tx
-			validTx := types.MustSignNewTx(dp.Secrets.Alice, signer, &types.DynamicFeeTx{
-				ChainID:   sd.L2Cfg.Config.ChainID,
-				Nonce:     n,
-				GasTipCap: big.NewInt(2 * params.GWei),
-				GasFeeCap: new(big.Int).Add(miner.l1Chain.CurrentBlock().BaseFee, big.NewInt(2*params.GWei)),
-				Gas:       params.TxGas,
-				To:        &dp.Addresses.Bob,
-				Value:     e2eutils.Ether(2),
-			})
-			block = block.WithBody([]*types.Transaction{block.Transactions()[0], validTx}, []*types.Header{})
-			// Increment Alice's nonce
-			n += 1
-		}
-		if i == sequencer.L2Unsafe().Number {
-			// Make block B7 as an invalid block
-			invalidTx := testutils.RandomTx(rng, big.NewInt(100), signer)
-			block = block.WithBody([]*types.Transaction{block.Transactions()[0], invalidTx}, []*types.Header{})
-		}
-		// Add A1, B2, B3, B4, B5, B6, B7 into the channel
-		_, err = channelOut.AddBlock(block)
-		require.NoError(t, err)
-	}
-
-	// Submit span batch(A1, B2, B3, B4, B5, B6, invalid B7)
-	batcher.l2ChannelOut = channelOut
-	batcher.ActL2ChannelClose(t)
-	batcher.ActL2BatchSubmit(t)
-
-	miner.ActL1StartBlock(12)(t)
-	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
-	miner.ActL1EndBlock(t)
-
-	// let verifier process invalid span batch
-	verifier.ActL1HeadSignal(t)
-	// before stepping, make sure backupUnsafe is empty
-	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
-	// pendingSafe must not be advanced as well
-	require.Equal(t, verifier.L2PendingSafe().Number, uint64(0))
-	// Preheat engine queue and consume A1 from batch
-	for i := 0; i < 4; i++ {
-		verifier.ActL2PipelineStep(t)
-	}
-	// A1 is valid original block so pendingSafe is advanced
-	require.Equal(t, verifier.L2PendingSafe().Number, uint64(1))
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(5))
-	require.Equal(t, verifier.L2Unsafe().Hash, targetUnsafeHeadHash)
-	// backupUnsafe is still empty
-	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
-
-	// Process B2 ~ B6
-	for i := 2; i <= 6; i++ {
-		verifier.ActL2PipelineStep(t)
-		verifier.ActL2PipelineStep(t)
-		// Bi is valid different block, triggering unsafe chain reorg
-		require.Equal(t, verifier.L2Unsafe().Number, uint64(i))
-		if i == 2 {
-			// B2 is valid different block, triggering unsafe block backup
-			require.Equal(t, targetUnsafeHeadHash, verifier.L2BackupUnsafe().Hash)
-		}
-		// Bi is valid different block, so pendingSafe is advanced
-		require.Equal(t, verifier.L2PendingSafe().Number, uint64(i))
-	}
-	// safe head cannot be advanced yet
-	require.Equal(t, verifier.L2Safe().Number, uint64(0))
-	require.Equal(t, verifier.L2PendingSafe().Number, uint64(6))
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(6))
-	prevUnsafeHash := verifier.L2Unsafe().Hash
-
-	// backupUnsafe not yet emptied
-	require.NotEqual(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
-
-	// try to process invalid leftovers: B7
-	verifier.ActL2PipelineFull(t)
-
-	// backupUnsafe is not used because new unsafe chain is longer
-	// Still, backupUnsafe is emptied
-	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
-
-	// check pending safe is reset
-	require.Equal(t, verifier.L2PendingSafe().Number, uint64(0))
-
-	// safe head cannot be advanced because batch contained invalid blocks
-	require.Equal(t, verifier.L2Safe().Number, uint64(0))
-
-	// check unsafe head is not altered because backupUnsafe is shorter
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(6))
-	require.Equal(t, prevUnsafeHash, verifier.L2Unsafe().Hash)
-
-	// let sequencer process invalid span batch
-	sequencer.ActL1HeadSignal(t)
-	sequencer.ActL2PipelineFull(t)
-
-	// safe head cannot be advanced, while unsafe head not changed
-	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
-
-	// backupUnsafe is used because new unsafe chain is longer
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(7))
-	require.Equal(t, sequencer.L2Unsafe().Hash, finalUnsafeHeadHash)
-
-	// Build and submit a span batch with A1 ~ A7
-	batcher.ActSubmitAll(t)
-	miner.ActL1StartBlock(12)(t)
-	miner.ActL1IncludeTx(dp.Addresses.Batcher)(t)
-	miner.ActL1EndBlock(t)
-
-	// let sequencer process valid span batch
-	sequencer.ActL1HeadSignal(t)
-	sequencer.ActL2PipelineFull(t)
-
-	// safe/unsafe head must be advanced
-	require.Equal(t, sequencer.L2Unsafe().Number, uint64(7))
-	require.Equal(t, sequencer.L2Safe().Number, uint64(7))
-	require.Equal(t, sequencer.L2Safe().Hash, finalUnsafeHeadHash)
-	// check backupUnsafe is emptied after consolidation
-	require.Equal(t, eth.L2BlockRef{}, sequencer.L2BackupUnsafe())
-
-	// let verifier process valid span batch
-	verifier.ActL1HeadSignal(t)
-	verifier.ActL2PipelineFull(t)
-
-	// safe and unsafe head must be advanced
-	require.Equal(t, verifier.L2Unsafe().Number, uint64(7))
-	require.Equal(t, verifier.L2Safe().Number, uint64(7))
-	require.Equal(t, verifier.L2Safe().Hash, finalUnsafeHeadHash)
-	// check backupUnsafe is emptied after consolidation
-	require.Equal(t, eth.L2BlockRef{}, verifier.L2BackupUnsafe())
-}
-
 func TestBackupUnsafeReorgForkChoiceInputError(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
@@ -665,7 +463,7 @@ func TestBackupUnsafeReorgForkChoiceInputError(gt *testing.T) {
 	sequencer.ActL2PipelineStep(t)
 	// forceNextSafeAttributes is called
 	sequencer.ActL2PipelineStep(t)
-	// mock forkChoiceUpdate error while restoring longest unsafe chain using backup.
+	// mock forkChoiceUpdate error while restoring previous unsafe chain using backupUnsafe.
 	seqEng.ActL2RPCFail(t, eth.InputError{Inner: errors.New("mock L2 RPC error"), Code: eth.InvalidForkchoiceState})
 
 	// tryBackupUnsafeReorg is called
@@ -816,7 +614,7 @@ func TestBackupUnsafeReorgForkChoiceNotInputError(gt *testing.T) {
 
 	serverErrCnt := 2
 	for i := 0; i < serverErrCnt; i++ {
-		// mock forkChoiceUpdate failure while restoring longest unsafe chain using backup.
+		// mock forkChoiceUpdate failure while restoring previous unsafe chain using backupUnsafe.
 		seqEng.ActL2RPCFail(t, engine.GenericServerError)
 		// tryBackupUnsafeReorg is called - forkChoiceUpdate returns GenericServerError so retry
 		sequencer.ActL2PipelineStep(t)
