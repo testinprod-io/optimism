@@ -80,6 +80,7 @@ type LocalEngineControl interface {
 	ResetBuildingState()
 	IsEngineSyncing() bool
 	TryUpdateEngine(ctx context.Context) error
+	TryBackupUnsafeReorg(ctx context.Context) error
 	InsertUnsafePayload(ctx context.Context, payload *eth.ExecutionPayload, ref eth.L2BlockRef) error
 
 	PendingSafeL2Head() eth.L2BlockRef
@@ -89,7 +90,7 @@ type LocalEngineControl interface {
 	SetSafeHead(eth.L2BlockRef)
 	SetFinalizedHead(eth.L2BlockRef)
 	SetPendingSafeL2Head(eth.L2BlockRef)
-	SetBackupUnsafeL2Head(eth.L2BlockRef)
+	SetBackupUnsafeL2Head(block eth.L2BlockRef, triggerReorg bool)
 }
 
 // Max memory used for buffering unsafe payloads
@@ -128,13 +129,6 @@ type EngineQueue struct {
 	cfg *rollup.Config
 
 	ec LocalEngineControl
-
-	// Track when the rollup node changes the forkchoice to restore previous
-	// known unsafe chain. e.g. Unsafe Reorg caused by Invalid span batch.
-	// This update does not retry except engine returns non-input error
-	// because engine may forgot backupUnsafeHead or backupUnsafeHead is not part
-	// of the chain.
-	checkBackupUnsafeReorg bool
 
 	// finalizedL1 is the currently perceived finalized L1 block.
 	// This may be ahead of the current traversed origin when syncing.
@@ -260,11 +254,10 @@ func (eq *EngineQueue) isEngineSyncing() bool {
 }
 
 func (eq *EngineQueue) Step(ctx context.Context) error {
-	if eq.checkBackupUnsafeReorg {
-		if err := eq.tryBackupUnsafeReorg(ctx); err != nil {
-			eq.log.Warn("failed to restore unsafe head using backupUnsafeHead", "err", err)
-		}
-		return nil
+	// If we don't need to call FCU to restore unsafeHead using backup, keep going b/c
+	// this was a no-op. If we needed to perform a network call, then we should
+	if err := eq.ec.TryBackupUnsafeReorg(ctx); !errors.Is(err, errNoBackupUnsafeReorgNeeded) {
+		return err
 	}
 	// If we don't need to call FCU, keep going b/c this was a no-op. If we needed to
 	// perform a network call, then we should yield even if we did not encounter an error.
@@ -595,8 +588,8 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 			// If there is no valid batch the node will eventually force a deposit only block. If
 			// the deposit only block fails, this will return the critical error above.
 
-			// Compare backupUnsafeHead and unsafeHead. Try to restore to previous known unsafe chain.
-			eq.checkBackupUnsafeReorg = true
+			// Try to restore to previous known unsafe chain.
+			eq.ec.SetBackupUnsafeL2Head(eq.ec.BackupUnsafeL2Head(), true)
 
 			return nil
 		default:
@@ -614,61 +607,6 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 
 func (eq *EngineQueue) StartPayload(ctx context.Context, parent eth.L2BlockRef, attrs *AttributesWithParent, updateSafe bool) (errType BlockInsertionErrType, err error) {
 	return eq.ec.StartPayload(ctx, parent, attrs, updateSafe)
-}
-
-// tryBackupUnsafeReorg tries to reorg(restore) unsafe head to backupUnsafeHead.
-func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
-	// Only try once because execution engine may forgot backupUnsafeHead
-	// or backupUnsafeHead is not part of the chain.
-	// Exception: Retry when forkChoiceUpdate returns non-input error.
-	eq.checkBackupUnsafeReorg = false
-	// This method must be never called when EL sync. If EL sync is in progress, early return.
-	if eq.ec.IsEngineSyncing() {
-		eq.log.Warn("Attempting to update forkchoice state while EL sync.")
-		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
-		return nil
-	}
-	if eq.ec.BackupUnsafeL2Head() == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
-		return nil
-	}
-	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
-	eq.log.Warn("trying to restore unsafe head", "backupUnsafe", eq.ec.BackupUnsafeL2Head().ID(), "unsafe", eq.ec.UnsafeL2Head().ID())
-	fc := eth.ForkchoiceState{
-		HeadBlockHash:      eq.ec.BackupUnsafeL2Head().Hash,
-		SafeBlockHash:      eq.ec.SafeL2Head().Hash,
-		FinalizedBlockHash: eq.ec.Finalized().Hash,
-	}
-	fcRes, err := eq.ec.ForkchoiceUpdate(ctx, &fc, nil)
-	if err != nil {
-		var inputErr eth.InputError
-		if errors.As(err, &inputErr) {
-			eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
-			switch inputErr.Code {
-			case eth.InvalidForkchoiceState:
-				return fmt.Errorf("forkchoice update was inconsistent with engine, need reset to resolve: %w", inputErr.Unwrap())
-			default:
-				return fmt.Errorf("unexpected error code in forkchoice-updated response: %w", err)
-			}
-		} else {
-			// Retry when forkChoiceUpdate returns non-input error.
-			// Do not reset backupUnsafeHead because it will be used again.
-			eq.checkBackupUnsafeReorg = true
-			return fmt.Errorf("failed to sync forkchoice with engine: %w", err)
-		}
-	}
-	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
-		// Execution engine accepted the reorg.
-		eq.log.Info("successfully reorged unsafe head", "unsafe", eq.ec.BackupUnsafeL2Head().ID())
-		eq.ec.SetUnsafeHead(eq.ec.BackupUnsafeL2Head())
-		eq.ec.SetEngineSyncTarget(eq.ec.BackupUnsafeL2Head())
-		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
-		eq.logSyncProgress("unsafe head reorg using backup")
-		return nil
-	}
-	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
-	// Execution engine could not reorg back to previous unsafe head.
-	return fmt.Errorf("cannot restore unsafe chain using backupUnsafe: err: %w",
-		eth.ForkchoiceUpdateErr(fcRes.PayloadStatus))
 }
 
 func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPayload, errTyp BlockInsertionErrType, err error) {
@@ -729,10 +667,9 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	eq.ec.SetSafeHead(safe)
 	eq.ec.SetPendingSafeL2Head(safe)
 	eq.ec.SetFinalizedHead(finalized)
-	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
+	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{}, false)
 	eq.safeAttributes = nil
 	eq.ec.ResetBuildingState()
-	eq.checkBackupUnsafeReorg = false
 	eq.finalityData = eq.finalityData[:0]
 	// note: finalizedL1 and triedFinalizeAt do not reset, since these do not change between reorgs.
 	// note: we do not clear the unsafe payloads queue; if the payloads are not applicable anymore the parent hash checks will clear out the old payloads.
