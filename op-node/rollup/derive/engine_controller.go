@@ -322,26 +322,26 @@ func (e *EngineController) InsertUnsafePayload(ctx context.Context, payload *eth
 	return nil
 }
 
-// tryBackupUnsafeReorg tries to reorg(restore) unsafe head to backupUnsafeHead.
+// tryBackupUnsafeReorg attempts to reorg(restore) unsafe head to backupUnsafeHead.
+// If succeeds, update current forkchoice state to the rollup node.
 func (e *EngineController) TryBackupUnsafeReorg(ctx context.Context) error {
 	if !e.needFCUCallForBackupUnsafeReorg {
 		return errNoBackupUnsafeReorgNeeded
 	}
-	// Only try once because execution engine may forgot backupUnsafeHead
-	// or backupUnsafeHead is not part of the chain.
-	// Exception: Retry when forkChoiceUpdate returns non-input error.
-	e.needFCUCallForBackupUnsafeReorg = false
 	// This method must be never called when EL sync. If EL sync is in progress, early return.
 	if e.IsEngineSyncing() {
 		e.log.Warn("Attempting to update forkchoice state while EL sync.")
-		e.SetBackupUnsafeL2Head(eth.L2BlockRef{}, false)
-		return nil
+		return errNoBackupUnsafeReorgNeeded
 	}
 	if e.BackupUnsafeL2Head() == (eth.L2BlockRef{}) { // sanity check backupUnsafeHead is there
 		e.log.Warn("Attempting to unsafe reorg using backupUnsafe even though it is empty")
 		e.SetBackupUnsafeL2Head(eth.L2BlockRef{}, false)
-		return nil
+		return errNoBackupUnsafeReorgNeeded
 	}
+	// Only try FCU once because execution engine may forgot backupUnsafeHead
+	// or backupUnsafeHead is not part of the chain.
+	// Exception: Retry when forkChoiceUpdate returns non-input error.
+	e.needFCUCallForBackupUnsafeReorg = false
 	// Reorg unsafe chain. Safe/Finalized chain will not be updated.
 	e.log.Warn("trying to restore unsafe head", "backupUnsafe", e.backupUnsafeHead.ID(), "unsafe", e.unsafeHead.ID())
 	fc := eth.ForkchoiceState{
@@ -369,7 +369,7 @@ func (e *EngineController) TryBackupUnsafeReorg(ctx context.Context) error {
 	}
 	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
 		// Execution engine accepted the reorg.
-		e.log.Info("successfully reorged unsafe head", "unsafe", e.backupUnsafeHead.ID())
+		e.log.Info("successfully reorged unsafe head using backupUnsafe", "unsafe", e.backupUnsafeHead.ID())
 		e.SetUnsafeHead(e.BackupUnsafeL2Head())
 		e.SetBackupUnsafeL2Head(eth.L2BlockRef{}, false)
 		return nil
