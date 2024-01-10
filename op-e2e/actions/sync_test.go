@@ -162,10 +162,6 @@ func TestUnsafeSync(gt *testing.T) {
 	}
 }
 
-// TestELSync tests that a verifier will have the EL import the full chain from the sequencer
-// when passed a single unsafe block. op-geth can either snap sync or full sync here.
-func TestELSync(gt *testing.T) {
-	gt.Skip("not implemented yet")
 func TestBackupUnsafe(gt *testing.T) {
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
@@ -640,7 +636,10 @@ func TestBackupUnsafeReorgForkChoiceNotInputError(gt *testing.T) {
 	require.Equal(t, sequencer.L2Safe().Number, uint64(0))
 }
 
-func TestEngineP2PSync(gt *testing.T) {
+// TestELSync tests that a verifier will have the EL import the full chain from the sequencer
+// when passed a single unsafe block. op-geth can either snap sync or full sync here.
+func TestELSync(gt *testing.T) {
+	gt.Skip("not implemented yet")
 	t := NewDefaultTesting(gt)
 	dp := e2eutils.MakeDeployParams(t, defaultRollupTestParams)
 	sd := e2eutils.Setup(t, dp, defaultAlloc)
