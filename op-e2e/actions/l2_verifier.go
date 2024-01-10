@@ -147,10 +147,6 @@ func (s *L2Verifier) L2Unsafe() eth.L2BlockRef {
 	return s.derivation.UnsafeL2Head()
 }
 
-func (s *L2Verifier) EngineSyncTarget() eth.L2BlockRef {
-	return s.derivation.EngineSyncTarget()
-}
-
 func (s *L2Verifier) L2BackupUnsafe() eth.L2BlockRef {
 	return s.derivation.BackupUnsafeL2Head()
 }
@@ -167,7 +163,6 @@ func (s *L2Verifier) SyncStatus() *eth.SyncStatus {
 		FinalizedL2:        s.L2Finalized(),
 		PendingSafeL2:      s.L2PendingSafe(),
 		UnsafeL2SyncTarget: s.derivation.UnsafeL2SyncTarget(),
-		EngineSyncTarget:   s.EngineSyncTarget(),
 	}
 }
 

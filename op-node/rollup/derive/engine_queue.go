@@ -79,18 +79,16 @@ type LocalEngineControl interface {
 	EngineControl
 	ResetBuildingState()
 	IsEngineSyncing() bool
-	ForkchoiceUpdate(ctx context.Context, state *eth.ForkchoiceState, attr *eth.PayloadAttributes) (*eth.ForkchoiceUpdatedResult, error)
-	NewPayload(ctx context.Context, payload *eth.ExecutionPayload) (*eth.PayloadStatusV1, error)
+	TryUpdateEngine(ctx context.Context) error
+	InsertUnsafePayload(ctx context.Context, payload *eth.ExecutionPayload, ref eth.L2BlockRef) error
 
 	PendingSafeL2Head() eth.L2BlockRef
-	EngineSyncTarget() eth.L2BlockRef
 	BackupUnsafeL2Head() eth.L2BlockRef
 
 	SetUnsafeHead(eth.L2BlockRef)
 	SetSafeHead(eth.L2BlockRef)
 	SetFinalizedHead(eth.L2BlockRef)
 	SetPendingSafeL2Head(eth.L2BlockRef)
-	SetEngineSyncTarget(eth.L2BlockRef)
 	SetBackupUnsafeL2Head(eth.L2BlockRef)
 }
 
@@ -130,11 +128,6 @@ type EngineQueue struct {
 	cfg *rollup.Config
 
 	ec LocalEngineControl
-
-	// Track when the rollup node changes the forkchoice without engine action,
-	// e.g. on a reset after a reorg, or after consolidating a block.
-	// This update may repeat if the engine returns a temporary error.
-	needForkchoiceUpdate bool
 
 	// Track when the rollup node changes the forkchoice to restore previous
 	// known unsafe chain. e.g. Unsafe Reorg caused by Invalid span batch.
@@ -176,7 +169,7 @@ func NewEngineQueue(log log.Logger, cfg *rollup.Config, engine Engine, metrics M
 	return &EngineQueue{
 		log:            log,
 		cfg:            cfg,
-		ec:             NewEngineController(engine, log, metrics, cfg.Genesis),
+		ec:             NewEngineController(engine, log, metrics, cfg.Genesis, syncCfg.SyncMode),
 		engine:         engine,
 		metrics:        metrics,
 		finalityData:   make([]FinalityData, 0, finalityLookback),
@@ -257,10 +250,6 @@ func (eq *EngineQueue) PendingSafeL2Head() eth.L2BlockRef {
 	return eq.ec.PendingSafeL2Head()
 }
 
-func (eq *EngineQueue) EngineSyncTarget() eth.L2BlockRef {
-	return eq.ec.EngineSyncTarget()
-}
-
 func (eq *EngineQueue) BackupUnsafeL2Head() eth.L2BlockRef {
 	return eq.ec.BackupUnsafeL2Head()
 }
@@ -277,8 +266,10 @@ func (eq *EngineQueue) Step(ctx context.Context) error {
 		}
 		return nil
 	}
-	if eq.needForkchoiceUpdate {
-		return eq.tryUpdateEngine(ctx)
+	// If we don't need to call FCU, keep going b/c this was a no-op. If we needed to
+	// perform a network call, then we should yield even if we did not encounter an error.
+	if err := eq.ec.TryUpdateEngine(ctx); !errors.Is(err, errNoFCUNeeded) {
+		return err
 	}
 	// Trying unsafe payload should be done before safe attributes
 	// It allows the unsafe head can move forward while the long-range consolidation is in progress.
@@ -403,7 +394,6 @@ func (eq *EngineQueue) tryFinalizeL2() {
 	for _, fd := range eq.finalityData {
 		if fd.L2Block.Number > finalizedL2.Number && fd.L1Block.Number <= eq.finalizedL1.Number {
 			finalizedL2 = fd.L2Block
-			eq.needForkchoiceUpdate = true
 		}
 	}
 	eq.ec.SetFinalizedHead(finalizedL2)
@@ -442,60 +432,10 @@ func (eq *EngineQueue) logSyncProgress(reason string) {
 		"l2_safe", eq.ec.SafeL2Head(),
 		"l2_safe_pending", eq.ec.PendingSafeL2Head(),
 		"l2_unsafe", eq.ec.UnsafeL2Head(),
-		"l2_engineSyncTarget", eq.ec.EngineSyncTarget(),
 		"l2_backupUnsafe", eq.ec.BackupUnsafeL2Head(),
 		"l2_time", eq.ec.UnsafeL2Head().Time,
 		"l1_derived", eq.origin,
 	)
-}
-
-// tryUpdateEngine attempts to update the engine with the current forkchoice state of the rollup node,
-// this is a no-op if the nodes already agree on the forkchoice state.
-func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
-	if eq.ec.UnsafeL2Head().Hash != eq.ec.EngineSyncTarget().Hash {
-		eq.log.Warn("Attempting to update forkchoice state while EL sync.")
-	}
-	fc := eth.ForkchoiceState{
-		HeadBlockHash:      eq.ec.EngineSyncTarget().Hash,
-		SafeBlockHash:      eq.ec.SafeL2Head().Hash,
-		FinalizedBlockHash: eq.ec.Finalized().Hash,
-	}
-	_, err := eq.ec.ForkchoiceUpdate(ctx, &fc, nil)
-	if err != nil {
-		var inputErr eth.InputError
-		if errors.As(err, &inputErr) {
-			switch inputErr.Code {
-			case eth.InvalidForkchoiceState:
-				return NewResetError(fmt.Errorf("forkchoice update was inconsistent with engine, need reset to resolve: %w", inputErr.Unwrap()))
-			default:
-				return NewTemporaryError(fmt.Errorf("unexpected error code in forkchoice-updated response: %w", err))
-			}
-		} else {
-			return NewTemporaryError(fmt.Errorf("failed to sync forkchoice with engine: %w", err))
-		}
-	}
-	eq.needForkchoiceUpdate = false
-	return nil
-}
-
-// checkNewPayloadStatus checks returned status of engine_newPayloadV1 request for next unsafe payload.
-// It returns true if the status is acceptable.
-func (eq *EngineQueue) checkNewPayloadStatus(status eth.ExecutePayloadStatus) bool {
-	if eq.syncCfg.SyncMode == sync.ELSync {
-		// Allow SYNCING and ACCEPTED if engine EL sync is enabled
-		return status == eth.ExecutionValid || status == eth.ExecutionSyncing || status == eth.ExecutionAccepted
-	}
-	return status == eth.ExecutionValid
-}
-
-// checkForkchoiceUpdatedStatus checks returned status of engine_forkchoiceUpdatedV1 request for next unsafe payload.
-// It returns true if the status is acceptable.
-func (eq *EngineQueue) checkForkchoiceUpdatedStatus(status eth.ExecutePayloadStatus) bool {
-	if eq.syncCfg.SyncMode == sync.ELSync {
-		// Allow SYNCING if engine P2P sync is enabled
-		return status == eth.ExecutionValid || status == eth.ExecutionSyncing
-	}
-	return status == eth.ExecutionValid
 }
 
 func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
@@ -528,46 +468,13 @@ func (eq *EngineQueue) tryNextUnsafePayload(ctx context.Context) error {
 		return nil
 	}
 
-	status, err := eq.ec.NewPayload(ctx, first)
-	if err != nil {
-		return NewTemporaryError(fmt.Errorf("failed to update insert payload: %w", err))
-	}
-	if !eq.checkNewPayloadStatus(status.Status) {
+	if err := eq.ec.InsertUnsafePayload(ctx, first, ref); errors.Is(err, ErrTemporary) {
+		eq.log.Debug("Temporary error while inserting unsafe payload", "hash", ref.Hash, "number", ref.Number, "timestamp", ref.Time, "l1Origin", ref.L1Origin)
+		return err
+	} else if err != nil {
+		eq.log.Warn("Dropping invalid unsafe payload", "hash", ref.Hash, "number", ref.Number, "timestamp", ref.Time, "l1Origin", ref.L1Origin)
 		eq.unsafePayloads.Pop()
-		return NewTemporaryError(fmt.Errorf("cannot process unsafe payload: new - %v; parent: %v; err: %w",
-			first.ID(), first.ParentID(), eth.NewPayloadErr(first, status)))
-	}
-
-	// Mark the new payload as valid
-	fc := eth.ForkchoiceState{
-		HeadBlockHash:      first.BlockHash,
-		SafeBlockHash:      eq.ec.SafeL2Head().Hash, // this should guarantee we do not reorg past the safe head
-		FinalizedBlockHash: eq.ec.Finalized().Hash,
-	}
-	fcRes, err := eq.ec.ForkchoiceUpdate(ctx, &fc, nil)
-	if err != nil {
-		var inputErr eth.InputError
-		if errors.As(err, &inputErr) {
-			switch inputErr.Code {
-			case eth.InvalidForkchoiceState:
-				return NewResetError(fmt.Errorf("pre-unsafe-block forkchoice update was inconsistent with engine, need reset to resolve: %w", inputErr.Unwrap()))
-			default:
-				return NewTemporaryError(fmt.Errorf("unexpected error code in forkchoice-updated response: %w", err))
-			}
-		} else {
-			return NewTemporaryError(fmt.Errorf("failed to update forkchoice to prepare for new unsafe payload: %w", err))
-		}
-	}
-	if !eq.checkForkchoiceUpdatedStatus(fcRes.PayloadStatus.Status) {
-		eq.unsafePayloads.Pop()
-		return NewTemporaryError(fmt.Errorf("cannot prepare unsafe chain for new payload: new - %v; parent: %v; err: %w",
-			first.ID(), first.ParentID(), eth.ForkchoiceUpdateErr(fcRes.PayloadStatus)))
-	}
-
-	eq.ec.SetEngineSyncTarget(ref)
-	// unsafeHead should be updated only if the payload status is VALID
-	if fcRes.PayloadStatus.Status == eth.ExecutionValid {
-		eq.ec.SetUnsafeHead(ref)
+		return err
 	}
 	eq.unsafePayloads.Pop()
 	eq.log.Trace("Executed unsafe payload", "hash", ref.Hash, "number", ref.Number, "timestamp", ref.Time, "l1Origin", ref.L1Origin)
@@ -604,7 +511,6 @@ func (eq *EngineQueue) tryNextSafeAttributes(ctx context.Context) error {
 		// For some reason the unsafe head is behind the pending safe head. Log it, and correct it.
 		eq.log.Error("invalid sync state, unsafe head is behind pending safe head", "unsafe", eq.ec.UnsafeL2Head(), "pending_safe", eq.ec.PendingSafeL2Head())
 		eq.ec.SetUnsafeHead(eq.ec.PendingSafeL2Head())
-		eq.ec.SetEngineSyncTarget(eq.ec.PendingSafeL2Head())
 		return nil
 	}
 }
@@ -636,7 +542,6 @@ func (eq *EngineQueue) consolidateNextSafeAttributes(ctx context.Context) error 
 	eq.ec.SetPendingSafeL2Head(ref)
 	if eq.safeAttributes.isLastInSpan {
 		eq.ec.SetSafeHead(ref)
-		eq.needForkchoiceUpdate = true
 		eq.postProcessSafeL2()
 	}
 	// unsafe head stays the same, we did not reorg the chain.
@@ -652,6 +557,7 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 		return nil
 	}
 	attrs := eq.safeAttributes.attributes
+	lastInSpan := eq.safeAttributes.isLastInSpan
 	errType, err := eq.StartPayload(ctx, eq.ec.PendingSafeL2Head(), eq.safeAttributes, true)
 	if err == nil {
 		_, errType, err = eq.ConfirmPayload(ctx)
@@ -699,6 +605,9 @@ func (eq *EngineQueue) forceNextSafeAttributes(ctx context.Context) error {
 	}
 	eq.safeAttributes = nil
 	eq.logSyncProgress("processed safe block derived from L1")
+	if lastInSpan {
+		eq.postProcessSafeL2()
+	}
 
 	return nil
 }
@@ -763,17 +672,7 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 }
 
 func (eq *EngineQueue) ConfirmPayload(ctx context.Context) (out *eth.ExecutionPayload, errTyp BlockInsertionErrType, err error) {
-	preSafe := eq.ec.SafeL2Head()
-	_, _, buildingSafe := eq.ec.BuildingPayload()
-	out, errTyp, err = eq.ec.ConfirmPayload(ctx)
-	if err != nil {
-		return nil, errTyp, err
-	}
-	postSafe := eq.ec.SafeL2Head()
-	if buildingSafe && (preSafe != postSafe) {
-		eq.postProcessSafeL2()
-	}
-	return out, BlockInsertOK, nil
+	return eq.ec.ConfirmPayload(ctx)
 }
 
 func (eq *EngineQueue) CancelPayload(ctx context.Context, force bool) error {
@@ -827,14 +726,12 @@ func (eq *EngineQueue) Reset(ctx context.Context, _ eth.L1BlockRef, _ eth.System
 	}
 	eq.log.Debug("Reset engine queue", "safeHead", safe, "unsafe", unsafe, "safe_timestamp", safe.Time, "unsafe_timestamp", unsafe.Time, "l1Origin", l1Origin)
 	eq.ec.SetUnsafeHead(unsafe)
-	eq.ec.SetEngineSyncTarget(unsafe)
 	eq.ec.SetSafeHead(safe)
 	eq.ec.SetPendingSafeL2Head(safe)
 	eq.ec.SetFinalizedHead(finalized)
 	eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 	eq.safeAttributes = nil
 	eq.ec.ResetBuildingState()
-	eq.needForkchoiceUpdate = true
 	eq.checkBackupUnsafeReorg = false
 	eq.finalityData = eq.finalityData[:0]
 	// note: finalizedL1 and triedFinalizeAt do not reset, since these do not change between reorgs.
