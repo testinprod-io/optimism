@@ -714,7 +714,7 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	// Exception: Retry when forkChoiceUpdate returns non-input error.
 	eq.checkBackupUnsafeReorg = false
 	// This method must be never called when EL sync. If EL sync is in progress, early return.
-	if eq.ec.UnsafeL2Head().Hash != eq.ec.EngineSyncTarget().Hash {
+	if eq.ec.IsEngineSyncing() {
 		eq.log.Warn("Attempting to update forkchoice state while EL sync.")
 		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 		return nil
