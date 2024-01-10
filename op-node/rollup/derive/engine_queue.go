@@ -453,7 +453,7 @@ func (eq *EngineQueue) logSyncProgress(reason string) {
 // this is a no-op if the nodes already agree on the forkchoice state.
 func (eq *EngineQueue) tryUpdateEngine(ctx context.Context) error {
 	if eq.ec.UnsafeL2Head().Hash != eq.ec.EngineSyncTarget().Hash {
-		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing")
+		eq.log.Warn("Attempting to update forkchoice state while EL sync.")
 	}
 	fc := eth.ForkchoiceState{
 		HeadBlockHash:      eq.ec.EngineSyncTarget().Hash,
@@ -715,7 +715,7 @@ func (eq *EngineQueue) tryBackupUnsafeReorg(ctx context.Context) error {
 	eq.checkBackupUnsafeReorg = false
 	// This method must be never called when EL sync. If EL sync is in progress, early return.
 	if eq.ec.UnsafeL2Head().Hash != eq.ec.EngineSyncTarget().Hash {
-		eq.log.Warn("Attempting to update forkchoice state while engine is P2P syncing.")
+		eq.log.Warn("Attempting to update forkchoice state while EL sync.")
 		eq.ec.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 		return nil
 	}

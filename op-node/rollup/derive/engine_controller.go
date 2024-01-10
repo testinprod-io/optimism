@@ -115,7 +115,7 @@ func (e *EngineController) SetUnsafeHead(r eth.L2BlockRef) {
 	e.unsafeHead = r
 }
 
-// SetBackupUnsafeL2Headimplements LocalEngineControl.
+// SetBackupUnsafeL2Head implements LocalEngineControl.
 func (e *EngineController) SetBackupUnsafeL2Head(r eth.L2BlockRef) {
 	e.metrics.RecordL2Ref("l2_backupUnsafe", r)
 	e.backupUnsafeHead = r
@@ -176,8 +176,7 @@ func (e *EngineController) ConfirmPayload(ctx context.Context) (out *eth.Executi
 	}
 	// Backup unsafeHead when new block is not built on original unsafe head.
 	if e.unsafeHead.Number >= ref.Number {
-		e.backupUnsafeHead = e.unsafeHead
-		e.metrics.RecordL2Ref("l2_backupUnsafe", e.backupUnsafeHead)
+		e.SetBackupUnsafeL2Head(e.unsafeHead)
 	}
 	e.unsafeHead = ref
 	e.syncTarget = ref
@@ -191,7 +190,7 @@ func (e *EngineController) ConfirmPayload(ctx context.Context) (out *eth.Executi
 			e.safeHead = ref
 			e.metrics.RecordL2Ref("l2_safe", ref)
 			// Remove backupUnsafeHead because this backup will be never used after consolidation.
-			e.backupUnsafeHead = eth.L2BlockRef{}
+			e.SetBackupUnsafeL2Head(eth.L2BlockRef{})
 		}
 	}
 
