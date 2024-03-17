@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-
 const (
 	proofsDir      = "proofs"
 	diskStateCache = "state.json.gz"
