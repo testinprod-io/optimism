@@ -227,6 +227,12 @@ func CheckCannonFlags(ctx *cli.Context) error {
 	return nil
 }
 
+func CheckAsteriscFlags(ctx *cli.Context) error {
+	// TODO(pcw109550): fixme
+
+	return nil
+}
+
 func CheckRequired(ctx *cli.Context, traceTypes []config.TraceType) error {
 	for _, f := range requiredFlags {
 		if !ctx.IsSet(f.Names()[0]) {
@@ -237,6 +243,10 @@ func CheckRequired(ctx *cli.Context, traceTypes []config.TraceType) error {
 		switch traceType {
 		case config.TraceTypeCannon, config.TraceTypePermissioned:
 			if err := CheckCannonFlags(ctx); err != nil {
+				return err
+			}
+		case config.TraceTypeAsterisc:
+			if err := CheckAsteriscFlags(ctx); err != nil {
 				return err
 			}
 		case config.TraceTypeAlphabet:

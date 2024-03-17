@@ -41,6 +41,7 @@ type TraceType string
 const (
 	TraceTypeAlphabet     TraceType = "alphabet"
 	TraceTypeCannon       TraceType = "cannon"
+	TraceTypeAsterisc     TraceType = "asterisc"
 	TraceTypePermissioned TraceType = "permissioned"
 )
 
@@ -108,6 +109,10 @@ type Config struct {
 	// Specific to the output cannon trace type
 	RollupRpc string
 
+	// Specific to the output cannon trace type
+	// TODO(pcw109550): fix name
+	AsteriscRollupRpc string
+
 	// Specific to the cannon trace provider
 	CannonBin              string // Path to the cannon executable to run when generating trace data
 	CannonServer           string // Path to the op-program executable that provides the pre-image oracle server
@@ -118,6 +123,17 @@ type Config struct {
 	CannonL2               string // L2 RPC Url
 	CannonSnapshotFreq     uint   // Frequency of snapshots to create when executing cannon (in VM instructions)
 	CannonInfoFreq         uint   // Frequency of cannon progress log messages (in VM instructions)
+
+	// Specific to the asterisc trace provider
+	AsteriscBin              string // Path to the asterisc executable to run when generating trace data
+	AsteriscServer           string // Path to the op-program executable that provides the pre-image oracle server
+	AsteriscAbsolutePreState string // File to load the absolute pre-state for Asterisc traces from
+	AsteriscNetwork          string
+	AsteriscRollupConfigPath string
+	AsteriscL2GenesisPath    string
+	AsteriscL2               string // L2 RPC Url
+	AsteriscSnapshotFreq     uint   // Frequency of snapshots to create when executing asterisc (in VM instructions)
+	AsteriscInfoFreq         uint   // Frequency of asterisc progress log messages (in VM instructions)
 
 	MaxPendingTx uint64 // Maximum number of pending transactions (0 == no limit)
 
@@ -182,7 +198,7 @@ func (c Config) Check() error {
 	if c.MaxConcurrency == 0 {
 		return ErrMaxConcurrencyZero
 	}
-	if c.TraceTypeEnabled(TraceTypeCannon) || c.TraceTypeEnabled(TraceTypePermissioned) {
+	if c.TraceTypeEnabled(TraceTypeCannon) || c.TraceTypeEnabled(TraceTypePermissioned) || c.TraceTypeEnabled(TraceTypeAsterisc) {
 		if c.CannonBin == "" {
 			return ErrMissingCannonBin
 		}

@@ -24,7 +24,17 @@ var (
 	validRollupRpc             = "http://localhost:8555"
 )
 
-var cannonTraceTypes = []TraceType{TraceTypeCannon, TraceTypePermissioned}
+var (
+	validAsteriscBin             = "./bin/asterisc"
+	validAsteriscOpProgramBin    = "./bin/op-program"
+	validAsteriscNetwork         = "mainnet"
+	validAsteriscAbsolutPreState = "pre.json"
+	validAsteriscL2              = "http://localhost:9545"
+	// TODO(pcw109550) this is not used.fix fix fix
+	// validAsteriscRollupRpc = "http://localhost:8555"
+)
+
+var cannonTraceTypes = []TraceType{TraceTypeCannon, TraceTypePermissioned, TraceTypeAsterisc}
 
 func validConfig(traceType TraceType) Config {
 	cfg := NewConfig(validGameFactoryAddress, validL1EthRpc, validL1BeaconUrl, validDatadir, traceType)
@@ -34,6 +44,13 @@ func validConfig(traceType TraceType) Config {
 		cfg.CannonAbsolutePreState = validCannonAbsolutPreState
 		cfg.CannonL2 = validCannonL2
 		cfg.CannonNetwork = validCannonNetwork
+	}
+	if traceType == TraceTypeAsterisc {
+		cfg.AsteriscBin = validAsteriscBin
+		cfg.AsteriscServer = validAsteriscOpProgramBin
+		cfg.AsteriscAbsolutePreState = validAsteriscAbsolutPreState
+		cfg.AsteriscL2 = validAsteriscL2
+		cfg.AsteriscNetwork = validAsteriscNetwork
 	}
 	cfg.RollupRpc = validRollupRpc
 	return cfg
@@ -211,7 +228,7 @@ func TestRollupRpcRequired(t *testing.T) {
 
 func TestRequireConfigForMultipleTraceTypes(t *testing.T) {
 	cfg := validConfig(TraceTypeCannon)
-	cfg.TraceTypes = []TraceType{TraceTypeCannon, TraceTypeAlphabet}
+	cfg.TraceTypes = []TraceType{TraceTypeCannon, TraceTypeAlphabet, TraceTypeAsterisc}
 	// Set all required options and check its valid
 	cfg.RollupRpc = validRollupRpc
 	require.NoError(t, cfg.Check())

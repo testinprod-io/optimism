@@ -30,6 +30,10 @@ func TestMetadataCreator_CreateContract(t *testing.T) {
 			game: types.GameMetadata{GameType: faultTypes.CannonGameType, Proxy: fdgAddr},
 		},
 		{
+			name: "validAsteriscGameType",
+			game: types.GameMetadata{GameType: faultTypes.AsteriscGameType, Proxy: fdgAddr},
+		},
+		{
 			name: "validAlphabetGameType",
 			game: types.GameMetadata{GameType: faultTypes.AlphabetGameType, Proxy: fdgAddr},
 		},

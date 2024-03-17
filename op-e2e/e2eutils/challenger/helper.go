@@ -113,6 +113,34 @@ func applyCannonConfig(
 	c.CannonRollupConfigPath = rollupFile
 }
 
+func applyAsteriscConfig(
+	c *config.Config,
+	t *testing.T,
+	rollupCfg *rollup.Config,
+	l2Genesis *core.Genesis,
+	l2Endpoint string,
+) {
+	require := require.New(t)
+	c.AsteriscL2 = l2Endpoint
+	root := findMonorepoRoot(t)
+	c.AsteriscBin = root + "asterisc/bin/asterisc"
+	c.AsteriscServer = root + "op-program/bin/op-program"
+	c.AsteriscAbsolutePreState = root + "op-program/bin/prestate.json"
+	c.AsteriscSnapshotFreq = 10_000_000
+
+	genesisBytes, err := json.Marshal(l2Genesis)
+	require.NoError(err, "marshall l2 genesis config")
+	genesisFile := filepath.Join(c.Datadir, "l2-genesis.json")
+	require.NoError(os.WriteFile(genesisFile, genesisBytes, 0o644))
+	c.AsteriscL2GenesisPath = genesisFile
+
+	rollupBytes, err := json.Marshal(rollupCfg)
+	require.NoError(err, "marshall rollup config")
+	rollupFile := filepath.Join(c.Datadir, "rollup.json")
+	require.NoError(os.WriteFile(rollupFile, rollupBytes, 0o644))
+	c.AsteriscRollupConfigPath = rollupFile
+}
+
 func WithCannon(
 	t *testing.T,
 	rollupCfg *rollup.Config,
@@ -124,6 +152,20 @@ func WithCannon(
 		c.TraceTypes = append(c.TraceTypes, config.TraceTypeCannon)
 		c.RollupRpc = rollupEndpoint
 		applyCannonConfig(c, t, rollupCfg, l2Genesis, l2Endpoint)
+	}
+}
+
+func WithAsterisc(
+	t *testing.T,
+	rollupCfg *rollup.Config,
+	l2Genesis *core.Genesis,
+	rollupEndpoint string,
+	l2Endpoint string,
+) Option {
+	return func(c *config.Config) {
+		c.TraceTypes = append(c.TraceTypes, config.TraceTypeAsterisc)
+		c.RollupRpc = rollupEndpoint
+		applyAsteriscConfig(c, t, rollupCfg, l2Genesis, l2Endpoint)
 	}
 }
 

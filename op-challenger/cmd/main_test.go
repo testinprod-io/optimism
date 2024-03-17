@@ -118,7 +118,7 @@ func TestMultipleTraceTypes(t *testing.T) {
 		args = append(args,
 			"--trace-type", config.TraceTypePermissioned.String())
 		cfg := configForArgs(t, args)
-		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypePermissioned}, cfg.TraceTypes)
+		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypeAsterisc, config.TraceTypePermissioned}, cfg.TraceTypes)
 	})
 	t.Run("WithSomeOptions", func(t *testing.T) {
 		argsMap := requiredArgs(config.TraceTypeCannon)
@@ -128,7 +128,7 @@ func TestMultipleTraceTypes(t *testing.T) {
 		args = append(args,
 			"--trace-type", config.TraceTypeAlphabet.String())
 		cfg := configForArgs(t, args)
-		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet}, cfg.TraceTypes)
+		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypeAsterisc}, cfg.TraceTypes)
 	})
 
 	t.Run("SpecifySameOptionMultipleTimes", func(t *testing.T) {
@@ -243,6 +243,9 @@ func TestPollInterval(t *testing.T) {
 	})
 }
 
+func TestAsteriscRequiredArgs(t *testing.T) {
+	// TODO(pcw109550) fixme
+}
 func TestCannonRequiredArgs(t *testing.T) {
 	for _, traceType := range []config.TraceType{config.TraceTypeCannon, config.TraceTypePermissioned} {
 		traceType := traceType

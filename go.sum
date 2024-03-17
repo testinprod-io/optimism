@@ -168,6 +168,8 @@ github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25Kn
 github.com/elastic/gosigar v0.12.0/go.mod h1:iXRIGg2tLnu7LBdpqzyQfGDEidKCfWcCMS0WKyPWoMs=
 github.com/elastic/gosigar v0.14.2 h1:Dg80n8cr90OZ7x+bAax/QjoW/XqTI11RmA79ZwIm9/4=
 github.com/elastic/gosigar v0.14.2/go.mod h1:iXRIGg2tLnu7LBdpqzyQfGDEidKCfWcCMS0WKyPWoMs=
+github.com/ethereum-optimism/asterisc v0.0.0-20240312052112-8ee3d3c7eb38 h1:V7gTsmZHGRD3jeLgfSfIee73KVnwobvLQV165sCSFik=
+github.com/ethereum-optimism/asterisc v0.0.0-20240312052112-8ee3d3c7eb38/go.mod h1:PEr0oPMX/HfA5eC2wNx1FRanGEcgueFEGz8vvxbQ5+E=
 github.com/ethereum-optimism/go-ethereum-hdwallet v0.1.3 h1:RWHKLhCrQThMfch+QJ1Z8veEq5ZO3DfIhZ7xgRP9WTc=
 github.com/ethereum-optimism/go-ethereum-hdwallet v0.1.3/go.mod h1:QziizLAiF0KqyLdNJYD7O5cpDlaFMNZzlxYNcWsJUxs=
 github.com/ethereum-optimism/op-geth v1.101308.4-rc.1 h1:sicj4EhLW8gJffoIRrtLl7Zgv+be8i/L1AZ0xxgInJY=

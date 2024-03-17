@@ -58,7 +58,7 @@ func RegisterGameTypes(
 ) (CloseFunc, error) {
 	var closer CloseFunc
 	var l2Client *ethclient.Client
-	if cfg.TraceTypeEnabled(config.TraceTypeCannon) || cfg.TraceTypeEnabled(config.TraceTypePermissioned) {
+	if cfg.TraceTypeEnabled(config.TraceTypeCannon) || cfg.TraceTypeEnabled(config.TraceTypePermissioned) || cfg.TraceTypeEnabled(config.TraceTypeAsterisc) {
 		l2, err := ethclient.DialContext(ctx, cfg.CannonL2)
 		if err != nil {
 			return nil, fmt.Errorf("dial l2 client %v: %w", cfg.CannonL2, err)
@@ -75,6 +75,11 @@ func RegisterGameTypes(
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypePermissioned) {
 		if err := registerCannon(faultTypes.PermissionedGameType, registry, oracles, ctx, systemClock, l1Clock, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
+			return nil, fmt.Errorf("failed to register permissioned cannon game type: %w", err)
+		}
+	}
+	if cfg.TraceTypeEnabled(config.TraceTypeAsterisc) {
+		if err := registerAsterisc(faultTypes.AsteriscGameType, registry, oracles, ctx, cl, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
 			return nil, fmt.Errorf("failed to register permissioned cannon game type: %w", err)
 		}
 	}
@@ -164,6 +169,30 @@ func registerOracle(ctx context.Context, m metrics.Metricer, oracles OracleRegis
 		return fmt.Errorf("failed to load oracle address: %w", err)
 	}
 	oracles.RegisterOracle(oracle)
+	return nil
+}
+
+func registerAsterisc(
+	gameType uint32,
+	registry Registry,
+	oracles OracleRegistry,
+	ctx context.Context,
+	cl faultTypes.ClockReader,
+	logger log.Logger,
+	m metrics.Metricer,
+	cfg *config.Config,
+	syncValidator SyncValidator,
+	rollupClient outputs.OutputRollupClient,
+	txSender types.TxSender,
+	gameFactory *contracts.DisputeGameFactoryContract,
+	caller *batching.MultiCaller,
+	l2Client cannon.L2HeaderSource,
+	l1HeaderSource L1HeaderSource,
+	selective bool,
+	claimants []common.Address,
+) error {
+	// TODO(pcw109550)
+
 	return nil
 }
 
