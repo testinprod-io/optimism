@@ -223,7 +223,7 @@ func (g *OutputAsteriscGameHelper) ChallengeToPreimageLoad(ctx context.Context, 
 
 func (g *OutputAsteriscGameHelper) VerifyPreimage(ctx context.Context, outputRootClaim *ClaimHelper, preimageKey preimage.Key) {
 	// TODO(pcw109550)
-	panic("not implemented")
+	// panic("not implemented")
 	execDepth := g.ExecDepth(ctx)
 
 	// Identifying the first state transition that loads a global preimage
