@@ -123,6 +123,8 @@ func TestMultipleTraceTypes(t *testing.T) {
 			"--trace-type", config.TraceTypeAlphabet.String())
 		args = append(args,
 			"--trace-type", config.TraceTypePermissioned.String())
+		args = append(args,
+			"--trace-type", config.TraceTypeAsterisc.String())
 		cfg := configForArgs(t, args)
 		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypeAsterisc, config.TraceTypePermissioned}, cfg.TraceTypes)
 	})
@@ -134,7 +136,7 @@ func TestMultipleTraceTypes(t *testing.T) {
 		args = append(args,
 			"--trace-type", config.TraceTypeAlphabet.String())
 		cfg := configForArgs(t, args)
-		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypeAsterisc}, cfg.TraceTypes)
+		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet}, cfg.TraceTypes)
 	})
 
 	t.Run("SpecifySameOptionMultipleTimes", func(t *testing.T) {

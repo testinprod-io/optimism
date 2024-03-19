@@ -34,7 +34,7 @@ var (
 	// validAsteriscRollupRpc = "http://localhost:8555"
 )
 
-var cannonTraceTypes = []TraceType{TraceTypeCannon, TraceTypePermissioned, TraceTypeAsterisc}
+var cannonTraceTypes = []TraceType{TraceTypeCannon, TraceTypePermissioned}
 
 func validConfig(traceType TraceType) Config {
 	cfg := NewConfig(validGameFactoryAddress, validL1EthRpc, validL1BeaconUrl, validDatadir, traceType)
