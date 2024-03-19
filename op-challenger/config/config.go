@@ -75,9 +75,11 @@ func ValidTraceType(value TraceType) bool {
 }
 
 const (
-	DefaultPollInterval       = time.Second * 12
-	DefaultCannonSnapshotFreq = uint(1_000_000_000)
-	DefaultCannonInfoFreq     = uint(10_000_000)
+	DefaultPollInterval         = time.Second * 12
+	DefaultCannonSnapshotFreq   = uint(1_000_000_000)
+	DefaultCannonInfoFreq       = uint(10_000_000)
+	DefaultAsteriscSnapshotFreq = uint(1_000_000_000)
+	DefaultAsteriscInfoFreq     = uint(10_000_000)
 	// DefaultGameWindow is the default maximum time duration in the past
 	// that the challenger will look for games to progress.
 	// The default value is 15 days, which is an 8 day resolution buffer

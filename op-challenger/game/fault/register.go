@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/claims"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/contracts"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/alphabet"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/asterisc"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/outputs"
 	faultTypes "github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
@@ -80,7 +81,7 @@ func RegisterGameTypes(
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypeAsterisc) {
 		if err := registerAsterisc(faultTypes.AsteriscGameType, registry, oracles, ctx, cl, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
-			return nil, fmt.Errorf("failed to register permissioned cannon game type: %w", err)
+			return nil, fmt.Errorf("failed to register permissioned asterisc game type: %w", err)
 		}
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypeAlphabet) {
@@ -186,13 +187,56 @@ func registerAsterisc(
 	txSender types.TxSender,
 	gameFactory *contracts.DisputeGameFactoryContract,
 	caller *batching.MultiCaller,
-	l2Client cannon.L2HeaderSource,
+	l2Client asterisc.L2HeaderSource,
 	l1HeaderSource L1HeaderSource,
 	selective bool,
 	claimants []common.Address,
 ) error {
-	// TODO(pcw109550)
+	asteriscPrestateProvider := asterisc.NewPrestateProvider(cfg.AsteriscAbsolutePreState)
+	playerCreator := func(game types.GameMetadata, dir string) (scheduler.GamePlayer, error) {
+		contract, err := contracts.NewFaultDisputeGameContract(game.Proxy, caller)
+		if err != nil {
+			return nil, err
+		}
+		oracle, err := contract.GetOracle(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load oracle for game %v: %w", game.Proxy, err)
+		}
+		oracles.RegisterOracle(oracle)
+		prestateBlock, poststateBlock, err := contract.GetBlockRange(ctx)
+		if err != nil {
+			return nil, err
+		}
+		splitDepth, err := contract.GetSplitDepth(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load split depth: %w", err)
+		}
+		l1HeadID, err := loadL1Head(contract, ctx, l1HeaderSource)
+		if err != nil {
+			return nil, err
+		}
+		prestateProvider := outputs.NewPrestateProvider(rollupClient, prestateBlock)
+		creator := func(ctx context.Context, logger log.Logger, gameDepth faultTypes.Depth, dir string) (faultTypes.TraceAccessor, error) {
+			accessor, err := outputs.NewOutputAsteriscTraceAccessor(logger, m, cfg, l2Client, prestateProvider, rollupClient, dir, l1HeadID, splitDepth, prestateBlock, poststateBlock)
+			if err != nil {
+				return nil, err
+			}
+			return accessor, nil
+		}
+		prestateValidator := NewPrestateValidator("asterisc", contract.GetAbsolutePrestateHash, asteriscPrestateProvider)
+		genesisValidator := NewPrestateValidator("output root", contract.GetGenesisOutputRoot, prestateProvider)
+		return NewGamePlayer(ctx, cl, logger, m, dir, game.Proxy, txSender, contract, syncValidator, []Validator{prestateValidator, genesisValidator}, creator, l1HeaderSource, selective, claimants)
+	}
+	err := registerOracle(ctx, oracles, gameFactory, caller, gameType)
+	if err != nil {
+		return err
+	}
+	registry.RegisterGameType(gameType, playerCreator)
 
+	contractCreator := func(game types.GameMetadata) (claims.BondContract, error) {
+		return contracts.NewFaultDisputeGameContract(game.Proxy, caller)
+	}
+	registry.RegisterBondContract(gameType, contractCreator)
 	return nil
 }
 
