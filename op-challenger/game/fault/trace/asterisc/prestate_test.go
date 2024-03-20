@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ethereum-optimism/asterisc/rvgo/fast"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func TestAbsolutePreStateCommitment(t *testing.T) {
 		setupPreState(t, dataDir, "invalid.json")
 		provider := newAsteriscPrestateProvider(dataDir, prestate)
 		_, err := provider.AbsolutePreStateCommitment(context.Background())
-		require.ErrorContains(t, err, "invalid asterisc state")
+		require.ErrorContains(t, err, "invalid asterisc VM state")
 	})
 
 	t.Run("ExpectedAbsolutePreState", func(t *testing.T) {
@@ -39,23 +40,18 @@ func TestAbsolutePreStateCommitment(t *testing.T) {
 		provider := newAsteriscPrestateProvider(dataDir, prestate)
 		actual, err := provider.AbsolutePreStateCommitment(context.Background())
 		require.NoError(t, err)
-		// TODO(pcw109550) fill this in
-		state := fast.VMState{}
-		// for cannon(must be removed because this is asterisc);
-		// state := mipsevm.State{
-		// 	Memory:         mipsevm.NewMemory(),
-		// 	PreimageKey:    common.HexToHash("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
-		// 	PreimageOffset: 0,
-		// 	PC:             0,
-		// 	NextPC:         1,
-		// 	LO:             0,
-		// 	HI:             0,
-		// 	Heap:           0,
-		// 	ExitCode:       0,
-		// 	Exited:         false,
-		// 	Step:           0,
-		// 	Registers:      [32]uint32{},
-		// }
+		state := fast.VMState{
+			Memory:          fast.NewMemory(),
+			PreimageKey:     common.HexToHash("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+			PreimageOffset:  0,
+			PC:              0,
+			ExitCode:        0,
+			Exited:          false,
+			Step:            0,
+			Heap:            0,
+			LoadReservation: 0,
+			Registers:       [32]uint64{},
+		}
 		expected, err := state.EncodeWitness().StateHash()
 		require.NoError(t, err)
 		require.Equal(t, expected, actual)
