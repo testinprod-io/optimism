@@ -16,24 +16,36 @@ import (
 )
 
 var (
-	ErrMissingTraceType              = errors.New("no supported trace types specified")
-	ErrMissingDatadir                = errors.New("missing datadir")
-	ErrMaxConcurrencyZero            = errors.New("max concurrency must not be 0")
-	ErrMissingCannonL2               = errors.New("missing cannon L2")
-	ErrMissingCannonBin              = errors.New("missing cannon bin")
-	ErrMissingCannonServer           = errors.New("missing cannon server")
-	ErrMissingCannonAbsolutePreState = errors.New("missing cannon absolute pre-state")
-	ErrMissingL1EthRPC               = errors.New("missing l1 eth rpc url")
-	ErrMissingL1Beacon               = errors.New("missing l1 beacon url")
-	ErrMissingGameFactoryAddress     = errors.New("missing game factory address")
-	ErrMissingCannonSnapshotFreq     = errors.New("missing cannon snapshot freq")
-	ErrMissingCannonInfoFreq         = errors.New("missing cannon info freq")
-	ErrMissingCannonRollupConfig     = errors.New("missing cannon network or rollup config path")
-	ErrMissingCannonL2Genesis        = errors.New("missing cannon network or l2 genesis path")
-	ErrCannonNetworkAndRollupConfig  = errors.New("only specify one of network or rollup config path")
-	ErrCannonNetworkAndL2Genesis     = errors.New("only specify one of network or l2 genesis path")
-	ErrCannonNetworkUnknown          = errors.New("unknown cannon network")
-	ErrMissingRollupRpc              = errors.New("missing rollup rpc url")
+	ErrMissingTraceType                = errors.New("no supported trace types specified")
+	ErrMissingDatadir                  = errors.New("missing datadir")
+	ErrMaxConcurrencyZero              = errors.New("max concurrency must not be 0")
+	ErrMissingCannonL2                 = errors.New("missing cannon L2")
+	ErrMissingCannonBin                = errors.New("missing cannon bin")
+	ErrMissingCannonServer             = errors.New("missing cannon server")
+	ErrMissingCannonAbsolutePreState   = errors.New("missing cannon absolute pre-state")
+	ErrMissingL1EthRPC                 = errors.New("missing l1 eth rpc url")
+	ErrMissingL1Beacon                 = errors.New("missing l1 beacon url")
+	ErrMissingGameFactoryAddress       = errors.New("missing game factory address")
+	ErrMissingCannonSnapshotFreq       = errors.New("missing cannon snapshot freq")
+	ErrMissingCannonInfoFreq           = errors.New("missing cannon info freq")
+	ErrMissingCannonRollupConfig       = errors.New("missing cannon network or rollup config path")
+	ErrMissingCannonL2Genesis          = errors.New("missing cannon network or l2 genesis path")
+	ErrCannonNetworkAndRollupConfig    = errors.New("only specify one of network or rollup config path")
+	ErrCannonNetworkAndL2Genesis       = errors.New("only specify one of network or l2 genesis path")
+	ErrCannonNetworkUnknown            = errors.New("unknown cannon network")
+	ErrMissingRollupRpc                = errors.New("missing rollup rpc url")
+	// TODO(pcw109550) maybe modularize
+	ErrMissingAsteriscL2               = errors.New("missing asterisc L2")
+	ErrMissingAsteriscBin              = errors.New("missing asterisc bin")
+	ErrMissingAsteriscServer           = errors.New("missing asterisc server")
+	ErrMissingAsteriscAbsolutePreState = errors.New("missing asterisc absolute pre-state")
+	ErrMissingAsteriscSnapshotFreq     = errors.New("missing asterisc snapshot freq")
+	ErrMissingAsteriscInfoFreq         = errors.New("missing asterisc info freq")
+	ErrMissingAsteriscRollupConfig     = errors.New("missing asterisc network or rollup config path")
+	ErrMissingAsteriscL2Genesis        = errors.New("missing asterisc network or l2 genesis path")
+	ErrAsteriscNetworkAndRollupConfig  = errors.New("only specify one of network or rollup config path")
+	ErrAsteriscNetworkAndL2Genesis     = errors.New("only specify one of network or l2 genesis path")
+	ErrAsteriscNetworkUnknown          = errors.New("unknown asterisc network")
 )
 
 type TraceType string
@@ -200,7 +212,7 @@ func (c Config) Check() error {
 	if c.MaxConcurrency == 0 {
 		return ErrMaxConcurrencyZero
 	}
-	if c.TraceTypeEnabled(TraceTypeCannon) || c.TraceTypeEnabled(TraceTypePermissioned) || c.TraceTypeEnabled(TraceTypeAsterisc) {
+	if c.TraceTypeEnabled(TraceTypeCannon) || c.TraceTypeEnabled(TraceTypePermissioned) {
 		if c.CannonBin == "" {
 			return ErrMissingCannonBin
 		}
@@ -236,6 +248,44 @@ func (c Config) Check() error {
 		}
 		if c.CannonInfoFreq == 0 {
 			return ErrMissingCannonInfoFreq
+		}
+	}
+	if c.TraceTypeEnabled(TraceTypeAsterisc) {
+		if c.AsteriscBin == "" {
+			return ErrMissingAsteriscBin
+		}
+		if c.AsteriscServer == "" {
+			return ErrMissingAsteriscServer
+		}
+		if c.AsteriscNetwork == "" {
+			if c.AsteriscRollupConfigPath == "" {
+				return ErrMissingAsteriscRollupConfig
+			}
+			if c.AsteriscL2GenesisPath == "" {
+				return ErrMissingAsteriscL2Genesis
+			}
+		} else {
+			if c.AsteriscRollupConfigPath != "" {
+				return ErrAsteriscNetworkAndRollupConfig
+			}
+			if c.AsteriscL2GenesisPath != "" {
+				return ErrAsteriscNetworkAndL2Genesis
+			}
+			if ch := chaincfg.ChainByName(c.AsteriscNetwork); ch == nil {
+				return fmt.Errorf("%w: %v", ErrAsteriscNetworkUnknown, c.AsteriscNetwork)
+			}
+		}
+		if c.AsteriscAbsolutePreState == "" {
+			return ErrMissingAsteriscAbsolutePreState
+		}
+		if c.AsteriscL2 == "" {
+			return ErrMissingAsteriscL2
+		}
+		if c.AsteriscSnapshotFreq == 0 {
+			return ErrMissingAsteriscSnapshotFreq
+		}
+		if c.AsteriscInfoFreq == 0 {
+			return ErrMissingAsteriscInfoFreq
 		}
 	}
 	if err := c.TxMgrConfig.Check(); err != nil {
