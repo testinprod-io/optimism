@@ -175,9 +175,11 @@ func NewConfig(
 
 		Datadir: datadir,
 
-		CannonSnapshotFreq: DefaultCannonSnapshotFreq,
-		CannonInfoFreq:     DefaultCannonInfoFreq,
-		GameWindow:         DefaultGameWindow,
+		CannonSnapshotFreq:   DefaultCannonSnapshotFreq,
+		CannonInfoFreq:       DefaultCannonInfoFreq,
+		AsteriscSnapshotFreq: DefaultAsteriscSnapshotFreq,
+		AsteriscInfoFreq:     DefaultAsteriscInfoFreq,
+		GameWindow:           DefaultGameWindow,
 	}
 }
 

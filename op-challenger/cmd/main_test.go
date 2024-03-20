@@ -117,6 +117,8 @@ func TestMultipleTraceTypes(t *testing.T) {
 	t.Run("WithAllOptions", func(t *testing.T) {
 		argsMap := requiredArgs(config.TraceTypeCannon)
 		addRequiredOutputArgs(argsMap)
+		// Add Asterisc required flags
+		addRequiredAsteriscArgs(argsMap)
 		args := toArgList(argsMap)
 		// Add extra trace types (cannon is already specified)
 		args = append(args,
@@ -126,7 +128,7 @@ func TestMultipleTraceTypes(t *testing.T) {
 		args = append(args,
 			"--trace-type", config.TraceTypeAsterisc.String())
 		cfg := configForArgs(t, args)
-		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypeAsterisc, config.TraceTypePermissioned}, cfg.TraceTypes)
+		require.Equal(t, []config.TraceType{config.TraceTypeCannon, config.TraceTypeAlphabet, config.TraceTypePermissioned, config.TraceTypeAsterisc}, cfg.TraceTypes)
 	})
 	t.Run("WithSomeOptions", func(t *testing.T) {
 		argsMap := requiredArgs(config.TraceTypeCannon)
