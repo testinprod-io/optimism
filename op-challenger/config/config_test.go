@@ -30,8 +30,6 @@ var (
 	validAsteriscNetwork         = "mainnet"
 	validAsteriscAbsolutPreState = "pre.json"
 	validAsteriscL2              = "http://localhost:9545"
-	// TODO(pcw109550) this is not used.fix fix fix
-	// validAsteriscRollupRpc = "http://localhost:8555"
 )
 
 var cannonTraceTypes = []TraceType{TraceTypeCannon, TraceTypePermissioned}

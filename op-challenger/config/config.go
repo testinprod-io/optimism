@@ -16,24 +16,24 @@ import (
 )
 
 var (
-	ErrMissingTraceType                = errors.New("no supported trace types specified")
-	ErrMissingDatadir                  = errors.New("missing datadir")
-	ErrMaxConcurrencyZero              = errors.New("max concurrency must not be 0")
-	ErrMissingCannonL2                 = errors.New("missing cannon L2")
-	ErrMissingCannonBin                = errors.New("missing cannon bin")
-	ErrMissingCannonServer             = errors.New("missing cannon server")
-	ErrMissingCannonAbsolutePreState   = errors.New("missing cannon absolute pre-state")
-	ErrMissingL1EthRPC                 = errors.New("missing l1 eth rpc url")
-	ErrMissingL1Beacon                 = errors.New("missing l1 beacon url")
-	ErrMissingGameFactoryAddress       = errors.New("missing game factory address")
-	ErrMissingCannonSnapshotFreq       = errors.New("missing cannon snapshot freq")
-	ErrMissingCannonInfoFreq           = errors.New("missing cannon info freq")
-	ErrMissingCannonRollupConfig       = errors.New("missing cannon network or rollup config path")
-	ErrMissingCannonL2Genesis          = errors.New("missing cannon network or l2 genesis path")
-	ErrCannonNetworkAndRollupConfig    = errors.New("only specify one of network or rollup config path")
-	ErrCannonNetworkAndL2Genesis       = errors.New("only specify one of network or l2 genesis path")
-	ErrCannonNetworkUnknown            = errors.New("unknown cannon network")
-	ErrMissingRollupRpc                = errors.New("missing rollup rpc url")
+	ErrMissingTraceType              = errors.New("no supported trace types specified")
+	ErrMissingDatadir                = errors.New("missing datadir")
+	ErrMaxConcurrencyZero            = errors.New("max concurrency must not be 0")
+	ErrMissingCannonL2               = errors.New("missing cannon L2")
+	ErrMissingCannonBin              = errors.New("missing cannon bin")
+	ErrMissingCannonServer           = errors.New("missing cannon server")
+	ErrMissingCannonAbsolutePreState = errors.New("missing cannon absolute pre-state")
+	ErrMissingL1EthRPC               = errors.New("missing l1 eth rpc url")
+	ErrMissingL1Beacon               = errors.New("missing l1 beacon url")
+	ErrMissingGameFactoryAddress     = errors.New("missing game factory address")
+	ErrMissingCannonSnapshotFreq     = errors.New("missing cannon snapshot freq")
+	ErrMissingCannonInfoFreq         = errors.New("missing cannon info freq")
+	ErrMissingCannonRollupConfig     = errors.New("missing cannon network or rollup config path")
+	ErrMissingCannonL2Genesis        = errors.New("missing cannon network or l2 genesis path")
+	ErrCannonNetworkAndRollupConfig  = errors.New("only specify one of network or rollup config path")
+	ErrCannonNetworkAndL2Genesis     = errors.New("only specify one of network or l2 genesis path")
+	ErrCannonNetworkUnknown          = errors.New("unknown cannon network")
+	ErrMissingRollupRpc              = errors.New("missing rollup rpc url")
 	// TODO(pcw109550) maybe modularize
 	ErrMissingAsteriscL2               = errors.New("missing asterisc L2")
 	ErrMissingAsteriscBin              = errors.New("missing asterisc bin")
@@ -120,12 +120,7 @@ type Config struct {
 
 	TraceTypes []TraceType // Type of traces supported
 
-	// Specific to the output cannon trace type
-	RollupRpc string
-
-	// Specific to the output cannon trace type
-	// TODO(pcw109550): fix name
-	AsteriscRollupRpc string
+	RollupRpc string // L2 Rollup RPC Url
 
 	// Specific to the cannon trace provider
 	CannonBin              string // Path to the cannon executable to run when generating trace data
