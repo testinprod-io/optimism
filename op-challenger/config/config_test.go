@@ -224,9 +224,9 @@ func TestRollupRpcRequired(t *testing.T) {
 	}
 }
 
-func TestRequireConfigForMultipleTraceTypes(t *testing.T) {
+func TestRequireConfigForMultipleTraceTypesForCannon(t *testing.T) {
 	cfg := validConfig(TraceTypeCannon)
-	cfg.TraceTypes = []TraceType{TraceTypeCannon, TraceTypeAlphabet, TraceTypeAsterisc}
+	cfg.TraceTypes = []TraceType{TraceTypeCannon, TraceTypeAlphabet}
 	// Set all required options and check its valid
 	cfg.RollupRpc = validRollupRpc
 	require.NoError(t, cfg.Check())
@@ -237,6 +237,23 @@ func TestRequireConfigForMultipleTraceTypes(t *testing.T) {
 	cfg.CannonL2 = validCannonL2
 
 	// Require output cannon specific args
+	cfg.RollupRpc = ""
+	require.ErrorIs(t, cfg.Check(), ErrMissingRollupRpc)
+}
+
+func TestRequireConfigForMultipleTraceTypesForAsterisc(t *testing.T) {
+	cfg := validConfig(TraceTypeAsterisc)
+	cfg.TraceTypes = []TraceType{TraceTypeAsterisc, TraceTypeAlphabet}
+	// Set all required options and check its valid
+	cfg.RollupRpc = validRollupRpc
+	require.NoError(t, cfg.Check())
+
+	// Require asterisc specific args
+	cfg.AsteriscL2 = ""
+	require.ErrorIs(t, cfg.Check(), ErrMissingAsteriscL2)
+	cfg.AsteriscL2 = validAsteriscL2
+
+	// Require output asterisc specific args
 	cfg.RollupRpc = ""
 	require.ErrorIs(t, cfg.Check(), ErrMissingRollupRpc)
 }
