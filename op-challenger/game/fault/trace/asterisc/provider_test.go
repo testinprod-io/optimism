@@ -80,7 +80,6 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetStepData(t *testing.T) {
-	// failing
 	t.Run("ExistingProof", func(t *testing.T) {
 		dataDir, prestate := setupTestData(t)
 		provider, generator := setupWithTestData(t, dataDir, prestate)
