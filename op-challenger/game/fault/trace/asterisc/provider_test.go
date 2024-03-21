@@ -35,8 +35,7 @@ func TestGet(t *testing.T) {
 		provider, generator := setupWithTestData(t, dataDir, prestate)
 		value, err := provider.Get(context.Background(), PositionFromTraceIndex(provider, common.Big0))
 		require.NoError(t, err)
-		// TODO(pcw109550): this may be wrong. different vm, different proof
-		require.Equal(t, common.HexToHash("0x45fd9aa59768331c726e719e76aa343e73123af888804604785ae19506e65e87"), value)
+		require.Equal(t, common.HexToHash("0x034689707b571db46b32c9e433def18e648f4e1fa9e5abd4012e7913031bfc10"), value)
 		require.Empty(t, generator.generated)
 	})
 
