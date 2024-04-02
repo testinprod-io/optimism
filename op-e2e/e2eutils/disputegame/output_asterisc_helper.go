@@ -15,6 +15,7 @@ import (
 	contractMetrics "github.com/ethereum-optimism/optimism/op-challenger/game/fault/contracts/metrics"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/asterisc"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/outputs"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/split"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
@@ -314,7 +315,7 @@ func (g *OutputAsteriscGameHelper) createAsteriscTraceProvider(ctx context.Conte
 		agreed, disputed, err := outputs.FetchProposals(ctx, outputProvider, pre, post)
 		g.require.NoError(err)
 		g.t.Logf("Using trace between blocks %v and %v\n", agreed.L2BlockNumber, disputed.L2BlockNumber)
-		localInputs, err := asterisc.FetchLocalInputsFromProposals(ctx, l1Head.Hash, l2Client, agreed, disputed)
+		localInputs, err := cannon.FetchLocalInputsFromProposals(ctx, l1Head.Hash, l2Client, agreed, disputed)
 		g.require.NoError(err, "Failed to fetch local inputs")
 		localContext = outputs.CreateLocalContext(pre, post)
 		dir := filepath.Join(cfg.Datadir, "asterisc-trace")
