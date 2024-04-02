@@ -80,7 +80,7 @@ func RegisterGameTypes(
 		}
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypeAsterisc) {
-		if err := registerAsterisc(faultTypes.AsteriscGameType, registry, oracles, ctx, cl, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
+		if err := registerAsterisc(faultTypes.AsteriscGameType, registry, oracles, ctx, systemClock, l1Clock, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
 			return nil, fmt.Errorf("failed to register permissioned asterisc game type: %w", err)
 		}
 	}
@@ -178,13 +178,14 @@ func registerAsterisc(
 	registry Registry,
 	oracles OracleRegistry,
 	ctx context.Context,
-	cl faultTypes.ClockReader,
+	systemClock clock.Clock,
+	l1Clock faultTypes.ClockReader,
 	logger log.Logger,
 	m metrics.Metricer,
 	cfg *config.Config,
 	syncValidator SyncValidator,
 	rollupClient outputs.OutputRollupClient,
-	txSender types.TxSender,
+	txSender TxSender,
 	gameFactory *contracts.DisputeGameFactoryContract,
 	caller *batching.MultiCaller,
 	l2Client asterisc.L2HeaderSource,
@@ -194,7 +195,7 @@ func registerAsterisc(
 ) error {
 	asteriscPrestateProvider := asterisc.NewPrestateProvider(cfg.AsteriscAbsolutePreState)
 	playerCreator := func(game types.GameMetadata, dir string) (scheduler.GamePlayer, error) {
-		contract, err := contracts.NewFaultDisputeGameContract(game.Proxy, caller)
+		contract, err := contracts.NewFaultDisputeGameContract(m, game.Proxy, caller)
 		if err != nil {
 			return nil, err
 		}
@@ -224,17 +225,17 @@ func registerAsterisc(
 			return accessor, nil
 		}
 		prestateValidator := NewPrestateValidator("asterisc", contract.GetAbsolutePrestateHash, asteriscPrestateProvider)
-		genesisValidator := NewPrestateValidator("output root", contract.GetGenesisOutputRoot, prestateProvider)
-		return NewGamePlayer(ctx, cl, logger, m, dir, game.Proxy, txSender, contract, syncValidator, []Validator{prestateValidator, genesisValidator}, creator, l1HeaderSource, selective, claimants)
+		genesisValidator := NewPrestateValidator("output root", contract.GetStartingRootHash, prestateProvider)
+		return NewGamePlayer(ctx, systemClock, l1Clock, logger, m, dir, game.Proxy, txSender, contract, syncValidator, []Validator{prestateValidator, genesisValidator}, creator, l1HeaderSource, selective, claimants)
 	}
-	err := registerOracle(ctx, oracles, gameFactory, caller, gameType)
+	err := registerOracle(ctx, m, oracles, gameFactory, caller, gameType)
 	if err != nil {
 		return err
 	}
 	registry.RegisterGameType(gameType, playerCreator)
 
 	contractCreator := func(game types.GameMetadata) (claims.BondContract, error) {
-		return contracts.NewFaultDisputeGameContract(game.Proxy, caller)
+		return contracts.NewFaultDisputeGameContract(m, game.Proxy, caller)
 	}
 	registry.RegisterBondContract(gameType, contractCreator)
 	return nil

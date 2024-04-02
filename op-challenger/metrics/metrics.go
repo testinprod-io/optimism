@@ -87,9 +87,8 @@ type Metrics struct {
 	moves prometheus.Counter
 	steps prometheus.Counter
 
-	cannonExecutionTime prometheus.Histogram
-	claimResolutionTime prometheus.Histogram
-	gameActTime         prometheus.Histogram
+	claimResolutionTime   prometheus.Histogram
+	gameActTime           prometheus.Histogram
 	cannonExecutionTime   prometheus.Histogram
 	asteriscExecutionTime prometheus.Histogram
 
