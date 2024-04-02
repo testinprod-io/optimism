@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-challenger/config"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/metrics"
 	"github.com/ethereum-optimism/optimism/op-service/testlog"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +33,7 @@ func TestGenerateProof(t *testing.T) {
 	cfg.AsteriscSnapshotFreq = 500
 	cfg.AsteriscInfoFreq = 900
 
-	inputs := LocalGameInputs{
+	inputs := cannon.LocalGameInputs{
 		L1Head:        common.Hash{0x11},
 		L2Head:        common.Hash{0x22},
 		L2OutputRoot:  common.Hash{0x33},

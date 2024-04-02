@@ -15,6 +15,7 @@ import (
 
 	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
 	"github.com/ethereum-optimism/optimism/op-challenger/config"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	preimage "github.com/ethereum-optimism/optimism/op-preimage"
 	"github.com/ethereum-optimism/optimism/op-program/host/kvstore"
@@ -60,7 +61,7 @@ type AsteriscTraceProvider struct {
 	lastStep uint64
 }
 
-func NewTraceProvider(logger log.Logger, m AsteriscMetricer, cfg *config.Config, localInputs LocalGameInputs, dir string, gameDepth types.Depth) *AsteriscTraceProvider {
+func NewTraceProvider(logger log.Logger, m AsteriscMetricer, cfg *config.Config, localInputs cannon.LocalGameInputs, dir string, gameDepth types.Depth) *AsteriscTraceProvider {
 	return &AsteriscTraceProvider{
 		logger:         logger,
 		dir:            dir,
@@ -283,7 +284,7 @@ func PreimageLargerThan(size int) PreimageOpt {
 	}
 }
 
-func NewTraceProviderForTest(logger log.Logger, m AsteriscMetricer, cfg *config.Config, localInputs LocalGameInputs, dir string, gameDepth types.Depth) *AsteriscTraceProviderForTest {
+func NewTraceProviderForTest(logger log.Logger, m AsteriscMetricer, cfg *config.Config, localInputs cannon.LocalGameInputs, dir string, gameDepth types.Depth) *AsteriscTraceProviderForTest {
 	p := &AsteriscTraceProvider{
 		logger:         logger,
 		dir:            dir,

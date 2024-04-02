@@ -188,7 +188,7 @@ func registerAsterisc(
 	txSender TxSender,
 	gameFactory *contracts.DisputeGameFactoryContract,
 	caller *batching.MultiCaller,
-	l2Client asterisc.L2HeaderSource,
+	l2Client cannon.L2HeaderSource,
 	l1HeaderSource L1HeaderSource,
 	selective bool,
 	claimants []common.Address,

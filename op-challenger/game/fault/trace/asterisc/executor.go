@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-challenger/config"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	oplog "github.com/ethereum-optimism/optimism/op-service/log"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -35,7 +36,7 @@ type Executor struct {
 	l1               string
 	l1Beacon         string
 	l2               string
-	inputs           LocalGameInputs
+	inputs           cannon.LocalGameInputs
 	asterisc         string
 	server           string
 	network          string
@@ -48,7 +49,7 @@ type Executor struct {
 	cmdExecutor      cmdExecutor
 }
 
-func NewExecutor(logger log.Logger, m AsteriscMetricer, cfg *config.Config, inputs LocalGameInputs) *Executor {
+func NewExecutor(logger log.Logger, m AsteriscMetricer, cfg *config.Config, inputs cannon.LocalGameInputs) *Executor {
 	return &Executor{
 		logger:           logger,
 		metrics:          m,
