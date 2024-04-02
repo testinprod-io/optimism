@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/ethereum-optimism/asterisc/rvgo/fast"
+	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
 	"github.com/ethereum-optimism/optimism/op-challenger/config"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	preimage "github.com/ethereum-optimism/optimism/op-preimage"
@@ -129,7 +129,7 @@ func (p *AsteriscTraceProvider) AbsolutePreStateCommitment(_ context.Context) (c
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	hash, err := fast.StateWitness(state).StateHash()
+	hash, err := asterisc.StateWitness(state).StateHash()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot hash absolute pre-state: %w", err)
 	}
@@ -174,7 +174,7 @@ func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*proof
 				// Extend the trace out to the full length using a no-op instruction that doesn't change any state
 				// No execution is done, so no proof-data or oracle values are required.
 				witness := state.EncodeWitness()
-				witnessHash, err := fast.StateWitness(witness).StateHash()
+				witnessHash, err := asterisc.StateWitness(witness).StateHash()
 				if err != nil {
 					return nil, fmt.Errorf("cannot hash witness: %w", err)
 				}
@@ -207,7 +207,7 @@ func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*proof
 	return &proof, nil
 }
 
-func (c *AsteriscTraceProvider) finalState() (*fast.VMState, error) {
+func (c *AsteriscTraceProvider) finalState() (*asterisc.VMState, error) {
 	state, err := parseState(filepath.Join(c.dir, finalState))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read final state: %w", err)

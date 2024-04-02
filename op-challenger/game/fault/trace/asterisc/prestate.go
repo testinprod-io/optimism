@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ethereum-optimism/asterisc/rvgo/fast"
+	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -37,7 +37,7 @@ func (p *AsteriscPreStateProvider) AbsolutePreStateCommitment(_ context.Context)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	hash, err := fast.StateWitness(state).StateHash()
+	hash, err := asterisc.StateWitness(state).StateHash()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot hash absolute pre-state: %w", err)
 	}

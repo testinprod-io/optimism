@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum-optimism/asterisc/rvgo/fast"
+	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -40,8 +40,8 @@ func TestAbsolutePreStateCommitment(t *testing.T) {
 		provider := newAsteriscPrestateProvider(dataDir, prestate)
 		actual, err := provider.AbsolutePreStateCommitment(context.Background())
 		require.NoError(t, err)
-		state := fast.VMState{
-			Memory:          fast.NewMemory(),
+		state := asterisc.VMState{
+			Memory:          asterisc.NewMemory(),
 			PreimageKey:     common.HexToHash("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
 			PreimageOffset:  0,
 			PC:              0,

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum-optimism/asterisc/rvgo/fast"
+	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +24,7 @@ func TestLoadState(t *testing.T) {
 		state, err := parseState(path)
 		require.NoError(t, err)
 
-		var expected fast.VMState
+		var expected asterisc.VMState
 		require.NoError(t, json.Unmarshal(testState, &expected))
 		require.Equal(t, &expected, state)
 	})
@@ -43,7 +43,7 @@ func TestLoadState(t *testing.T) {
 		state, err := parseState(path)
 		require.NoError(t, err)
 
-		var expected fast.VMState
+		var expected asterisc.VMState
 		require.NoError(t, json.Unmarshal(testState, &expected))
 		require.Equal(t, &expected, state)
 	})
