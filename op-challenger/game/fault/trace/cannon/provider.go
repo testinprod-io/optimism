@@ -52,7 +52,7 @@ type CannonTraceProvider struct {
 	prestate       string
 	generator      ProofGenerator
 	gameDepth      types.Depth
-	preimageLoader *preimageLoader
+	preimageLoader *PreimageLoader
 
 	// lastStep stores the last step in the actual trace if known. 0 indicates unknown.
 	// Cached as an optimisation to avoid repeatedly attempting to execute beyond the end of the trace.
@@ -66,7 +66,7 @@ func NewTraceProvider(logger log.Logger, m CannonMetricer, cfg *config.Config, l
 		prestate:       cfg.CannonAbsolutePreState,
 		generator:      NewExecutor(logger, m, cfg, localInputs),
 		gameDepth:      gameDepth,
-		preimageLoader: newPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
+		preimageLoader: NewPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
 	}
 }
 
@@ -289,7 +289,7 @@ func NewTraceProviderForTest(logger log.Logger, m CannonMetricer, cfg *config.Co
 		prestate:       cfg.CannonAbsolutePreState,
 		generator:      NewExecutor(logger, m, cfg, localInputs),
 		gameDepth:      gameDepth,
-		preimageLoader: newPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
+		preimageLoader: NewPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
 	}
 	return &CannonTraceProviderForTest{p}
 }

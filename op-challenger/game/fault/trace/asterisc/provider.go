@@ -45,7 +45,7 @@ type AsteriscTraceProvider struct {
 	prestate       string
 	generator      ProofGenerator
 	gameDepth      types.Depth
-	preimageLoader *preimageLoader
+	preimageLoader *cannon.PreimageLoader
 
 	// lastStep stores the last step in the actual trace if known. 0 indicates unknown.
 	// Cached as an optimisation to avoid repeatedly attempting to execute beyond the end of the trace.
@@ -59,7 +59,7 @@ func NewTraceProvider(logger log.Logger, m AsteriscMetricer, cfg *config.Config,
 		prestate:       cfg.AsteriscAbsolutePreState,
 		generator:      NewExecutor(logger, m, cfg, localInputs),
 		gameDepth:      gameDepth,
-		preimageLoader: newPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
+		preimageLoader: cannon.NewPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
 	}
 }
 
@@ -282,7 +282,7 @@ func NewTraceProviderForTest(logger log.Logger, m AsteriscMetricer, cfg *config.
 		prestate:       cfg.AsteriscAbsolutePreState,
 		generator:      NewExecutor(logger, m, cfg, localInputs),
 		gameDepth:      gameDepth,
-		preimageLoader: newPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
+		preimageLoader: cannon.NewPreimageLoader(kvstore.NewDiskKV(preimageDir(dir)).Get),
 	}
 	return &AsteriscTraceProviderForTest{p}
 }
