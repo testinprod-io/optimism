@@ -37,7 +37,6 @@ type Metricer interface {
 	RecordGameStep()
 	RecordGameMove()
 	RecordCannonExecutionTime(t float64)
-	// TODO(pcw109550) is this a good abstraction? seems not
 	RecordAsteriscExecutionTime(t float64)
 	RecordClaimResolutionTime(t float64)
 	RecordGameActTime(t float64)
