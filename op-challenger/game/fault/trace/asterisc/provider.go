@@ -237,7 +237,7 @@ func writeLastStep(dir string, proof *cannon.ProofData, step uint64) error {
 	return nil
 }
 
-// AstesricTraceProviderForTest is a AsteriscTraceProvider that can find the step referencing the preimage read
+// AsteriscTraceProviderForTest is a AsteriscTraceProvider that can find the step referencing the preimage read
 // Only to be used for testing
 type AsteriscTraceProviderForTest struct {
 	*AsteriscTraceProvider
