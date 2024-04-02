@@ -30,15 +30,6 @@ const (
 	diskStateCache = "state.json.gz"
 )
 
-type proofData struct {
-	ClaimValue   common.Hash   `json:"post"`
-	StateData    hexutil.Bytes `json:"state-data"`
-	ProofData    hexutil.Bytes `json:"proof-data"`
-	OracleKey    hexutil.Bytes `json:"oracle-key,omitempty"`
-	OracleValue  hexutil.Bytes `json:"oracle-value,omitempty"`
-	OracleOffset uint32        `json:"oracle-offset,omitempty"`
-}
-
 type AsteriscMetricer interface {
 	RecordAsteriscExecutionTime(t float64)
 }
@@ -139,7 +130,7 @@ func (p *AsteriscTraceProvider) AbsolutePreStateCommitment(_ context.Context) (c
 
 // loadProof will attempt to load or generate the proof data at the specified index
 // If the requested index is beyond the end of the actual trace it is extended with no-op instructions.
-func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*proofData, error) {
+func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*cannon.ProofData, error) {
 	// Attempt to read the last step from disk cache
 	if p.lastStep == 0 {
 		step, err := readLastStep(p.dir)
@@ -179,7 +170,7 @@ func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*proof
 				if err != nil {
 					return nil, fmt.Errorf("cannot hash witness: %w", err)
 				}
-				proof := &proofData{
+				proof := &cannon.ProofData{
 					ClaimValue:   witnessHash,
 					StateData:    hexutil.Bytes(witness),
 					ProofData:    []byte{},
@@ -200,7 +191,7 @@ func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*proof
 		return nil, fmt.Errorf("cannot open proof file (%v): %w", path, err)
 	}
 	defer file.Close()
-	var proof proofData
+	var proof cannon.ProofData
 	err = json.NewDecoder(file).Decode(&proof)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read proof (%v): %w", path, err)
@@ -236,7 +227,7 @@ func readLastStep(dir string) (uint64, error) {
 }
 
 // writeLastStep writes the last step and proof to disk as a persistent cache.
-func writeLastStep(dir string, proof *proofData, step uint64) error {
+func writeLastStep(dir string, proof *cannon.ProofData, step uint64) error {
 	state := diskStateCacheObj{Step: step}
 	lastStepFile := filepath.Join(dir, diskStateCache)
 	if err := ioutil.WriteCompressedJson(lastStepFile, state); err != nil {

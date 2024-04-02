@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	asterisc "github.com/ethereum-optimism/asterisc/rvgo/fast"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	"github.com/ethereum-optimism/optimism/op-service/ioutil"
 	"github.com/ethereum-optimism/optimism/op-service/testlog"
@@ -111,7 +112,7 @@ func TestGetStepData(t *testing.T) {
 			Step:   10,
 			Exited: true,
 		}
-		generator.proof = &proofData{
+		generator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
 			StateData:    []byte{0xbb},
 			ProofData:    []byte{0xcc},
@@ -137,7 +138,7 @@ func TestGetStepData(t *testing.T) {
 			Step:   10,
 			Exited: true,
 		}
-		generator.proof = &proofData{
+		generator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
 			StateData:    []byte{0xbb},
 			ProofData:    []byte{0xcc},
@@ -163,7 +164,7 @@ func TestGetStepData(t *testing.T) {
 			Step:   10,
 			Exited: true,
 		}
-		initGenerator.proof = &proofData{
+		initGenerator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
 			StateData:    []byte{0xbb},
 			ProofData:    []byte{0xcc},
@@ -181,7 +182,7 @@ func TestGetStepData(t *testing.T) {
 			Step:   10,
 			Exited: true,
 		}
-		generator.proof = &proofData{
+		generator.proof = &cannon.ProofData{
 			ClaimValue: common.Hash{0xaa},
 			StateData:  []byte{0xbb},
 			ProofData:  []byte{0xcc},
@@ -247,7 +248,7 @@ func setupWithTestData(t *testing.T, dataDir string, prestate string) (*Asterisc
 type stubGenerator struct {
 	generated  []int // Using int makes assertions easier
 	finalState *asterisc.VMState
-	proof      *proofData
+	proof      *cannon.ProofData
 }
 
 func (e *stubGenerator) GenerateProof(ctx context.Context, dir string, i uint64) error {

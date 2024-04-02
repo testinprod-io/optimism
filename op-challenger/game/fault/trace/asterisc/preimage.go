@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	preimage "github.com/ethereum-optimism/optimism/op-preimage"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -41,7 +42,7 @@ func newPreimageLoader(getPreimage preimageSource) *preimageLoader {
 	}
 }
 
-func (l *preimageLoader) LoadPreimage(proof *proofData) (*types.PreimageOracleData, error) {
+func (l *preimageLoader) LoadPreimage(proof *cannon.ProofData) (*types.PreimageOracleData, error) {
 	if len(proof.OracleKey) == 0 {
 		return nil, nil
 	}
@@ -55,7 +56,7 @@ func (l *preimageLoader) LoadPreimage(proof *proofData) (*types.PreimageOracleDa
 	}
 }
 
-func (l *preimageLoader) loadBlobPreimage(proof *proofData) (*types.PreimageOracleData, error) {
+func (l *preimageLoader) loadBlobPreimage(proof *cannon.ProofData) (*types.PreimageOracleData, error) {
 	// The key for a blob field element is a keccak hash of commitment++fieldElementIndex.
 	// First retrieve the preimage of the key as a keccak hash so we have the commitment and required field element
 	inputsKey := preimage.Keccak256Key(proof.OracleKey).PreimageKey()
@@ -104,7 +105,7 @@ func (l *preimageLoader) loadBlobPreimage(proof *proofData) (*types.PreimageOrac
 	return types.NewPreimageOracleBlobData(proof.OracleKey, claimWithLength, proof.OracleOffset, requiredFieldElement, commitment, kzgProof[:]), nil
 }
 
-func (l *preimageLoader) loadPrecompilePreimage(proof *proofData) (*types.PreimageOracleData, error) {
+func (l *preimageLoader) loadPrecompilePreimage(proof *cannon.ProofData) (*types.PreimageOracleData, error) {
 	inputKey := preimage.Keccak256Key(proof.OracleKey).PreimageKey()
 	input, err := l.getPreimage(inputKey)
 	if err != nil {
