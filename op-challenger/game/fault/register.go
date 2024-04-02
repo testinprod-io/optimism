@@ -81,7 +81,7 @@ func RegisterGameTypes(
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypeAsterisc) {
 		if err := registerAsterisc(faultTypes.AsteriscGameType, registry, oracles, ctx, systemClock, l1Clock, logger, m, cfg, syncValidator, rollupClient, txSender, gameFactory, caller, l2Client, l1HeaderSource, selective, claimants); err != nil {
-			return nil, fmt.Errorf("failed to register permissioned asterisc game type: %w", err)
+			return nil, fmt.Errorf("failed to register asterisc game type: %w", err)
 		}
 	}
 	if cfg.TraceTypeEnabled(config.TraceTypeAlphabet) {
