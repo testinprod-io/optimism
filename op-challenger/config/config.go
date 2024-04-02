@@ -34,7 +34,8 @@ var (
 	ErrCannonNetworkAndL2Genesis     = errors.New("only specify one of network or l2 genesis path")
 	ErrCannonNetworkUnknown          = errors.New("unknown cannon network")
 	ErrMissingRollupRpc              = errors.New("missing rollup rpc url")
-	// TODO(pcw109550) maybe modularize
+)
+var (
 	ErrMissingAsteriscL2               = errors.New("missing asterisc L2")
 	ErrMissingAsteriscBin              = errors.New("missing asterisc bin")
 	ErrMissingAsteriscServer           = errors.New("missing asterisc server")
