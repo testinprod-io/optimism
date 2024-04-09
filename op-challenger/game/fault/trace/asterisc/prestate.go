@@ -20,12 +20,12 @@ func NewPrestateProvider(prestate string) *AsteriscPreStateProvider {
 	return &AsteriscPreStateProvider{prestate: prestate}
 }
 
-func (p *AsteriscPreStateProvider) absolutePreState() ([]byte, error) {
+func (p *AsteriscPreStateProvider) absolutePreState() (*VMState, error) {
 	state, err := parseState(p.prestate)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	return state.EncodeWitness(), nil
+	return state, nil
 }
 
 func (p *AsteriscPreStateProvider) AbsolutePreStateCommitment(_ context.Context) (common.Hash, error) {
@@ -36,10 +36,6 @@ func (p *AsteriscPreStateProvider) AbsolutePreStateCommitment(_ context.Context)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	hash, err := StateWitness(state).StateHash()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("cannot hash absolute pre-state: %w", err)
-	}
-	p.prestateCommitment = hash
-	return hash, nil
+	p.prestateCommitment = state.StateHash
+	return state.StateHash, nil
 }

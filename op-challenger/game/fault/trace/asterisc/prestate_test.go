@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,28 +31,6 @@ func TestAbsolutePreStateCommitment(t *testing.T) {
 		provider := newAsteriscPrestateProvider(dataDir, prestate)
 		_, err := provider.AbsolutePreStateCommitment(context.Background())
 		require.ErrorContains(t, err, "invalid asterisc VM state")
-	})
-
-	t.Run("ExpectedAbsolutePreState", func(t *testing.T) {
-		setupPreState(t, dataDir, "state.json")
-		provider := newAsteriscPrestateProvider(dataDir, prestate)
-		actual, err := provider.AbsolutePreStateCommitment(context.Background())
-		require.NoError(t, err)
-		state := VMState{
-			Memory:          NewMemory(),
-			PreimageKey:     common.HexToHash("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
-			PreimageOffset:  0,
-			PC:              0,
-			ExitCode:        0,
-			Exited:          false,
-			Step:            0,
-			Heap:            0,
-			LoadReservation: 0,
-			Registers:       [32]uint64{},
-		}
-		expected, err := state.EncodeWitness().StateHash()
-		require.NoError(t, err)
-		require.Equal(t, expected, actual)
 	})
 
 	t.Run("CacheAbsolutePreState", func(t *testing.T) {

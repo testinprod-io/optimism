@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-program/host/kvstore"
 	"github.com/ethereum-optimism/optimism/op-service/ioutil"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -105,12 +104,12 @@ func (p *AsteriscTraceProvider) GetStepData(ctx context.Context, pos types.Posit
 	return value, data, oracleData, nil
 }
 
-func (p *AsteriscTraceProvider) absolutePreState() ([]byte, error) {
+func (p *AsteriscTraceProvider) absolutePreState() (*VMState, error) {
 	state, err := parseState(p.prestate)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	return state.EncodeWitness(), nil
+	return state, nil
 }
 
 func (p *AsteriscTraceProvider) AbsolutePreStateCommitment(_ context.Context) (common.Hash, error) {
@@ -118,11 +117,7 @@ func (p *AsteriscTraceProvider) AbsolutePreStateCommitment(_ context.Context) (c
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("cannot load absolute pre-state: %w", err)
 	}
-	hash, err := StateWitness(state).StateHash()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("cannot hash absolute pre-state: %w", err)
-	}
-	return hash, nil
+	return state.StateHash, nil
 }
 
 // loadProof will attempt to load or generate the proof data at the specified index
@@ -162,14 +157,9 @@ func (p *AsteriscTraceProvider) loadProof(ctx context.Context, i uint64) (*canno
 				p.lastStep = state.Step - 1
 				// Extend the trace out to the full length using a no-op instruction that doesn't change any state
 				// No execution is done, so no proof-data or oracle values are required.
-				witness := state.EncodeWitness()
-				witnessHash, err := StateWitness(witness).StateHash()
-				if err != nil {
-					return nil, fmt.Errorf("cannot hash witness: %w", err)
-				}
 				proof := &cannon.ProofData{
-					ClaimValue:   witnessHash,
-					StateData:    hexutil.Bytes(witness),
+					ClaimValue:   state.StateHash,
+					StateData:    state.Witness,
 					ProofData:    []byte{},
 					OracleKey:    nil,
 					OracleValue:  nil,

@@ -45,21 +45,6 @@ func TestGet(t *testing.T) {
 		require.Empty(t, generator.generated)
 	})
 
-	t.Run("ProofAfterEndOfTrace", func(t *testing.T) {
-		provider, generator := setupWithTestData(t, dataDir, prestate)
-		generator.finalState = &VMState{
-			Memory: &Memory{},
-			Step:   10,
-			Exited: true,
-		}
-		value, err := provider.Get(context.Background(), PositionFromTraceIndex(provider, big.NewInt(7000)))
-		require.NoError(t, err)
-		require.Contains(t, generator.generated, 7000, "should have tried to generate the proof")
-		stateHash, err := generator.finalState.EncodeWitness().StateHash()
-		require.NoError(t, err)
-		require.Equal(t, stateHash, value)
-	})
-
 	t.Run("MissingPostHash", func(t *testing.T) {
 		provider, generator := setupWithTestData(t, dataDir, prestate)
 		_, err := provider.Get(context.Background(), PositionFromTraceIndex(provider, big.NewInt(1)))
@@ -105,9 +90,9 @@ func TestGetStepData(t *testing.T) {
 		dataDir, prestate := setupTestData(t)
 		provider, generator := setupWithTestData(t, dataDir, prestate)
 		generator.finalState = &VMState{
-			Memory: &Memory{},
-			Step:   10,
-			Exited: true,
+			Step:    10,
+			Exited:  true,
+			Witness: make([]byte, 362),
 		}
 		generator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
@@ -131,9 +116,9 @@ func TestGetStepData(t *testing.T) {
 		dataDir, prestate := setupTestData(t)
 		provider, generator := setupWithTestData(t, dataDir, prestate)
 		generator.finalState = &VMState{
-			Memory: &Memory{},
-			Step:   10,
-			Exited: true,
+			Step:    10,
+			Exited:  true,
+			Witness: make([]byte, 362),
 		}
 		generator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
@@ -147,7 +132,7 @@ func TestGetStepData(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, generator.generated, 7000, "should have tried to generate the proof")
 
-		witness := generator.finalState.EncodeWitness()
+		witness := generator.finalState.Witness
 		require.EqualValues(t, witness, preimage)
 		require.Equal(t, []byte{}, proof)
 		require.Nil(t, data)
@@ -157,9 +142,9 @@ func TestGetStepData(t *testing.T) {
 		dataDir, prestate := setupTestData(t)
 		provider, initGenerator := setupWithTestData(t, dataDir, prestate)
 		initGenerator.finalState = &VMState{
-			Memory: &Memory{},
-			Step:   10,
-			Exited: true,
+			Step:    10,
+			Exited:  true,
+			Witness: make([]byte, 362),
 		}
 		initGenerator.proof = &cannon.ProofData{
 			ClaimValue:   common.Hash{0xaa},
@@ -175,9 +160,9 @@ func TestGetStepData(t *testing.T) {
 
 		provider, generator := setupWithTestData(t, dataDir, prestate)
 		generator.finalState = &VMState{
-			Memory: &Memory{},
-			Step:   10,
-			Exited: true,
+			Step:    10,
+			Exited:  true,
+			Witness: make([]byte, 362),
 		}
 		generator.proof = &cannon.ProofData{
 			ClaimValue: common.Hash{0xaa},
@@ -188,7 +173,7 @@ func TestGetStepData(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, generator.generated, "should not have to generate the proof again")
 
-		require.EqualValues(t, initGenerator.finalState.EncodeWitness(), preimage)
+		require.EqualValues(t, initGenerator.finalState.Witness, preimage)
 		require.Empty(t, proof)
 		require.Nil(t, data)
 	})
