@@ -83,16 +83,16 @@ func (s *EngineAPIClient) EngineVersionProvider() EngineVersionProvider { return
 func (s *EngineAPIClient) ForkchoiceUpdate(ctx context.Context, fc *eth.ForkchoiceState, attributes *eth.PayloadAttributes) (*eth.ForkchoiceUpdatedResult, error) {
 	llog := s.log.New("state", fc)       // local logger
 	tlog := llog.New("attr", attributes) // trace logger
-	tlog.Trace("Sharing forkchoice-updated signal")
+	tlog.Debug("Sharing forkchoice-updated signal")
 	fcCtx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 	var result eth.ForkchoiceUpdatedResult
 	method := s.evp.ForkchoiceUpdatedVersion(attributes)
 	err := s.RPC.CallContext(fcCtx, &result, string(method), fc, attributes)
 	if err == nil {
-		tlog.Trace("Shared forkchoice-updated signal")
+		tlog.Debug("Shared forkchoice-updated signal")
 		if attributes != nil { // block building is optional, we only get a payload ID if we are building a block
-			tlog.Trace("Received payload id", "payloadId", result.PayloadID)
+			tlog.Debug("Received payload id", "payloadId", result.PayloadID)
 		}
 		return &result, nil
 	} else {
@@ -118,7 +118,7 @@ func (s *EngineAPIClient) ForkchoiceUpdate(ctx context.Context, fc *eth.Forkchoi
 // and this type of error is kept separate from the returned `error` used for RPC errors, like timeouts.
 func (s *EngineAPIClient) NewPayload(ctx context.Context, payload *eth.ExecutionPayload, parentBeaconBlockRoot *common.Hash) (*eth.PayloadStatusV1, error) {
 	e := s.log.New("block_hash", payload.BlockHash)
-	e.Trace("sending payload for execution")
+	e.Debug("sending payload for execution")
 
 	execCtx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
@@ -134,7 +134,7 @@ func (s *EngineAPIClient) NewPayload(ctx context.Context, payload *eth.Execution
 		return nil, fmt.Errorf("unsupported NewPayload version: %s", method)
 	}
 
-	e.Trace("Received payload execution result", "status", result.Status, "latestValidHash", result.LatestValidHash, "message", result.ValidationError)
+	e.Debug("Received payload execution result", "status", result.Status, "latestValidHash", result.LatestValidHash, "message", result.ValidationError)
 	if err != nil {
 		e.Error("Payload execution failed", "err", err)
 		return nil, fmt.Errorf("failed to execute payload: %w", err)
@@ -148,7 +148,7 @@ func (s *EngineAPIClient) NewPayload(ctx context.Context, payload *eth.Execution
 // 2. Other types of `error`: temporary RPC errors, like timeouts.
 func (s *EngineAPIClient) GetPayload(ctx context.Context, payloadInfo eth.PayloadInfo) (*eth.ExecutionPayloadEnvelope, error) {
 	e := s.log.New("payload_id", payloadInfo.ID)
-	e.Trace("getting payload")
+	e.Debug("getting payload")
 	var result eth.ExecutionPayloadEnvelope
 	method := s.evp.GetPayloadVersion(payloadInfo.Timestamp)
 	err := s.RPC.CallContext(ctx, &result, string(method), payloadInfo.ID)
@@ -168,7 +168,7 @@ func (s *EngineAPIClient) GetPayload(ctx context.Context, payloadInfo eth.Payloa
 		}
 		return nil, err
 	}
-	e.Trace("Received payload")
+	e.Debug("Received payload")
 	return &result, nil
 }
 
