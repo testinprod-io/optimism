@@ -98,6 +98,8 @@ services:
       context: ../
       dockerfile: ops/docker/op-stack-go/Dockerfile
       target: op-node-target
+    environment:
+      ALTDA_ENABLED: "true"
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:devnet
     command: >
       op-node
@@ -190,7 +192,7 @@ services:
       OP_BATCHER_L1_ETH_RPC: http://l1:8545
       OP_BATCHER_L2_ETH_RPC: http://l2:8545
       OP_BATCHER_ROLLUP_RPC: http://op-node:8545
-      OP_BATCHER_MAX_CHANNEL_DURATION: 2
+      OP_BATCHER_MAX_CHANNEL_DURATION: 20
       OP_BATCHER_SUB_SAFETY_MARGIN: 4 # SWS is 15, ChannelTimeout is 40
       OP_BATCHER_POLL_INTERVAL: 1s
       OP_BATCHER_NUM_CONFIRMATIONS: 1
@@ -205,57 +207,57 @@ services:
       OP_BATCHER_ALTDA_DA_SERVER: "http://da-server:3100"
       OP_BATCHER_DATA_AVAILABILITY_TYPE: "${DA_TYPE}"
 
-  op-challenger:
-    depends_on:
-      - l1
-      - l1-bn
-      - l2
-      - op-node
-    build:
-      context: ../
-      dockerfile: ops/docker/op-stack-go/Dockerfile
-      target: op-challenger-target
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-challenger:devnet
-    volumes:
-      - "challenger_data:/db"
-      - "../op-program/bin:/op-program"
-    environment:
-      OP_CHALLENGER_L1_ETH_RPC: http://l1:8545
-      OP_CHALLENGER_L1_BEACON: http://l1-bn:5052
-      OP_CHALLENGER_ROLLUP_RPC: http://op-node:8545
-      OP_CHALLENGER_TRACE_TYPE: cannon,fast
-      OP_CHALLENGER_GAME_FACTORY_ADDRESS: ${DGF_ADDRESS}
-      # The devnet can't set the absolute prestate output root because the contracts are deployed in L1 genesis
-      # before the L2 genesis is known.
-      OP_CHALLENGER_UNSAFE_ALLOW_INVALID_PRESTATE: "true"
-      OP_CHALLENGER_DATADIR: /db
-      OP_CHALLENGER_CANNON_ROLLUP_CONFIG: ./.devnet/rollup.json
-      OP_CHALLENGER_CANNON_L2_GENESIS: ./.devnet/genesis-l2.json
-      OP_CHALLENGER_CANNON_BIN: ./cannon/bin/cannon
-      OP_CHALLENGER_CANNON_SERVER: /op-program/op-program
-      OP_CHALLENGER_CANNON_PRESTATE: /op-program/prestate.bin.gz
-      OP_CHALLENGER_L2_ETH_RPC: http://l2:8545
-      OP_CHALLENGER_MNEMONIC: test test test test test test test test test test test junk
-      OP_CHALLENGER_HD_PATH: "m/44'/60'/0'/0/4"
-      OP_CHALLENGER_NUM_CONFIRMATIONS: 1
+  #  op-challenger:
+  #    depends_on:
+  #      - l1
+  #      - l1-bn
+  #      - l2
+  #      - op-node
+  #    build:
+  #      context: ../
+  #      dockerfile: ops/docker/op-stack-go/Dockerfile
+  #      target: op-challenger-target
+  #    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-challenger:devnet
+  #    volumes:
+  #      - "challenger_data:/db"
+  #      - "../op-program/bin:/op-program"
+  #    environment:
+  #      OP_CHALLENGER_L1_ETH_RPC: http://l1:8545
+  #      OP_CHALLENGER_L1_BEACON: http://l1-bn:5052
+  #      OP_CHALLENGER_ROLLUP_RPC: http://op-node:8545
+  #      OP_CHALLENGER_TRACE_TYPE: cannon,fast
+  #      OP_CHALLENGER_GAME_FACTORY_ADDRESS: ${DGF_ADDRESS}
+  #      # The devnet can't set the absolute prestate output root because the contracts are deployed in L1 genesis
+  #      # before the L2 genesis is known.
+  #      OP_CHALLENGER_UNSAFE_ALLOW_INVALID_PRESTATE: "true"
+  #      OP_CHALLENGER_DATADIR: /db
+  #      OP_CHALLENGER_CANNON_ROLLUP_CONFIG: ./.devnet/rollup.json
+  #      OP_CHALLENGER_CANNON_L2_GENESIS: ./.devnet/genesis-l2.json
+  #      OP_CHALLENGER_CANNON_BIN: ./cannon/bin/cannon
+  #      OP_CHALLENGER_CANNON_SERVER: /op-program/op-program
+  #      OP_CHALLENGER_CANNON_PRESTATE: /op-program/prestate.bin.gz
+  #      OP_CHALLENGER_L2_ETH_RPC: http://l2:8545
+  #      OP_CHALLENGER_MNEMONIC: test test test test test test test test test test test junk
+  #      OP_CHALLENGER_HD_PATH: "m/44'/60'/0'/0/4"
+  #      OP_CHALLENGER_NUM_CONFIRMATIONS: 1
 
   da-server:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/da-server:devnet
-    build:
-      context: ../
-      dockerfile: ops/docker/op-stack-go/Dockerfile
-      target: da-server-target
+    depends_on:
+      - l1
+    image: smstack/da-aggregator:latest
     command: >
       da-server
-      --file.path=/data
-      --addr=0.0.0.0
-      --port=3100
-      --log.level=debug
-      --generic-commitment="${ALTDA_GENERIC_DA}"
+        --config=./config/config.json
+        --host=0.0.0.0
+        --port=3100
+        --private-key=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a
+        --batch-inbox-address=0x00289c189bee4e70334629f04cd5ed602b6600eb
+        --percentages=50,17,17,16
+        --chain-id=900
     ports:
       - "3100:3100"
     volumes:
-      - "da_data:/data"
+      - "da_data:/indexer/data/db"
 
   sentinel:
     image: quarry/sentinel # TODO(10141): We need a public image for this (sentinel is out of repo)

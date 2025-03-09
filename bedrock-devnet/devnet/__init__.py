@@ -29,7 +29,7 @@ FORKS = ["delta", "ecotone", "fjord", "granite", "holocene"]
 # Global environment variables
 DEVNET_NO_BUILD = os.getenv('DEVNET_NO_BUILD') == "true"
 DEVNET_L2OO = os.getenv('DEVNET_L2OO') == "true"
-DEVNET_ALTDA = os.getenv('DEVNET_ALTDA') == "true"
+DEVNET_ALTDA = "true"
 GENERIC_ALTDA = os.getenv('GENERIC_ALTDA') == "true"
 
 class Bunch:
@@ -127,6 +127,7 @@ def init_devnet_l1_deploy_config(paths, update_timestamp=False):
         deploy_config['useFaultProofs'] = False
     if DEVNET_ALTDA:
         deploy_config['useAltDA'] = True
+        deploy_config['daCommitmentType'] = "KeccakCommitment"
     if GENERIC_ALTDA:
         deploy_config['daCommitmentType'] = "GenericCommitment"
     write_json(paths.devnet_config_path, deploy_config)
@@ -288,9 +289,9 @@ def devnet_deploy(paths):
     run_command(['docker', 'compose', 'up', '-d', 'op-node', 'op-proposer', 'op-batcher', 'artifact-server'], cwd=paths.ops_bedrock_dir, env=docker_env)
 
     # Optionally bring up op-challenger.
-    if not DEVNET_L2OO:
-        log.info('Bringing up `op-challenger`.')
-        run_command(['docker', 'compose', 'up', '-d', 'op-challenger'], cwd=paths.ops_bedrock_dir, env=docker_env)
+    # if not DEVNET_L2OO:
+    #     log.info('Bringing up `op-challenger`.')
+    #     run_command(['docker', 'compose', 'up', '-d', 'op-challenger'], cwd=paths.ops_bedrock_dir, env=docker_env)
 
     # Optionally bring up Alt-DA Mode components.
     if DEVNET_ALTDA:
