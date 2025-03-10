@@ -11,6 +11,8 @@ volumes:
   challenger_data:
   da_data:
   op_log:
+  celestia-app-data:
+  celestia-bridge-data:
 
 
 services:
@@ -241,9 +243,42 @@ services:
   #      OP_CHALLENGER_HD_PATH: "m/44'/60'/0'/0/4"
   #      OP_CHALLENGER_NUM_CONFIRMATIONS: 1
 
+  celestia-app:
+    image: ghcr.io/celestiaorg/celestia-app:v3.3.0
+    container_name: celestia-app
+    volumes:
+      - celestia-app-data:/home/celestia/.celestia-app
+      - ./cel-consensus.sh:/cel-consensus.sh
+      - ./shared:/shared
+    ports:
+      - "26657:26657"
+      - "9090:9090"
+    entrypoint: [ "/bin/sh" ]
+    command: [ "/cel-consensus.sh" ]
+    user: root
+
+  celestia-bridge:
+    image: ghcr.io/celestiaorg/celestia-node:v0.20.4
+    container_name: celestia-bridge
+    volumes:
+      - celestia-bridge-data:/home/celestia/bridge
+      - ./cel-bridge.sh:/cel-bridge.sh
+      - ./shared:/shared
+    ports:
+      - "26658:26658"
+      - "26659:26659"
+    depends_on:
+      - celestia-app
+    environment:
+      - CELESTIA_CUSTOM=test
+    entrypoint: [ "/bin/sh" ]
+    command: [ "/cel-bridge.sh" ]
+    user: root
+
   da-server:
     depends_on:
       - l1
+      - celestia-bridge
     image: smstack/da-aggregator:latest
     command: >
       da-server
