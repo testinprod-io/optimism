@@ -15,6 +15,7 @@ volumes:
   celestia-bridge-data:
 
 
+
 services:
 
   l1:
@@ -194,7 +195,7 @@ services:
       OP_BATCHER_L1_ETH_RPC: http://l1:8545
       OP_BATCHER_L2_ETH_RPC: http://l2:8545
       OP_BATCHER_ROLLUP_RPC: http://op-node:8545
-      OP_BATCHER_MAX_CHANNEL_DURATION: 20
+      OP_BATCHER_MAX_CHANNEL_DURATION: 10
       OP_BATCHER_SUB_SAFETY_MARGIN: 4 # SWS is 15, ChannelTimeout is 40
       OP_BATCHER_POLL_INTERVAL: 1s
       OP_BATCHER_NUM_CONFIRMATIONS: 1
@@ -285,7 +286,7 @@ services:
         --config=./config/config.json
         --host=0.0.0.0
         --port=3100
-        --private-key=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a
+        --private-key=0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a
         --batch-inbox-address=0x00289c189bee4e70334629f04cd5ed602b6600eb
         --percentages=50,17,17,16
         --chain-id=900
@@ -318,3 +319,18 @@ services:
       - "${PWD}/../.devnet/:/usr/share/nginx/html/:ro"
     security_opt:
       - "no-new-privileges:true"
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9091:9090"
+    command: --config.file=/etc/prometheus/prometheus.yml --log.level=debug
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
