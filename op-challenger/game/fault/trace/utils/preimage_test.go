@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"math/bits"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -166,6 +167,52 @@ func TestPreimageLoader_BlobPreimage(t *testing.T) {
 		actualProof := kzg4844.Proof(actual.BlobProof)
 		err = kzg4844.VerifyProof(actualCommitment, actualPoint, actualClaim, actualProof)
 		require.NoError(t, err)
+
+		// ============ Copied from go-kzg-4844 ============
+		var rootOfUnity fr.Element
+		_, err = rootOfUnity.SetString("10238227357739495823651030575849232062558860180284477541189508159991286009131")
+		if err != nil {
+			panic("failed to initialize root of unity")
+		}
+		const maxOrderRoot uint64 = 32
+
+		// Find generator subgroup of order x.
+		// This can be constructed by powering a generator of the largest 2-adic subgroup of order 2^32 by an exponent
+		// of (2^32)/x, provided x is <= 2^32.
+		logx := uint64(bits.TrailingZeros64(4096))
+		expo := uint64(1 << (maxOrderRoot - logx))
+
+		var generator fr.Element
+		generator.Exp(rootOfUnity, big.NewInt(int64(expo))) // Domain.Generator has order x now.
+
+		// Compute all relevant roots of unity, i.e. the multiplicative subgroup of size x.
+		roots := make([]fr.Element, 4096)
+		current := fr.One()
+		for i := uint64(0); i < 4096; i++ {
+			roots[i] = current
+			current.Mul(&current, &generator)
+		}
+
+		shiftCorrection := uint64(64 - bits.TrailingZeros64(4096))
+
+		for i := uint64(0); i < 4096; i++ {
+			// Find index irev, such that i and irev get swapped
+			irev := bits.Reverse64(i) >> shiftCorrection
+			if irev > i {
+				roots[i], roots[irev] = roots[irev], roots[i]
+			}
+		}
+		// ========================
+
+		_, expectedClaim, err := kzg4844.ComputeProof(&blob, roots[24].Bytes())
+
+		fmt.Println(elementData)   // a part of original blob
+		fmt.Println(expectedClaim) // a claim(preimage) calculated from 24th roots of unity point
+
+		// a claim(preimage) calculated from field index(24)
+		fmt.Println(claim)
+		fmt.Println(actual.GetPreimageWithoutSize())
+		fmt.Println(expected.GetPreimageWithoutSize())
 	})
 }
 
