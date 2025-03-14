@@ -288,7 +288,7 @@ services:
         --port=3100
         --private-key=0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a
         --batch-inbox-address=0x00289c189bee4e70334629f04cd5ed602b6600eb
-        --percentages=50,17,17,16
+        --shard-nums=3,1,1,1
         --chain-id=900
     ports:
       - "3100:3100"
