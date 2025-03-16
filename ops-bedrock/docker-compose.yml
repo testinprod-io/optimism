@@ -283,13 +283,27 @@ services:
     image: smstack/da-aggregator:latest
     command: >
       da-server
-        --config=./config/config.json
         --host=0.0.0.0
         --port=3100
         --private-key=0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a
         --batch-inbox-address=0x00289c189bee4e70334629f04cd5ed602b6600eb
         --shard-nums=3,1,1,1
-        --chain-id=900
+    environment:
+      DA_SERVER_ETH_RPC_URL: http://l1:8545
+      DA_SERVER_ETH_BEACON_URL: http://l1-bn:5052
+      DA_SERVER_CELESTIA1_RPC_URL: http://celestia-bridge:26658
+      DA_SERVER_CELESTIA1_NAMESPACE: "0xdead"
+      DA_SERVER_CELESTIA1_TOKEN: test-token
+      DA_SERVER_CELESTIA1_KEY: my_celes_key
+      DA_SERVER_CELESTIA2_RPC_URL: http://celestia-bridge:26658
+      DA_SERVER_CELESTIA2_NAMESPACE: "0xbeef"
+      DA_SERVER_CELESTIA2_TOKEN: test-token
+      DA_SERVER_CELESTIA2_KEY: my_celes_key
+      DA_SERVER_CELESTIA3_RPC_URL: http://celestia-bridge:26658
+      DA_SERVER_CELESTIA3_NAMESPACE: "0xcafe"
+      DA_SERVER_CELESTIA3_TOKEN: test-token
+      DA_SERVER_CELESTIA3_KEY: my_celes_key
+      DA_SERVER_CHAIN_ID: 900
     ports:
       - "3100:3100"
     volumes:
