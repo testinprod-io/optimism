@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/p2p"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/conductor"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/driver"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/finality"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/interop"
@@ -451,7 +452,12 @@ func (n *OpNode) initL2(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("cfg.Rollup.ChainOpConfig is nil. Please see https://github.com/ethereum-optimism/optimism/releases/tag/op-node/v1.11.0: %w", err)
 	}
 
-	n.l2Driver = driver.NewDriver(n.eventSys, n.eventDrain, &cfg.Driver, &cfg.Rollup, cfg.DependencySet, n.l2Source, n.l1Source,
+	encryptionConfig := &derive.EncryptionConfig{
+		Enabled: cfg.EncryptionEnabled,
+		Key:     cfg.EncryptionKey,
+	}
+
+	n.l2Driver = driver.NewDriver(n.eventSys, n.eventDrain, &cfg.Driver, encryptionConfig, &cfg.Rollup, cfg.DependencySet, n.l2Source, n.l1Source,
 		n.beacon, n, n, n.log, n.metrics, cfg.ConfigPersistence, n.safeDB, &cfg.Sync, sequencerConductor, altDA, indexingMode)
 	return nil
 }

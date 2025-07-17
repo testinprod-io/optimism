@@ -25,7 +25,7 @@ func FuzzFrameUnmarshalBinary(f *testing.F) {
 
 func FuzzParseFrames(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
-		frames, err := ParseFrames(data)
+		frames, err := ParseFrames(data, nil)
 		if err != nil && len(frames) != 0 {
 			t.Fatal("non-nil error with an amount of return data")
 		} else if err == nil && len(frames) == 0 {
@@ -51,7 +51,7 @@ func TestFrameMarshaling(t *testing.T) {
 
 func TestFrameUnmarshalNoData(t *testing.T) {
 	frame0 := new(Frame)
-	err := frame0.UnmarshalBinary(bytes.NewReader([]byte{}))
+	err := frame0.UnmarshalBinary(bytes.NewBuffer([]byte{}))
 	require.Error(t, err)
 	require.ErrorIs(t, err, io.EOF)
 }
@@ -131,7 +131,7 @@ func TestFrameUnmarshalTruncated(t *testing.T) {
 			tdata := tr.truncate(data.Bytes())
 
 			frame0 := new(Frame)
-			err := frame0.UnmarshalBinary(bytes.NewReader(tdata))
+			err := frame0.UnmarshalBinary(bytes.NewBuffer(tdata))
 			require.Error(t, err)
 			require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 		})
@@ -148,25 +148,25 @@ func TestFrameUnmarshalInvalidIsLast(t *testing.T) {
 	idata[len(idata)-1] = 2 // invalid is_last
 
 	frame0 := new(Frame)
-	err := frame0.UnmarshalBinary(bytes.NewReader(idata))
+	err := frame0.UnmarshalBinary(bytes.NewBuffer(idata))
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid byte")
 }
 
 func TestParseFramesNoData(t *testing.T) {
-	frames, err := ParseFrames(nil)
+	frames, err := ParseFrames(nil, nil)
 	require.Empty(t, frames)
 	require.Error(t, err)
 }
 
 func TestParseFramesInvalidVer(t *testing.T) {
-	frames, err := ParseFrames([]byte{42})
+	frames, err := ParseFrames([]byte{42}, nil)
 	require.Empty(t, frames)
 	require.Error(t, err)
 }
 
 func TestParseFramesOnlyVersion(t *testing.T) {
-	frames, err := ParseFrames([]byte{params.DerivationVersion0})
+	frames, err := ParseFrames([]byte{params.DerivationVersion0}, nil)
 	require.Empty(t, frames)
 	require.Error(t, err)
 }
@@ -181,7 +181,7 @@ func TestParseFrames(t *testing.T) {
 	data, err := txMarshalFrames(frames)
 	require.NoError(t, err)
 
-	frames0, err := ParseFrames(data)
+	frames0, err := ParseFrames(data, nil)
 	require.NoError(t, err)
 	require.Equal(t, frames, frames0)
 }
@@ -197,7 +197,7 @@ func TestParseFramesTruncated(t *testing.T) {
 	require.NoError(t, err)
 	data = data[:len(data)-2] // truncate last 2 bytes
 
-	frames0, err := ParseFrames(data)
+	frames0, err := ParseFrames(data, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	require.Empty(t, frames0)

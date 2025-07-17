@@ -121,6 +121,9 @@ func NewConfig(ctx *cli.Context, log log.Logger) (*config.Config, error) {
 		FetchWithdrawalRootFromState:    ctx.Bool(flags.FetchWithdrawalRootFromState.Name),
 
 		ExperimentalOPStackAPI: ctx.Bool(flags.ExperimentalOPStackAPI.Name),
+
+		EncryptionEnabled: ctx.Bool(flags.EncryptionEnabled.Name),
+		EncryptionKey:     ctx.String(flags.EncryptionKey.Name),
 	}
 
 	if err := cfg.LoadPersisted(log); err != nil {

@@ -29,6 +29,10 @@ var (
 // [Frame Format]: https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/derivation.md#frame-format
 const FrameV0OverHeadSize = 23
 
+// EncryptionOverhead is the overhead added by encryption.
+// This is the size of the nonce and tag added by AES-256-GCM.
+const EncryptionOverhead = 28
+
 type Compressor interface {
 	// Writer is used to write uncompressed data which will be compressed. Should return
 	// ErrCompressorFull if the compressor is full and no more data should be written.
@@ -194,8 +198,14 @@ func (co *SingularChannelOut) Close() error {
 // Returns an error if it ran into an error during processing.
 func (co *SingularChannelOut) OutputFrame(w *bytes.Buffer, maxSize uint64) (uint16, error) {
 	// Check that the maxSize is large enough for the frame overhead size.
-	if maxSize < FrameV0OverHeadSize {
-		return 0, ErrMaxFrameSizeTooSmall
+	if true {
+		if maxSize < FrameV0OverHeadSize+EncryptionOverhead {
+			return 0, ErrMaxFrameSizeTooSmall
+		}
+	} else {
+		if maxSize < FrameV0OverHeadSize {
+			return 0, ErrMaxFrameSizeTooSmall
+		}
 	}
 
 	f := createEmptyFrame(co.id, co.frame, co.ReadyBytes(), co.closed, maxSize)

@@ -223,7 +223,7 @@ func ChannelManager_TxResend(t *testing.T, batchType uint) {
 
 	data1 := txdata1.CallData()
 	require.Equal(data1, data0)
-	fs, err := derive.ParseFrames(data1)
+	fs, err := derive.ParseFrames(data1, nil)
 	require.NoError(err)
 	require.Len(fs, 1)
 }

@@ -2,7 +2,10 @@ package derive
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -65,6 +68,7 @@ func (f *Frame) MarshalBinary(w io.Writer) error {
 type ByteReader interface {
 	io.Reader
 	io.ByteReader
+	io.Writer
 }
 
 // UnmarshalBinary consumes a full frame from the reader.
@@ -128,7 +132,7 @@ func eofAsUnexpectedMissing(err error) error {
 // format is supported.
 // All frames must be parsed without error and there must not be
 // any left over data and there must be at least one frame.
-func ParseFrames(data []byte) ([]Frame, error) {
+func ParseFrames(data []byte, encCfg *EncryptionConfig) ([]Frame, error) {
 	if len(data) == 0 {
 		return nil, errors.New("data array must not be empty")
 	}
@@ -139,6 +143,11 @@ func ParseFrames(data []byte) ([]Frame, error) {
 	var frames []Frame
 	for buf.Len() > 0 {
 		var f Frame
+		if encCfg != nil && encCfg.Enabled {
+			if err := decryptFrame(buf, encCfg); err != nil {
+				return nil, fmt.Errorf("decrypting frame: %w", err)
+			}
+		}
 		if err := f.UnmarshalBinary(buf); err != nil {
 			return nil, fmt.Errorf("parsing frame %d: %w", len(frames), err)
 		}
@@ -151,4 +160,59 @@ func ParseFrames(data []byte) ([]Frame, error) {
 		return nil, errors.New("was not able to find any frames")
 	}
 	return frames, nil
+}
+
+func decryptData(data []byte, keyHex string) ([]byte, error) {
+	if keyHex == "" {
+		return nil, errors.New("decryption key is not provided")
+	}
+
+	key, err := hex.DecodeString(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex-encoded decryption key: %w", err)
+	}
+
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("could not create new cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, fmt.Errorf("could not create GCM: %w", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt frame: %w", err)
+	}
+
+	return plaintext, nil
+}
+
+func decryptFrame(r ByteReader, encCfg *EncryptionConfig) error {
+	// Copy the frame data to a buffer
+	data := bytes.NewBuffer(make([]byte, 0))
+	_, err := io.Copy(data, r)
+	if err != nil {
+		return fmt.Errorf("writing frame data: %w", err)
+	}
+
+	if encCfg != nil && encCfg.Enabled {
+		decryptedData, err := decryptData(data.Bytes(), encCfg.Key)
+		if err != nil {
+			return err
+		}
+		_, err = r.Write(decryptedData)
+		if err != nil {
+			return fmt.Errorf("writing decrypted frame data: %w", err)
+		}
+	}
+	return nil
 }

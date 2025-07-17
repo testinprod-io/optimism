@@ -162,7 +162,7 @@ func NewL2Verifier(t Testing, log log.Logger, l1 derive.L1Fetcher,
 		attributes.NewAttributesHandler(log, cfg, ctx, eng), opts)
 
 	indexingMode := interopSys != nil
-	pipeline := derive.NewDerivationPipeline(log, cfg, depSet, l1, blobsSrc, altDASrc, eng, metrics, indexingMode)
+	pipeline := derive.NewDerivationPipeline(log, cfg, depSet, l1, blobsSrc, altDASrc, eng, metrics, indexingMode, nil)
 	sys.Register("pipeline", derive.NewPipelineDeriver(ctx, pipeline), opts)
 
 	testActionEmitter := sys.Register("test-action", nil, opts)

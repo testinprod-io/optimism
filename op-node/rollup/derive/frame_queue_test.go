@@ -115,7 +115,7 @@ func testFrameQueue_NextFrame(t *testing.T, holocene bool) {
 	lgr := testlog.Logger(t, slog.LevelWarn)
 	cfg := &rollup.Config{}
 	dp := mocks.NewNextDataProvider(t)
-	fq := NewFrameQueue(lgr, cfg, dp)
+	fq := NewFrameQueue(lgr, cfg, dp, nil)
 
 	inFrames := testFramesToFrames("b:1:", "b:2:!", "a:0:", "c:1:!", "a:1:", "a:2:!", "c:0:", "c:1:", "d:0:", "c:2:!", "e:0:")
 	var expFrames []Frame

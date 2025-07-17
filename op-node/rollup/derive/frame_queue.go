@@ -21,18 +21,25 @@ type NextDataProvider interface {
 	Origin() eth.L1BlockRef
 }
 
+type EncryptionConfig struct {
+	Enabled bool
+	Key     string
+}
+
 type FrameQueue struct {
 	log    log.Logger
 	frames []Frame
 	prev   NextDataProvider
 	cfg    *rollup.Config
+	encCfg *EncryptionConfig
 }
 
-func NewFrameQueue(log log.Logger, cfg *rollup.Config, prev NextDataProvider) *FrameQueue {
+func NewFrameQueue(log log.Logger, cfg *rollup.Config, prev NextDataProvider, encCfg *EncryptionConfig) *FrameQueue {
 	return &FrameQueue{
-		log:  log,
-		prev: prev,
-		cfg:  cfg,
+		log:    log,
+		prev:   prev,
+		cfg:    cfg,
+		encCfg: encCfg,
 	}
 }
 
@@ -73,7 +80,8 @@ func (fq *FrameQueue) loadNextFrames(ctx context.Context) error {
 		return err
 	}
 
-	if frames, err := ParseFrames(data); err == nil {
+	if frames, err := ParseFrames(data, fq.encCfg); err == nil {
+		fq.log.Info("Successfully parsed frames")
 		fq.frames = append(fq.frames, frames...)
 	} else {
 		fq.log.Warn("Failed to parse frames", "origin", fq.prev.Origin(), "err", err)

@@ -146,7 +146,7 @@ func fetchBatchesPerBlock(ctx context.Context, client *ethclient.Client, beacon 
 			for _, data := range datas {
 				validFrame := true
 				frameError := ""
-				framesPerData, err := derive.ParseFrames(data)
+				framesPerData, err := derive.ParseFrames(data, nil)
 				if err != nil {
 					fmt.Printf("Found a transaction (%s) with invalid data: %v\n", tx.Hash().String(), err)
 					validFrame = false

@@ -414,6 +414,21 @@ var (
 		EnvVars:  prefixEnvVars("EXPERIMENTAL_SEQUENCER_API"),
 		Category: MiscCategory,
 	}
+
+	EncryptionEnabled = &cli.BoolFlag{
+		Name:     "encryption.enabled",
+		Usage:    "Enables encryption for the op-node",
+		Required: false,
+		EnvVars:  prefixEnvVars("ENCRYPTION_ENABLED"),
+		Category: OperationsCategory,
+	}
+	EncryptionKey = &cli.StringFlag{
+		Name:     "encryption.key",
+		Usage:    "The key to use for encryption",
+		Required: false,
+		EnvVars:  prefixEnvVars("ENCRYPTION_KEY"),
+		Category: OperationsCategory,
+	}
 )
 
 var requiredFlags = []cli.Flag{
@@ -464,6 +479,8 @@ var optionalFlags = []cli.Flag{
 	InteropDependencySet,
 	IgnoreMissingPectraBlobSchedule,
 	ExperimentalOPStackAPI,
+	EncryptionEnabled,
+	EncryptionKey,
 }
 
 var DeprecatedFlags = []cli.Flag{

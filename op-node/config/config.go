@@ -87,6 +87,9 @@ type Config struct {
 
 	// Experimental. Enables new opstack RPC namespace. Used by op-test-sequencer.
 	ExperimentalOPStackAPI bool
+
+	EncryptionEnabled bool   `json:"encryption_enabled"`
+	EncryptionKey     string `json:"encryption_key"`
 }
 
 // ConductorRPCFunc retrieves the endpoint. The RPC may not immediately be available.
@@ -174,6 +177,11 @@ func (cfg *Config) Check() error {
 	}
 	if cfg.AltDA.Enabled {
 		log.Warn("Alt-DA Mode is a Beta feature of the MIT licensed OP Stack.  While it has received initial review from core contributors, it is still undergoing testing, and may have bugs or other issues.")
+	}
+	if cfg.EncryptionEnabled {
+		if cfg.EncryptionKey == "" {
+			return fmt.Errorf("encryption key is required when encryption is enabled")
+		}
 	}
 	return nil
 }

@@ -160,6 +160,7 @@ func NewDriver(
 	sys event.Registry,
 	drain Drain,
 	driverCfg *Config,
+	encryptionConfig *derive.EncryptionConfig,
 	cfg *rollup.Config,
 	depSet derive.DependencySet,
 	l2 L2Chain,
@@ -207,7 +208,7 @@ func NewDriver(
 	sys.Register("attributes-handler",
 		attributes.NewAttributesHandler(log, cfg, driverCtx, l2))
 
-	derivationPipeline := derive.NewDerivationPipeline(log, cfg, depSet, verifConfDepth, l1Blobs, altDA, l2, metrics, indexingMode)
+	derivationPipeline := derive.NewDerivationPipeline(log, cfg, depSet, verifConfDepth, l1Blobs, altDA, l2, metrics, indexingMode, encryptionConfig)
 
 	sys.Register("pipeline",
 		derive.NewPipelineDeriver(driverCtx, derivationPipeline))

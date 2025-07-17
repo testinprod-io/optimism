@@ -158,7 +158,7 @@ func (s *L2Batcher) ActCreateChannel(t Testing, useSpanChannelOut bool, spanChan
 		if s.l2BatcherCfg.GarbageCfg != nil {
 			ch, err = NewGarbageChannelOut(s.l2BatcherCfg.GarbageCfg)
 		} else {
-			target := batcher.MaxDataSize(1, s.l2BatcherCfg.MaxL1TxSize)
+			target := batcher.MaxDataSize(1, s.l2BatcherCfg.MaxL1TxSize, false)
 			c, e := compressor.NewShadowCompressor(compressor.Config{
 				TargetOutputSize: target,
 				CompressionAlgo:  derive.Zlib,
