@@ -49,6 +49,9 @@ type ChannelConfig struct {
 	// UseBlobs indicates that this channel should be sent as a multi-blob
 	// transaction with one blob per frame.
 	UseBlobs bool
+
+	// UseEncryption indicates that this channel should be encrypted.
+	UseEncryption bool
 }
 
 // ChannelConfig returns a copy of the receiver.
@@ -65,7 +68,7 @@ func (cc ChannelConfig) ChannelConfig(isPectra bool) ChannelConfig {
 func (cc *ChannelConfig) InitCompressorConfig(approxComprRatio float64, comprKind string, compressionAlgo derive.CompressionAlgo) {
 	cc.CompressorConfig = compressor.Config{
 		// Compressor output size needs to account for frame encoding overhead
-		TargetOutputSize: MaxDataSize(cc.TargetNumFrames, cc.MaxFrameSize),
+		TargetOutputSize: MaxDataSize(cc.TargetNumFrames, cc.MaxFrameSize, cc.UseEncryption),
 		ApproxComprRatio: approxComprRatio,
 		Kind:             comprKind,
 		CompressionAlgo:  compressionAlgo,
@@ -129,7 +132,13 @@ func (cc *ChannelConfig) Check() error {
 // into a channel with numFrames frames and frames of max size maxFrameSize.
 // It accounts for the constant frame overhead. It panics if the maxFrameSize
 // is smaller than [derive.FrameV0OverHeadSize].
-func MaxDataSize(numFrames int, maxFrameSize uint64) uint64 {
+func MaxDataSize(numFrames int, maxFrameSize uint64, useEncryption bool) uint64 {
+	if useEncryption {
+		if maxFrameSize < derive.FrameV0OverHeadSize+derive.EncryptionOverhead {
+			panic("max frame size smaller than frame overhead")
+		}
+		return uint64(numFrames) * (maxFrameSize - derive.FrameV0OverHeadSize - derive.EncryptionOverhead)
+	}
 	if maxFrameSize < derive.FrameV0OverHeadSize {
 		panic("max frame size smaller than frame overhead")
 	}

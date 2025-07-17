@@ -116,6 +116,11 @@ type CLIConfig struct {
 	// AdditionalThrottlingEndpoints is a list of additional endpoints to throttle.
 	AdditionalThrottlingEndpoints []string
 
+	// Whether to enable encryption for the batcher.
+	EncryptionEnabled bool
+	// The key to use for encryption.
+	EncryptionKey string
+
 	TxMgrConfig   txmgr.CLIConfig
 	LogConfig     oplog.CLIConfig
 	MetricsConfig opmetrics.CLIConfig
@@ -218,5 +223,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		ThrottleBlockSize:             ctx.Uint64(flags.ThrottleBlockSizeFlag.Name),
 		ThrottleAlwaysBlockSize:       ctx.Uint64(flags.ThrottleAlwaysBlockSizeFlag.Name),
 		AdditionalThrottlingEndpoints: ctx.StringSlice(flags.AdditionalThrottlingEndpointsFlag.Name),
+		EncryptionEnabled:             ctx.Bool(flags.EncryptionEnabledFlag.Name),
+		EncryptionKey:                 ctx.String(flags.EncryptionKeyFlag.Name),
 	}
 }

@@ -49,6 +49,11 @@ type BatcherConfig struct {
 	ThrottleThreshold, ThrottleTxSize          uint64
 	ThrottleBlockSize, ThrottleAlwaysBlockSize uint64
 	ThrottlingEndpoints                        []string
+
+	// Whether to enable encryption for the batcher.
+	EncryptionEnabled bool
+	// The key to use for encryption.
+	EncryptionKey string
 }
 
 // BatcherService represents a full batch-submitter instance and its resources,
@@ -114,6 +119,8 @@ func (bs *BatcherService) initFromCLIConfig(ctx context.Context, version string,
 
 	// Combine the L2EthRpc and RollupRpc into a single list of endpoints for throttling.
 	bs.ThrottlingEndpoints = slices.Union(cfg.L2EthRpc, cfg.AdditionalThrottlingEndpoints)
+	bs.EncryptionEnabled = cfg.EncryptionEnabled
+	bs.EncryptionKey = cfg.EncryptionKey
 
 	if err := bs.initRPCClients(ctx, cfg); err != nil {
 		return err
@@ -257,6 +264,11 @@ func (bs *BatcherService) initChannelConfig(cfg *CLIConfig) error {
 	// Checking for brotli compression only post Fjord
 	if cc.CompressorConfig.CompressionAlgo.IsBrotli() && !bs.RollupConfig.IsFjord(uint64(time.Now().Unix())) {
 		return errors.New("cannot use brotli compression before Fjord")
+	}
+
+	// If encryption is enabled, we need to use encryption for the channel.
+	if bs.EncryptionEnabled {
+		cc.UseEncryption = true
 	}
 
 	if err := cc.Check(); err != nil {

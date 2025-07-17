@@ -2,6 +2,10 @@ package batcher
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -810,6 +814,23 @@ func (l *BatchSubmitter) publishTxToL1(ctx context.Context, queue *txmgr.Queue[t
 		return err
 	}
 
+	if l.Config.EncryptionEnabled {
+		encryptedFrames := make([]frameData, len(txdata.frames))
+		for i, frame := range txdata.frames {
+			encryptedData, err := l.encryptData(frame.data)
+			if err != nil {
+				l.Log.Error("Failed to encrypt frame data", "err", err)
+				return err
+			}
+			encryptedFrames[i] = frameData{
+				id:   frame.id,
+				data: encryptedData,
+			}
+			l.Log.Info("Encrypted frame", "frame_length", len(encryptedData))
+		}
+		txdata.frames = encryptedFrames
+	}
+
 	if err = l.sendTransaction(txdata, queue, receiptsCh, daGroup); err != nil {
 		return fmt.Errorf("BatchSubmitter.sendTransaction failed: %w", err)
 	}
@@ -1038,6 +1059,35 @@ func (l *BatchSubmitter) checkTxpool(queue *txmgr.Queue[txRef], receiptsCh chan 
 	r := l.txpoolState == TxpoolGood
 	l.txpoolMutex.Unlock()
 	return r
+}
+
+func (l *BatchSubmitter) encryptData(data []byte) ([]byte, error) {
+	if l.Config.EncryptionKey == "" {
+		return data, nil
+	}
+
+	key, err := hex.DecodeString(l.Config.EncryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex-encoded encryption key: %w", err)
+	}
+
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("could not create new cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, fmt.Errorf("could not create GCM: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("could not create nonce: %w", err)
+	}
+
+	encryptedData := gcm.Seal(nonce, nonce, data, nil)
+	return encryptedData, nil
 }
 
 func logFields(xs ...any) (fs []any) {

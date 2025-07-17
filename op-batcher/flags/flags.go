@@ -185,6 +185,18 @@ var (
 		Usage:   "Comma-separated list of endpoints to distribute throttling configuration to (in addition to the L2 endpoints specified with --l2-eth-rpc).",
 		EnvVars: prefixEnvVars("ADDITIONAL_THROTTLING_ENDPOINTS"),
 	}
+	EncryptionEnabledFlag = &cli.BoolFlag{
+		Name:    "encryption-enabled",
+		Usage:   "Whether to enable encryption for the batcher.",
+		Value:   false,
+		EnvVars: prefixEnvVars("ENCRYPTION_ENABLED"),
+	}
+	EncryptionKeyFlag = &cli.StringFlag{
+		Name:    "encryption-key",
+		Usage:   "The key to use for encryption.",
+		Value:   "",
+		EnvVars: prefixEnvVars("ENCRYPTION_KEY"),
+	}
 	// Legacy Flags
 	SequencerHDPathFlag = txmgr.SequencerHDPathFlag
 )
@@ -218,6 +230,8 @@ var optionalFlags = []cli.Flag{
 	ThrottleBlockSizeFlag,
 	ThrottleAlwaysBlockSizeFlag,
 	AdditionalThrottlingEndpointsFlag,
+	EncryptionEnabledFlag,
+	EncryptionKeyFlag,
 }
 
 func init() {
