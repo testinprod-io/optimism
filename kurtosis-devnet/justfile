@@ -26,7 +26,22 @@ _docker_build TAG TARGET CONTEXT DOCKERFILE *ARGS: _prerequisites
         {{ ARGS }} \
         {{CONTEXT}}
 
+# Build and push a docker image to a remote registry
+_docker_build_push TAG TARGET CONTEXT DOCKERFILE *ARGS: _prerequisites
+    docker buildx build \
+        --push \
+        --platform linux/amd64,linux/arm64 \
+        --provenance=false \
+        -t {{TAG}} \
+        -f {{CONTEXT}}/{{DOCKERFILE}} \
+        {{ if TARGET != '' {  "--target " + TARGET } else { "" } }} \
+        --build-arg GIT_COMMIT={git_commit} \
+        --build-arg GIT_DATE={git_date} \
+        {{ ARGS }} \
+        {{CONTEXT}}
+
 _docker_build_stack TAG TARGET *ARGS: (_docker_build TAG TARGET "../" "ops/docker/op-stack-go/Dockerfile" ARGS)
+_docker_build_stack_push TAG TARGET *ARGS: (_docker_build_push TAG TARGET "../" "ops/docker/op-stack-go/Dockerfile" ARGS)
 
 cannon-image TAG='cannon:devnet': (_docker_build_stack TAG "cannon-target")
 da-server-image TAG='da-server:devnet': (_docker_build_stack TAG "da-server-target")
@@ -45,6 +60,9 @@ op-supervisor-image TAG='op-supervisor:devnet': (_docker_build_stack TAG "op-sup
 op-wheel-image TAG='op-wheel:devnet': (_docker_build_stack TAG "op-wheel-target")
 op-faucet-image TAG='op-faucet:devnet': (_docker_build_stack TAG "op-faucet-target")
 op-interop-mon-image TAG='op-interop-mon:devnet': (_docker_build_stack TAG "op-interop-mon-target")
+
+op-node-image-push TAG='smstack/siat-op-node:latest': (_docker_build_stack_push TAG "op-node-target")
+op-batcher-image-push TAG='smstack/siat-op-batcher:latest': (_docker_build_stack_push TAG "op-batcher-target")
 
 op-program-builder-image TAG='op-program-builder:devnet': _prerequisites
     just op-program-svc/op-program-svc {{TAG}}
@@ -103,3 +121,6 @@ flash-devnet: (devnet "flash.yaml")
 # subshells
 enter-devnet DEVNET CHAIN='Ethereum' NODE_INDEX='0': _prerequisites
     go run ../devnet-sdk/shell/cmd/enter/main.go --devnet kt://{{DEVNET}} --chain {{CHAIN}} --node-index {{NODE_INDEX}}
+
+# Private devnet
+private-devnet: (devnet "private.yaml")
